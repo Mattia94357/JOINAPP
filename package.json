@@ -8,7 +8,9 @@
   "scripts": {
     "start:frontend": "yarn workspace frontend start",
     "start:backend": "yarn workspace backend dev",
-    "install:all": "yarn install"
+    "install:all": "yarn install",
+    "build": "cd frontend && npm run build",
+    "vercel-build": "cd frontend && npm run build"
   },
   "devDependencies": {
     "webpack": "^5.64.4",

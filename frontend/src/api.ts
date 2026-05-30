@@ -12,7 +12,9 @@ const getHost = () => {
 
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined') {
-      return `http://${window.location.hostname}:4000`;
+      const hostname = window.location.hostname;
+      const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+      return isLocal ? `http://${hostname}:4000` : '';
     }
     return 'http://localhost:4000';
   }
