@@ -15,7 +15,6 @@ import AvatarBadge from '../components/AvatarBadge';
 import SwipeDeck from '../components/SwipeDeck';
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest } from '../api';
-import { Ionicons } from '@expo/vector-icons';
 
 const categories = ['All', 'Wellness', 'Food', 'Networking', 'Adventure'];
 
@@ -141,7 +140,7 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
         <View style={styles.actionIcons}>
           <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.iconButton}>
-            <Ionicons name="notifications-outline" size={22} color="#f5c12d" />
+            <Text style={styles.notificationIcon}>🔔</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.iconButton}>
             <AvatarBadge name={user?.name || 'Guest'} avatarUrl={user?.avatar} size={40} />
@@ -232,6 +231,13 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     marginLeft: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationIcon: {
+    fontSize: 22,
+    color: '#f5c12d',
+    lineHeight: 24,
   },
   categoryRow: {
     maxHeight: 56,
