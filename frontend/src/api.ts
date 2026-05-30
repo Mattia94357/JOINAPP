@@ -64,6 +64,10 @@ export type ActivityResponse = {
   location: string;
   description: string;
   date?: string;
+  time?: string;
+  distance?: string;
+  vibe?: string;
+  attendees?: number;
   host: string;
   hostId: string;
   hostAvatar?: string;
@@ -86,7 +90,11 @@ export const fetchActivities = async (token?: string) => {
     category: activity.category,
     location: activity.location,
     description: activity.description,
-    date: activity.date ? new Date(activity.date).toLocaleString() : undefined,
+    date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
+    time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
+    distance: activity.distance || '1.2 km',
+    vibe: activity.vibe || 'Social',
+    attendees: activity.participants?.length || 0,
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,
@@ -105,7 +113,11 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     category: activity.category,
     location: activity.location,
     description: activity.description,
-    date: activity.date ? new Date(activity.date).toLocaleString() : undefined,
+    date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
+    time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
+    distance: activity.distance || '1.2 km',
+    vibe: activity.vibe || 'Social',
+    attendees: activity.participants?.length || 0,
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,
@@ -114,7 +126,7 @@ export const fetchActivity = async (activityId: string, token?: string) => {
 };
 
 export const createActivityRequest = async (
-  payload: { title: string; category: string; location: string; description: string; date?: string },
+  payload: { title: string; category: string; location: string; description: string; date?: string; vibe?: string },
   token: string,
 ) =>
   api.post('/api/activities', payload, {

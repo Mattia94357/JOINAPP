@@ -15,6 +15,9 @@ type ActivityDetails = {
   location: string;
   description: string;
   date?: string;
+  time?: string;
+  distance?: string;
+  vibe?: string;
   host: string;
   hostId: string;
   hostAvatar?: string;
@@ -81,6 +84,10 @@ export default function ActivityScreen({ route, navigation }: Props) {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Host</Text>
         <Text style={styles.sectionText}>{activity.host}</Text>
+      </View>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Style</Text>
+        <Text style={styles.sectionText}>{activity.vibe || 'Premium'} · {activity.distance || 'Nearby'}</Text>
       </View>
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Description</Text>
@@ -166,7 +173,6 @@ const styles = StyleSheet.create({
   participantsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
   },
   participantBadge: {
     backgroundColor: '#111',

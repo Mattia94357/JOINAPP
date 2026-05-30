@@ -1,13 +1,71 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import AvatarBadge from '../components/AvatarBadge';
 import SwipeDeck from '../components/SwipeDeck';
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest } from '../api';
+import { Ionicons } from '@expo/vector-icons';
 
 const categories = ['All', 'Wellness', 'Food', 'Networking', 'Adventure'];
+
+const suggestionActivities: ActivityResponse[] = [
+  {
+    id: 'template-1',
+    title: 'Sunset rooftop dinner',
+    category: 'Food',
+    location: 'Downtown Skyline',
+    description: 'An elevated evening with small plates, thoughtful conversation, and city views.',
+    date: 'Tonight',
+    time: '7:30 PM',
+    distance: '1.1 km',
+    vibe: 'Curated',
+    attendees: 6,
+    host: 'Avery',
+    hostId: 'host-1',
+    participants: [],
+  },
+  {
+    id: 'template-2',
+    title: 'Morning hike + coffee',
+    category: 'Adventure',
+    location: 'River Trail',
+    description: 'A scenic 5K with a coffee stop for easy pace, good company, and fresh air.',
+    date: 'Saturday',
+    time: '9:00 AM',
+    distance: '2.4 km',
+    vibe: 'Active',
+    attendees: 8,
+    host: 'Jordan',
+    hostId: 'host-2',
+    participants: [],
+  },
+  {
+    id: 'template-3',
+    title: 'Creative co-working lounge',
+    category: 'Networking',
+    location: 'Union House',
+    description: 'Make progress, exchange ideas, and stay inspired with a curated work circle.',
+    date: 'Monday',
+    time: '3:00 PM',
+    distance: '800 m',
+    vibe: 'Focused',
+    attendees: 5,
+    host: 'Sam',
+    hostId: 'host-3',
+    participants: [],
+  },
+];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -29,11 +87,12 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setMessage('');
       try {
         const result = await fetchActivities(token || undefined);
         setActivities(result);
       } catch (error) {
-        setMessage('Unable to fetch activities.');
+        setMessage('Unable to fetch activities. Explore curated templates below.');
       } finally {
         setLoading(false);
       }
@@ -71,21 +130,26 @@ export default function HomeScreen({ navigation }: Props) {
     navigation.navigate('Activity', { activityId: activity.id });
   };
 
+  const activeFeed = filteredActivities.length > 0 ? filteredActivities : suggestionActivities;
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerProfile}>
-          <AvatarBadge name={user?.name || 'Guest'} avatarUrl={user?.avatar} size={48} />
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Discover Activities</Text>
-            <Text style={styles.subtitle}>Hello, {user?.name || 'guest'}</Text>
-          </View>
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.greeting}>Hello, {user?.name || 'guest'}</Text>
+          <Text style={styles.title}>Discover premium local plans</Text>
         </View>
-        <TouchableOpacity style={styles.hostButton} onPress={() => navigation.navigate('CreateActivity')}>
-          <Text style={styles.hostButtonText}>Host</Text>
-        </TouchableOpacity>
+        <View style={styles.actionIcons}>
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.iconButton}>
+            <Ionicons name="notifications-outline" size={22} color="#f5c12d" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.iconButton}>
+            <AvatarBadge name={user?.name || 'Guest'} avatarUrl={user?.avatar} size={40} />
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.categoryRow}>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow} contentContainerStyle={styles.categoryRowContent}>
         {categories.map((category) => (
           <TouchableOpacity
             key={category}
@@ -97,30 +161,42 @@ export default function HomeScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
         ))}
+      </ScrollView>
+
+      <View style={styles.statsRow}>
+        <View>
+          <Text style={styles.statLabel}>Curated matches</Text>
+          <Text style={styles.statValue}>{activeFeed.length}</Text>
+        </View>
+        <View>
+          <Text style={styles.statLabel}>Ready to join</Text>
+          <Text style={styles.statValue}>{loading ? 'Loading…' : selectedCategory === 'All' ? 'Live now' : selectedCategory}</Text>
+        </View>
       </View>
+
       <View style={styles.deckContainer}>
         {loading ? (
           <ActivityIndicator color="#f5c12d" size="large" />
         ) : (
           <SwipeDeck
-            key={`${selectedCategory}-${filteredActivities.length}`}
-            activities={filteredActivities}
-            onSwipeLeft={() => {
-              setMessage('Swipe left to pass.');
-            }}
+            key={`${selectedCategory}-${activeFeed.length}`}
+            activities={activeFeed}
+            onSwipeLeft={() => setMessage('Skipped. Keep browsing high-quality plans.')}
             onSwipeRight={handleSwipeRight}
             onPress={handlePress}
           />
         )}
       </View>
+
       <View style={styles.footerRow}>
-        <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: 'general', title: 'Community Chat' })}>
-          <Text style={styles.chatButtonText}>Community Chat</Text>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('CreateActivity')}>
+          <Text style={styles.secondaryText}>Host an experience</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Chat', { chatId: 'general', title: 'Community Chat' })}>
+          <Text style={styles.primaryText}>Join chat</Text>
         </TouchableOpacity>
       </View>
+
       {message ? <Text style={styles.statusText}>{message}</Text> : null}
     </SafeAreaView>
   );
@@ -129,101 +205,108 @@ export default function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#050505',
     paddingHorizontal: 18,
+    paddingTop: 16,
   },
-  header: {
-    marginTop: 16,
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 18,
   },
-  headerProfile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerText: {
-    marginLeft: 14,
+  greeting: {
+    color: '#aaa',
+    fontSize: 14,
+    marginBottom: 4,
   },
   title: {
     color: '#fff',
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '900',
+    lineHeight: 34,
   },
-  subtitle: {
-    marginTop: 6,
-    color: '#ccc',
-    fontSize: 14,
+  actionIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  hostButton: {
-    backgroundColor: '#f5c12d',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 14,
-  },
-  hostButtonText: {
-    color: '#000',
-    fontWeight: '700',
+  iconButton: {
+    marginLeft: 14,
   },
   categoryRow: {
-    marginTop: 20,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    maxHeight: 56,
+  },
+  categoryRowContent: {
+    paddingBottom: 10,
   },
   categoryTag: {
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#262626',
     borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginRight: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    marginRight: 10,
+    backgroundColor: '#101010',
   },
   categoryTagActive: {
     backgroundColor: '#f5c12d',
     borderColor: '#f5c12d',
   },
   categoryText: {
-    color: '#eee',
+    color: '#ddd',
     fontSize: 14,
+    fontWeight: '600',
   },
   categoryTextActive: {
-    color: '#000',
+    color: '#050505',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  statLabel: {
+    color: '#777',
+    fontSize: 12,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
   },
   deckContainer: {
     flex: 1,
-    marginTop: 20,
+    marginTop: 18,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 18,
+    marginVertical: 20,
   },
-  chatButton: {
+  secondaryButton: {
     flex: 1,
-    backgroundColor: '#111',
-    borderColor: '#f5c12d',
     borderWidth: 1,
-    padding: 16,
-    borderRadius: 16,
+    borderColor: '#f5c12d',
+    paddingVertical: 16,
+    borderRadius: 18,
     alignItems: 'center',
     marginRight: 10,
   },
-  chatButtonText: {
+  secondaryText: {
     color: '#f5c12d',
     fontWeight: '700',
   },
-  logoutButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f5c12d',
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#f5c12d',
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: 'center',
   },
-  logoutText: {
-    color: '#f5c12d',
-    fontWeight: '700',
+  primaryText: {
+    color: '#050505',
+    fontWeight: '800',
   },
   statusText: {
     color: '#fff',

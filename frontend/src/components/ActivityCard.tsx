@@ -11,6 +11,10 @@ export type Activity = {
   hostId: string;
   hostAvatar?: string;
   date?: string;
+  time?: string;
+  distance?: string;
+  vibe?: string;
+  attendees?: number;
   participants: Array<{ name: string; avatar?: string }>;
   description: string;
 };
@@ -24,11 +28,17 @@ export default function ActivityCard({ activity, onPress }: Props) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
       <View style={styles.headerTop}>
-        <Text style={styles.category}>{activity.category}</Text>
-        <Text style={styles.participantCount}>{activity.participants.length} joined</Text>
+        <View>
+          <Text style={styles.category}>{activity.category}</Text>
+          <Text style={styles.vibe}>{activity.vibe || 'Premium'}</Text>
+        </View>
+        <Text style={styles.participantCount}>{activity.attendees ?? activity.participants.length} joined</Text>
       </View>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{activity.title}</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>{activity.title}</Text>
+          <Text style={styles.meta}>{activity.date || 'Any day'} · {activity.time || 'Any time'} · {activity.distance || 'Nearby'}</Text>
+        </View>
         <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={48} />
       </View>
       <Text style={styles.description}>{activity.description}</Text>
@@ -43,10 +53,10 @@ export default function ActivityCard({ activity, onPress }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#111',
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: '#333',
-    padding: 22,
+    borderColor: '#212121',
+    padding: 24,
     marginBottom: 18,
   },
   headerTop: {
@@ -58,8 +68,12 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  titleBlock: {
+    flex: 1,
+    paddingRight: 12,
   },
   category: {
     color: '#f5c12d',
@@ -67,26 +81,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  vibe: {
+    color: '#ccc',
+    fontSize: 12,
   },
   participantCount: {
-    color: '#ccc',
+    color: '#aaa',
     fontSize: 12,
   },
   title: {
     color: '#fff',
     fontSize: 22,
     fontWeight: '900',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  meta: {
+    color: '#888',
+    fontSize: 13,
+    lineHeight: 18,
   },
   description: {
-    color: '#ccc',
+    color: '#d1d1d1',
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: 18,
+    marginBottom: 20,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   location: {
     color: '#eee',

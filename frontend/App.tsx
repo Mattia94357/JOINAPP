@@ -8,14 +8,20 @@ import ActivityScreen from './src/screens/ActivityScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import CreateActivityScreen from './src/screens/CreateActivityScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 
 export type RootStackParamList = {
+  Onboarding: undefined;
   Login: undefined;
   Home: undefined;
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };
+  Profile: undefined;
+  Notifications: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,18 +41,30 @@ function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={user ? 'Home' : 'Login'}
+        initialRouteName={user ? 'Home' : 'Onboarding'}
         screenOptions={{
-          headerStyle: { backgroundColor: '#000' },
+          headerStyle: { backgroundColor: '#050505' },
           headerTintColor: '#fff',
-          contentStyle: { backgroundColor: '#111' },
+          contentStyle: { backgroundColor: '#070707' },
+          headerTitleStyle: { fontWeight: '700' },
         }}
       >
-        <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'JoinApp' }} />
+        <Stack.Screen
+          name="Onboarding"
+          component={OnboardingScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ title: 'Welcome to JoinApp', headerBackVisible: false }}
+        />
         <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Discover Activities' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
         <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
         <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.title })} />
+        <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
