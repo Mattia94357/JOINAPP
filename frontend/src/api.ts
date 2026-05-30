@@ -14,9 +14,11 @@ const getHost = () => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-      return isLocal ? `http://${hostname}:4000` : '';
+      if (isLocal) return 'http://localhost:4000';
+      // Production: use your Vercel backend
+      return 'https://joinapp-backend-8lsb.vercel.app';
     }
-    return 'http://localhost:4000';
+    return 'https://joinapp-backend-8lsb.vercel.app';
   }
 
   const debuggerHost = (manifest as any).debuggerHost as string | undefined;
