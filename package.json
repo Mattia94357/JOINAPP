@@ -1,0 +1,17 @@
+{
+  "name": "joinapp",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "start:frontend": "yarn workspace frontend start",
+    "start:backend": "yarn workspace backend dev",
+    "install:all": "yarn install"
+  },
+  "devDependencies": {
+    "webpack": "^5.64.4",
+    "webpack-dev-server": "^4.11.1"
+  }
+}
