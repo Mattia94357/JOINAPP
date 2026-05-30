@@ -7,25 +7,14 @@ type Props = {
   size?: number;
 };
 
-const getInitials = (name: string) => {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-};
+const getAvatarUrl = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=111111&color=f5c12d&size=128`;
 
 export default function AvatarBadge({ name, avatarUrl, size = 44 }: Props) {
-  const initials = getInitials(name);
+  const imageUrl = avatarUrl || getAvatarUrl(name);
   return (
     <View style={[styles.container, { width: size, height: size, borderRadius: size / 2 }]}> 
-      {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]} />
-      ) : (
-        <View style={[styles.placeholder, { width: size, height: size, borderRadius: size / 2 }]}> 
-          <Text style={[styles.initials, { fontSize: size * 0.42 }]}>{initials}</Text>
-        </View>
-      )}
+      <Image source={{ uri: imageUrl }} style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]} />
     </View>
   );
 }
