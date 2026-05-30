@@ -1,4 +1,11 @@
 {
   "version": 2,
-  "outputDirectory": "frontend/web-build"
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/web-build",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }
