@@ -8,6 +8,10 @@ export interface IActivity extends Document {
   host: Types.ObjectId;
   participants: Types.ObjectId[];
   date: Date;
+  coverImage?: string;
+  vibe?: string;
+  availabilityTag?: string;
+  maxAttendees?: number;
 }
 
 const ActivitySchema = new Schema<IActivity>({
@@ -18,6 +22,10 @@ const ActivitySchema = new Schema<IActivity>({
   host: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   participants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   date: { type: Date, default: Date.now },
+  coverImage: { type: String },
+  vibe: { type: String },
+  availabilityTag: { type: String },
+  maxAttendees: { type: Number },
 }, { timestamps: true });
 
 export default model<IActivity>('Activity', ActivitySchema);

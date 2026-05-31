@@ -5,6 +5,10 @@ export interface IUser extends Document {
   email: string;
   password: string;
   avatar?: string;
+  location?: string;
+  interests?: string[];
+  verified?: boolean;
+  bio?: string;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -12,6 +16,10 @@ const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },
   avatar: { type: String },
+  location: { type: String },
+  interests: [{ type: String }],
+  verified: { type: Boolean, default: false },
+  bio: { type: String },
 }, { timestamps: true });
 
 export default model<IUser>('User', UserSchema);

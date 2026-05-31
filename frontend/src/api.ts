@@ -42,6 +42,10 @@ export type ApiUser = {
   name: string;
   email: string;
   avatar?: string;
+  location?: string;
+  interests?: string[];
+  verified?: boolean;
+  bio?: string;
 };
 
 export type RawAvatarUser = {
@@ -57,6 +61,10 @@ export type RawActivity = {
   location: string;
   description: string;
   date?: string;
+  coverImage?: string;
+  vibe?: string;
+  availabilityTag?: string;
+  maxAttendees?: number;
   host: RawAvatarUser;
   participants: RawAvatarUser[];
 };
@@ -72,6 +80,9 @@ export type ActivityResponse = {
   distance?: string;
   vibe?: string;
   attendees?: number;
+  maxAttendees?: number;
+  coverImage?: string;
+  availabilityTag?: string;
   host: string;
   hostId: string;
   hostAvatar?: string;
@@ -96,9 +107,12 @@ export const fetchActivities = async (token?: string) => {
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
-    distance: activity.distance || '1.2 km',
+    distance: '1.2 km',
     vibe: activity.vibe || 'Social',
     attendees: activity.participants?.length || 0,
+    maxAttendees: activity.maxAttendees,
+    coverImage: activity.coverImage,
+    availabilityTag: activity.availabilityTag,
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,
@@ -119,9 +133,12 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
-    distance: activity.distance || '1.2 km',
+    distance: '1.2 km',
     vibe: activity.vibe || 'Social',
     attendees: activity.participants?.length || 0,
+    maxAttendees: activity.maxAttendees,
+    coverImage: activity.coverImage,
+    availabilityTag: activity.availabilityTag,
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,

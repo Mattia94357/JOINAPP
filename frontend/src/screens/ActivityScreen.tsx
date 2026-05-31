@@ -1,10 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { fetchActivity, joinActivityRequest } from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -18,6 +29,10 @@ type ActivityDetails = {
   time?: string;
   distance?: string;
   vibe?: string;
+  attendees?: number;
+  maxAttendees?: number;
+  coverImage?: string;
+  availabilityTag?: string;
   host: string;
   hostId: string;
   hostAvatar?: string;
@@ -73,45 +88,131 @@ export default function ActivityScreen({ route, navigation }: Props) {
   }
 
   const alreadyJoined = user ? activity.participants.some((participant) => participant.name === user.name) : false;
+  const coverImage =
+    activity.coverImage ||
+    `https://via.placeholder.com/400x250/1a1a1a/f5c12d?text=${encodeURIComponent(activity.category)}`;
+  const capacity = activity.maxAttendees
+    ? `${activity.attendees}/${activity.maxAttendees}`
+    : `${activity.attendees} joined`;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.topCard}>
-        <Text style={styles.category}>{activity.category}</Text>
-        <Text style={styles.title}>{activity.title}</Text>
-        <Text style={styles.info}>{activity.location} • {activity.date || 'Flexible time'}</Text>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Host</Text>
-        <Text style={styles.sectionText}>{activity.host}</Text>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Style</Text>
-        <Text style={styles.sectionText}>{activity.vibe || 'Premium'} · {activity.distance || 'Nearby'}</Text>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Description</Text>
-        <Text style={styles.sectionText}>{activity.description}</Text>
-      </View>
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Participants</Text>
-        <View style={styles.participantsRow}>
-          {activity.participants.map((participant) => (
-            <View key={participant.name} style={styles.participantBadge}>
-              <AvatarBadge name={participant.name} avatarUrl={participant.avatar} size={42} />
-              <Text style={styles.participantName}>{participant.name}</Text>
+      {/* Hero Image */}
+      <ImageBackground source={{ uri: coverImage }} style={styles.heroImage}>
+        <View style={styles.heroOverlay} />
+        <View style={styles.heroContent}>
+          <View style={styles.heroBadges}>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryBadgeText}>{activity.category}</Text>
             </View>
-          ))}
+            {activity.availabilityTag && (
+              <View style={styles.availabilityBadge}>
+                <Text style={styles.availabilityBadgeText}>{activity.availabilityTag}</Text>
+              </View>
+            )}
+          </View>
         </View>
+      </ImageBackground>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {/* Title */}
+        <Text style={styles.title}>{activity.title}</Text>
+
+        {/* Quick Info */}
+        <View style={styles.quickInfo}>
+          <View style={styles.quickInfoItem}>
+            <Text style={styles.quickInfoIcon}>📍</Text>
+            <Text style={styles.quickInfoText}>{activity.location}</Text>
+          </View>
+          <View style={styles.quickInfoItem}>
+            <Text style={styles.quickInfoIcon}>🕐</Text>
+            <Text style={styles.quickInfoText}>{activity.time || 'Anytime'}</Text>
+          </View>
+          <View style={styles.quickInfoItem}>
+            <Text style={styles.quickInfoIcon}>📏</Text>
+            <Text style={styles.quickInfoText}>{activity.distance || 'Nearby'}</Text>
+          </View>
+        </View>
+
+        {/* Host Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Host</Text>
+          <View style={styles.hostCard}>
+            <Image
+              source={{ uri: activity.hostAvatar || getAvatarUrl(activity.host) }}
+              style={styles.hostAvatar}
+            />
+            <View style={styles.hostDetails}>
+              <Text style={styles.hostName}>{activity.host}</Text>
+              <Text style={styles.hostSubtitle}>Activity organizer</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* About */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About this experience</Text>
+          <Text style={styles.descriptionText}>{activity.description}</Text>
+        </View>
+
+        {/* Vibe & Metadata */}
+        <View style={styles.metadataRow}>
+          <View style={styles.metadataCard}>
+            <Text style={styles.metadataLabel}>Vibe</Text>
+            <Text style={styles.metadataValue}>{activity.vibe || 'Social'}</Text>
+          </View>
+          <View style={styles.metadataCard}>
+            <Text style={styles.metadataLabel}>Attendees</Text>
+            <Text style={styles.metadataValue}>{capacity}</Text>
+          </View>
+        </View>
+
+        {/* Participants */}
+        {activity.participants.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Joined so far ({activity.participants.length})</Text>
+            <View style={styles.participantsGrid}>
+              {activity.participants.slice(0, 6).map((participant, index) => (
+                <View key={index} style={styles.participantItem}>
+                  <Image
+                    source={{ uri: participant.avatar || getAvatarUrl(participant.name) }}
+                    style={styles.participantAvatar}
+                  />
+                  <Text style={styles.participantName} numberOfLines={1}>
+                    {participant.name}
+                  </Text>
+                </View>
+              ))}
+              {activity.participants.length > 6 && (
+                <View style={styles.participantItem}>
+                  <View style={styles.participantMoreOverlay}>
+                    <Text style={styles.participantMoreText}>+{activity.participants.length - 6}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Action Buttons */}
+        <TouchableOpacity
+          style={[styles.joinButton, alreadyJoined && styles.joinedButton]}
+          onPress={handleJoin}
+          disabled={alreadyJoined}
+        >
+          <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
+            {alreadyJoined ? '✓ Already joined' : '🎉 Join this event'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.chatButton}
+          onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}
+        >
+          <Text style={styles.chatButtonText}>💬 Chat with participants</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity style={[styles.button, alreadyJoined && styles.disabledButton]} onPress={handleJoin} disabled={alreadyJoined}>
-        <Text style={[styles.buttonText, alreadyJoined && styles.disabledText]}>
-          {alreadyJoined ? 'Already joined' : 'Join this event'}
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
-        <Text style={styles.chatButtonText}>Chat with participants</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -119,7 +220,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#050505',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -128,103 +229,210 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   container: {
-    backgroundColor: '#000',
-    padding: 20,
+    backgroundColor: '#050505',
     paddingBottom: 40,
   },
-  topCard: {
-    backgroundColor: '#111',
-    borderRadius: 24,
-    padding: 24,
-    borderColor: '#333',
-    borderWidth: 1,
+  heroImage: {
+    width: '100%',
+    height: 240,
+    position: 'relative',
   },
-  category: {
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  heroContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  heroBadges: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  categoryBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  categoryBadgeText: {
     color: '#f5c12d',
-    fontSize: 14,
-    letterSpacing: 1,
-    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  availabilityBadge: {
+    backgroundColor: 'rgba(245, 193, 45, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  availabilityBadgeText: {
+    color: '#050505',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
   },
   title: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '900',
-    marginBottom: 12,
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 16,
   },
-  info: {
-    color: '#bbb',
+  quickInfo: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222222',
+  },
+  quickInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  quickInfoIcon: {
     fontSize: 16,
+    marginRight: 6,
+  },
+  quickInfoText: {
+    color: '#b8b8b8',
+    fontSize: 13,
   },
   section: {
-    marginTop: 24,
+    marginBottom: 20,
   },
-  sectionLabel: {
-    color: '#888',
+  sectionTitle: {
+    color: '#ffffff',
     fontSize: 14,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 10,
-  },
-  sectionText: {
-    color: '#eee',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  participantsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  participantBadge: {
-    backgroundColor: '#111',
-    borderColor: '#444',
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    marginRight: 10,
-    marginBottom: 10,
-  },
-  participantText: {
-    color: '#f5c12d',
     fontWeight: '700',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  participantName: {
-    color: '#eee',
+  hostCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111111',
+    borderRadius: 12,
+    padding: 12,
+  },
+  hostAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: '#f5c12d',
+  },
+  hostDetails: {
+    flex: 1,
+  },
+  hostName: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  hostSubtitle: {
+    color: '#888888',
     fontSize: 12,
-    marginTop: 6,
-    textAlign: 'center',
-    maxWidth: 80,
+    marginTop: 2,
   },
-  button: {
-    marginTop: 32,
-    backgroundColor: '#f5c12d',
-    paddingVertical: 16,
-    borderRadius: 18,
+  descriptionText: {
+    color: '#d1d1d1',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  metadataRow: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    gap: 12,
+  },
+  metadataCard: {
+    flex: 1,
+    backgroundColor: '#111111',
+    borderRadius: 12,
+    padding: 12,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#000',
-    fontWeight: '800',
+  metadataLabel: {
+    color: '#888888',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  metadataValue: {
+    color: '#f5c12d',
     fontSize: 16,
+    fontWeight: '600',
   },
-  disabledButton: {
-    backgroundColor: '#333',
+  participantsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  disabledText: {
-    color: '#777',
+  participantItem: {
+    alignItems: 'center',
+    width: '30%',
+  },
+  participantAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#f5c12d',
+  },
+  participantMoreOverlay: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f5c12d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  participantMoreText: {
+    color: '#050505',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  participantName: {
+    color: '#b8b8b8',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  joinButton: {
+    backgroundColor: '#f5c12d',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  joinButtonText: {
+    color: '#050505',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  joinedButton: {
+    backgroundColor: '#333333',
+  },
+  joinedButtonText: {
+    color: '#888888',
   },
   chatButton: {
-    marginTop: 16,
-    backgroundColor: '#111',
-    borderColor: '#f5c12d',
+    backgroundColor: '#111111',
     borderWidth: 1,
-    paddingVertical: 16,
-    borderRadius: 18,
+    borderColor: '#f5c12d',
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   chatButtonText: {
     color: '#f5c12d',
-    fontWeight: '800',
-    fontSize: 16,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

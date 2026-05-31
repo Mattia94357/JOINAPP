@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import AvatarBadge from './AvatarBadge';
+import { getAvatarUrl } from '../utils/avatar';
 
 export type Activity = {
   id: string;
@@ -15,6 +16,9 @@ export type Activity = {
   distance?: string;
   vibe?: string;
   attendees?: number;
+  maxAttendees?: number;
+  coverImage?: string;
+  availabilityTag?: string;
   participants: Array<{ name: string; avatar?: string }>;
   description: string;
 };
@@ -25,26 +29,70 @@ type Props = {
 };
 
 export default function ActivityCard({ activity, onPress }: Props) {
+  const coverImage =
+    activity.coverImage ||
+    `https://via.placeholder.com/300x200/1a1a1a/f5c12d?text=${encodeURIComponent(activity.category)}`;
+  const capacity = activity.maxAttendees ? `${activity.attendees}/${activity.maxAttendees}` : `${activity.attendees ?? 0} joined`;
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
-      <View style={styles.headerTop}>
-        <View>
-          <Text style={styles.category}>{activity.category}</Text>
-          <Text style={styles.vibe}>{activity.vibe || 'Premium'}</Text>
+      {/* Cover Image with Badges */}
+      <View style={styles.imageContainer}>
+        <Image source={{ uri: coverImage }} style={styles.image} />
+        {activity.availabilityTag && (
+          <View style={styles.availabilityBadge}>
+            <Text style={styles.availabilityText}>{activity.availabilityTag}</Text>
+          </View>
+        )}
+        <View style={styles.categoryBadge}>
+          <Text style={styles.categoryText}>{activity.category}</Text>
         </View>
-        <Text style={styles.participantCount}>{activity.attendees ?? activity.participants.length} joined</Text>
       </View>
-      <View style={styles.titleRow}>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>{activity.title}</Text>
-          <Text style={styles.meta}>{activity.date || 'Any day'} · {activity.time || 'Any time'} · {activity.distance || 'Nearby'}</Text>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {/* Title */}
+        <Text style={styles.title} numberOfLines={2}>
+          {activity.title}
+        </Text>
+
+        {/* Location */}
+        <Text style={styles.location} numberOfLines={1}>
+          📍 {activity.location}
+        </Text>
+
+        {/* Metadata Row */}
+        <View style={styles.metadata}>
+          <View style={styles.metadataItem}>
+            <Text style={styles.metadataLabel}>🕐</Text>
+            <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
+          </View>
+          <View style={styles.metadataItem}>
+            <Text style={styles.metadataLabel}>📏</Text>
+            <Text style={styles.metadataValue}>{activity.distance}</Text>
+          </View>
+          <View style={styles.metadataItem}>
+            <Text style={styles.metadataLabel}>👥</Text>
+            <Text style={styles.metadataValue}>{capacity}</Text>
+          </View>
         </View>
-        <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={48} />
-      </View>
-      <Text style={styles.description}>{activity.description}</Text>
-      <View style={styles.footer}>
-        <Text style={styles.location}>{activity.location}</Text>
-        <Text style={styles.host}>Host: {activity.host}</Text>
+
+        {/* Vibe and Host */}
+        <View style={styles.footer}>
+          <View style={styles.vibeTag}>
+            <Text style={styles.vibeText}>{activity.vibe || 'Social'}</Text>
+          </View>
+          <View style={styles.hostInfo}>
+            <AvatarBadge
+              name={activity.host}
+              avatarUrl={activity.hostAvatar}
+              size={24}
+            />
+            <Text style={styles.hostName} numberOfLines={1}>
+              {activity.host}
+            </Text>
+          </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -52,74 +100,120 @@ export default function ActivityCard({ activity, onPress }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#111',
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: '#212121',
-    padding: 24,
-    marginBottom: 18,
+    backgroundColor: '#111111',
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 18,
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 180,
   },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
+  image: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#1a1a1a',
   },
-  titleBlock: {
-    flex: 1,
-    paddingRight: 12,
+  availabilityBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(245, 193, 45, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  category: {
+  availabilityText: {
+    color: '#050505',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  categoryBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  categoryText: {
     color: '#f5c12d',
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 6,
+    fontSize: 11,
+    fontWeight: '600',
   },
-  vibe: {
-    color: '#ccc',
-    fontSize: 12,
-  },
-  participantCount: {
-    color: '#aaa',
-    fontSize: 12,
+  content: {
+    padding: 14,
   },
   title: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  meta: {
-    color: '#888',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  description: {
-    color: '#d1d1d1',
-    fontSize: 15,
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
     lineHeight: 22,
-    marginBottom: 20,
+  },
+  location: {
+    color: '#b8b8b8',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  metadata: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222222',
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  metadataLabel: {
+    marginRight: 4,
+    fontSize: 14,
+  },
+  metadataValue: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '500',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  location: {
-    color: '#eee',
-    fontSize: 14,
+  vibeTag: {
+    backgroundColor: '#f5c12d',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    flex: 1,
+    marginRight: 10,
   },
-  host: {
-    color: '#f5c12d',
-    fontWeight: '700',
-    fontSize: 14,
+  vibeText: {
+    color: '#050505',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  hostInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1.2,
+  },
+  hostName: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
   },
 });
