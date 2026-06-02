@@ -167,3 +167,12 @@ export const fetchChatRequest = async (chatId: string, token: string) =>
   api.get(`/api/chats/${chatId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  export const forgotPasswordRequest = (email: string) =>
+  api.post('/auth/forgot-password', { email });
+
+export const resetPasswordRequest = (token: string, password: string) =>
+  api.post('/auth/reset-password', { token, password });
+
+export const fetchPublicUserRequest = (userId: string) =>
+  api.get(`/users/${userId}`);
