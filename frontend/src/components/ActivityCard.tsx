@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
-import { getAvatarUrl } from '../utils/avatar';
+import { getActivityCoverImage } from '../utils/activityAssets';
 
 export type Activity = {
   id: string;
@@ -29,68 +30,60 @@ type Props = {
 };
 
 export default function ActivityCard({ activity, onPress }: Props) {
-  const coverImage =
-    activity.coverImage ||
-    `https://via.placeholder.com/300x200/1a1a1a/f5c12d?text=${encodeURIComponent(activity.category)}`;
-  const capacity = activity.maxAttendees ? `${activity.attendees}/${activity.maxAttendees}` : `${activity.attendees ?? 0} joined`;
+  const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
+  const attendees = activity.attendees ?? activity.participants.length;
+  const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
-      {/* Cover Image with Badges */}
-      <View style={styles.imageContainer}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.86}>
+      <View style={styles.imageFrame}>
         <Image source={{ uri: coverImage }} style={styles.image} />
+        <View style={styles.imageScrim} />
         {activity.availabilityTag && (
           <View style={styles.availabilityBadge}>
             <Text style={styles.availabilityText}>{activity.availabilityTag}</Text>
           </View>
         )}
-        <View style={styles.categoryBadge}>
-          <Text style={styles.categoryText}>{activity.category}</Text>
+        <View style={styles.hostPill}>
+          <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={28} />
+          <Text style={styles.hostName} numberOfLines={1}>
+            {activity.host}
+          </Text>
         </View>
       </View>
 
-      {/* Content */}
       <View style={styles.content}>
-        {/* Title */}
-        <Text style={styles.title} numberOfLines={2}>
-          {activity.title}
-        </Text>
-
-        {/* Location */}
-        <Text style={styles.location} numberOfLines={1}>
-          📍 {activity.location}
-        </Text>
-
-        {/* Metadata Row */}
-        <View style={styles.metadata}>
-          <View style={styles.metadataItem}>
-            <Text style={styles.metadataLabel}>🕐</Text>
-            <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
+        <View style={styles.titleRow}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.categoryText}>{activity.category}</Text>
+            <Text style={styles.title} numberOfLines={2}>
+              {activity.title}
+            </Text>
           </View>
-          <View style={styles.metadataItem}>
-            <Text style={styles.metadataLabel}>📏</Text>
-            <Text style={styles.metadataValue}>{activity.distance}</Text>
-          </View>
-          <View style={styles.metadataItem}>
-            <Text style={styles.metadataLabel}>👥</Text>
-            <Text style={styles.metadataValue}>{capacity}</Text>
-          </View>
-        </View>
-
-        {/* Vibe and Host */}
-        <View style={styles.footer}>
           <View style={styles.vibeTag}>
             <Text style={styles.vibeText}>{activity.vibe || 'Social'}</Text>
           </View>
-          <View style={styles.hostInfo}>
-            <AvatarBadge
-              name={activity.host}
-              avatarUrl={activity.hostAvatar}
-              size={24}
-            />
-            <Text style={styles.hostName} numberOfLines={1}>
-              {activity.host}
-            </Text>
+        </View>
+
+        <View style={styles.locationRow}>
+          <Ionicons name="location-outline" size={14} color="#f5c12d" />
+          <Text style={styles.location} numberOfLines={1}>
+            {activity.location}
+          </Text>
+        </View>
+
+        <View style={styles.metadata}>
+          <View style={styles.metadataItem}>
+            <Ionicons name="people-outline" size={15} color="#f5c12d" />
+            <Text style={styles.metadataValue}>{capacity} going</Text>
+          </View>
+          <View style={styles.metadataItem}>
+            <Ionicons name="time-outline" size={15} color="#f5c12d" />
+            <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
+          </View>
+          <View style={styles.metadataItem}>
+            <Ionicons name="navigate-outline" size={15} color="#f5c12d" />
+            <Text style={styles.metadataValue}>{activity.distance || 'Nearby'}</Text>
           </View>
         </View>
       </View>
@@ -100,120 +93,136 @@ export default function ActivityCard({ activity, onPress }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#111111',
-    borderRadius: 16,
+    backgroundColor: '#101010',
+    borderRadius: 10,
     overflow: 'hidden',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    elevation: 5,
+    marginHorizontal: 4,
+    marginVertical: 6,
+    borderWidth: 1,
+    borderColor: '#242018',
+    elevation: 7,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
   },
-  imageContainer: {
+  imageFrame: {
     position: 'relative',
     width: '100%',
-    height: 180,
+    height: 168,
   },
   image: {
     width: '100%',
     height: '100%',
     backgroundColor: '#1a1a1a',
   },
+  imageScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
   availabilityBadge: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: 'rgba(245, 193, 45, 0.9)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+    backgroundColor: '#f5c12d',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
   availabilityText: {
     color: '#050505',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
-  categoryBadge: {
+  hostPill: {
     position: 'absolute',
-    top: 12,
+    bottom: 12,
     left: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(5, 5, 5, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 193, 45, 0.42)',
+    padding: 4,
+    paddingRight: 10,
+    borderRadius: 999,
   },
   categoryText: {
     color: '#f5c12d',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '800',
+    marginBottom: 4,
+    textTransform: 'uppercase',
   },
   content: {
-    padding: 14,
+    padding: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  titleBlock: {
+    flex: 1,
+    paddingRight: 10,
   },
   title: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontSize: 18,
+    fontWeight: '900',
     lineHeight: 22,
   },
-  location: {
-    color: '#b8b8b8',
-    fontSize: 13,
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
     marginBottom: 10,
+  },
+  location: {
+    color: '#c9c9c9',
+    fontSize: 13,
+    marginLeft: 5,
+    flex: 1,
   },
   metadata: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222222',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#242424',
   },
   metadataItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  metadataLabel: {
-    marginRight: 4,
-    fontSize: 14,
+    minWidth: 78,
   },
   metadataValue: {
-    color: '#ffffff',
+    color: '#eeeeee',
     fontSize: 12,
-    fontWeight: '500',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    fontWeight: '700',
+    marginLeft: 5,
   },
   vibeTag: {
-    backgroundColor: '#f5c12d',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    flex: 1,
-    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#f5c12d',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
   vibeText: {
-    color: '#050505',
+    color: '#f5c12d',
     fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  hostInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1.2,
+    fontWeight: '800',
   },
   hostName: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 8,
+    fontWeight: '800',
+    marginLeft: 7,
+    flexShrink: 1,
   },
 });

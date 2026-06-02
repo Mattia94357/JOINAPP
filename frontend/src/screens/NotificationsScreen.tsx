@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Notifications'>;
 
@@ -12,7 +13,7 @@ const notifications = [
   },
   {
     title: 'Booking confirmed',
-    body: 'You’ve secured a spot in the Creative co-working lounge.',
+    body: 'You have secured a spot in the Creative co-working lounge.',
   },
   {
     title: 'Host message',
@@ -42,51 +43,51 @@ export default function NotificationsScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#050505',
-    padding: 22,
+    backgroundColor: colors.background,
+    padding: spacing.xl,
     paddingBottom: 40,
   },
   title: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 28,
     fontWeight: '900',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   subtitle: {
-    color: '#aaa',
+    color: colors.textMuted,
     fontSize: 15,
-    marginBottom: 24,
+    marginBottom: spacing.xl,
     lineHeight: 22,
   },
   notificationCard: {
-    backgroundColor: '#111',
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: colors.border,
   },
   notificationTitle: {
-    color: '#f5c12d',
+    color: colors.primary,
     fontSize: 16,
     fontWeight: '800',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   notificationBody: {
-    color: '#ddd',
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
   },
   actionButton: {
-    marginTop: 24,
-    backgroundColor: '#f5c12d',
+    marginTop: spacing.xl,
+    backgroundColor: colors.primary,
     paddingVertical: 18,
-    borderRadius: 18,
+    borderRadius: 8,
     alignItems: 'center',
   },
   actionText: {
-    color: '#050505',
-    fontWeight: '700',
+    color: colors.primaryText,
+    fontWeight: '900',
     fontSize: 15,
   },
 });

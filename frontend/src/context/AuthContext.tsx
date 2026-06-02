@@ -8,6 +8,7 @@ type AuthState = {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  updateUser: (user: ApiUser) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -71,8 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(TOKEN_KEY)]);
   };
 
+  const updateUser = async (updatedUser: ApiUser) => {
+    setUser(updatedUser);
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+  };
+
   const value = useMemo(
-    () => ({ user, token, loading, login, register, logout }),
+    () => ({ user, token, loading, login, register, updateUser, logout }),
     [user, token, loading],
   );
 

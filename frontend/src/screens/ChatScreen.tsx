@@ -1,9 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Alert,
+  Image,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { fetchChatRequest } from '../api';
+import { getAvatarUrl } from '../utils/avatar';
+import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -11,16 +26,20 @@ type ChatMessage = {
   id: string;
   author: string;
   text: string;
+  time: string;
+  pinned?: boolean;
+  reactions?: Array<{ label: string; count: number }>;
 };
 
 const initialMessages: ChatMessage[] = [
-  { id: '1', author: 'Mia', text: 'Welcome to the group! Who is joining tonight?' },
-  { id: '2', author: 'Ava', text: 'I am in for the rooftop yoga.' },
+  { id: '1', author: 'Mia', text: 'Welcome in. Who is joining tonight?', time: '7:12 PM', reactions: [{ label: 'Going', count: 4 }] },
+  { id: '2', author: 'Ava', text: 'I am in. The rooftop plan looks perfect.', time: '7:15 PM', reactions: [{ label: 'Yes', count: 2 }] },
+  { id: '3', author: 'Avery', text: 'I booked the corner table. Arrive any time after 7:20.', time: '7:18 PM', pinned: true, reactions: [{ label: 'Pinned', count: 1 }] },
 ];
 
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,6 +56,10 @@ export default function ChatScreen({ route }: Props) {
               id: message._id || String(index),
               author: message.author?.name || 'Member',
               text: message.message,
+              time: message.createdAt
+                ? new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                : 'Now',
+              reactions: index % 2 === 0 ? [{ label: 'Going', count: 1 + index }] : undefined,
             })));
           }
         } catch (error) {
@@ -53,14 +76,23 @@ export default function ChatScreen({ route }: Props) {
 
   const sendMessage = () => {
     if (!draft.trim()) return;
-    setMessages((prev) => [...prev, { id: String(prev.length + 1), author: 'You', text: draft.trim() }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        author: user?.name || 'You',
+        text: draft.trim(),
+        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        reactions: [],
+      },
+    ]);
     setDraft('');
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator color="#f5c12d" size="large" />
+        <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
   }
@@ -71,28 +103,78 @@ export default function ChatScreen({ route }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={100}
     >
+      <View style={styles.chatHeader}>
+        <View style={styles.avatarStack}>
+          {['Mia', 'Ava', 'Avery'].map((name, index) => (
+            <Image
+              key={name}
+              source={{ uri: getAvatarUrl(name) }}
+              style={[styles.stackAvatar, { marginLeft: index === 0 ? 0 : -9 }]}
+            />
+          ))}
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>Active group</Text>
+          <Text style={styles.headerMeta}>12 participants - 3 online</Text>
+        </View>
+      </View>
+
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
         style={styles.messageList}
         contentContainerStyle={styles.messageContent}
-        renderItem={({ item }) => (
-          <View style={styles.messageBubble}>
-            <Text style={styles.messageAuthor}>{item.author}</Text>
-            <Text style={styles.messageText}>{item.text}</Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const isMe = item.author === user?.name || item.author === 'You';
+          return (
+            <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
+              {!isMe && <Image source={{ uri: getAvatarUrl(item.author) }} style={styles.messageAvatar} />}
+              <View style={[styles.messageBubble, item.pinned && styles.messageBubblePinned, isMe && styles.messageBubbleMe]}>
+                {item.pinned && (
+                  <View style={styles.pinnedRow}>
+                    <Ionicons name="bookmark-outline" size={12} color={colors.primary} />
+                    <Text style={styles.pinnedText}>Important update</Text>
+                  </View>
+                )}
+                <View style={styles.messageMeta}>
+                  <Text style={[styles.messageAuthor, isMe && styles.messageAuthorMe]}>{isMe ? 'You' : item.author}</Text>
+                  <Text style={styles.messageTime}>{item.time}</Text>
+                </View>
+                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text}</Text>
+                {item.reactions?.length ? (
+                  <View style={styles.reactionsRow}>
+                    {item.reactions.map((reaction) => (
+                      <View key={reaction.label} style={styles.reaction}>
+                        <Text style={styles.reactionText}>{reaction.label} - {reaction.count}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          );
+        }}
       />
+
+      <View style={styles.typingRow}>
+        <View style={styles.typingDots}>
+          <View style={styles.dot} />
+          <View style={styles.dot} />
+          <View style={styles.dot} />
+        </View>
+        <Text style={styles.typingText}>Avery is typing</Text>
+      </View>
+
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="Write a message..."
-          placeholderTextColor="#777"
+          placeholder="Message the group..."
+          placeholderTextColor={colors.textSubtle}
           value={draft}
           onChangeText={setDraft}
         />
         <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Text style={styles.sendText}>Send</Text>
+          <Ionicons name="send" size={17} color={colors.primaryText} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -102,68 +184,191 @@ export default function ChatScreen({ route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    backgroundColor: colors.surface,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stackAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  headerCopy: {
+    marginLeft: spacing.md,
+  },
+  headerTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  headerMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
   messageList: {
     flex: 1,
-    padding: 18,
   },
   messageContent: {
-    paddingBottom: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: spacing.md,
+  },
+  messageRowMe: {
+    justifyContent: 'flex-end',
+  },
+  messageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: spacing.sm,
   },
   messageBubble: {
-    backgroundColor: '#111',
-    borderColor: '#333',
+    maxWidth: '82%',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 8,
+    padding: spacing.md,
+  },
+  messageBubbleMe: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  messageBubblePinned: {
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surfaceElevated,
+  },
+  pinnedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  pinnedText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: spacing.xs,
+    textTransform: 'uppercase',
+  },
+  messageMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
   },
   messageAuthor: {
-    color: '#f5c12d',
-    fontWeight: '700',
-    marginBottom: 6,
-    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '900',
+    fontSize: 12,
+    marginRight: spacing.sm,
+  },
+  messageAuthorMe: {
+    color: colors.primaryText,
+  },
+  messageTime: {
+    color: colors.textSubtle,
+    fontSize: 11,
   },
   messageText: {
-    color: '#eee',
-    fontSize: 16,
-    lineHeight: 24,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  messageTextMe: {
+    color: colors.primaryText,
+    fontWeight: '700',
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing.sm,
+  },
+  reaction: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.sm,
+  },
+  reactionText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 7,
+  },
+  typingDots: {
+    flexDirection: 'row',
+    marginRight: 7,
+  },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+    marginRight: 3,
+  },
+  typingText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderTopColor: '#222',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopColor: colors.border,
     borderTopWidth: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.surface,
   },
   input: {
     flex: 1,
-    backgroundColor: '#111',
-    color: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    marginRight: 10,
-    borderColor: '#333',
+    backgroundColor: colors.background,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    marginRight: spacing.md,
+    borderColor: colors.border,
     borderWidth: 1,
   },
   sendButton: {
-    backgroundColor: '#f5c12d',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-  },
-  sendText: {
-    color: '#000',
-    fontWeight: '700',
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    width: 45,
+    height: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

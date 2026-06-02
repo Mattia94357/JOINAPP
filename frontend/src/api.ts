@@ -1,12 +1,14 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { getActivityCoverImage, getVibeForCategory } from './utils/activityAssets';
+import { getAvailabilityTag } from './utils/availability';
 
 const getHost = () => {
   const manifest = Constants.manifest ?? Constants.expoConfig ?? {};
-  const envApiUrl = (manifest as any).extra?.API_URL as string | undefined;
+  const envApiUrl = (manifest as any).extra?.API_URL;
 
-  if (envApiUrl) {
+  if (typeof envApiUrl === 'string' && envApiUrl.trim()) {
     return envApiUrl;
   }
 
@@ -14,7 +16,9 @@ const getHost = () => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+      const isIpAddress = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
       if (isLocal) return 'http://localhost:4000';
+      if (isIpAddress) return `http://${hostname}:4000`;
       // Production: use your Vercel backend
       return 'https://joinapp-backend-8lsb.vercel.app';
     }
@@ -108,11 +112,11 @@ export const fetchActivities = async (token?: string) => {
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
-    vibe: activity.vibe || 'Social',
+    vibe: activity.vibe || getVibeForCategory(activity.category),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
-    coverImage: activity.coverImage,
-    availabilityTag: activity.availabilityTag,
+    coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity._id),
+    availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,
@@ -134,11 +138,11 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
-    vibe: activity.vibe || 'Social',
+    vibe: activity.vibe || getVibeForCategory(activity.category),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
-    coverImage: activity.coverImage,
-    availabilityTag: activity.availabilityTag,
+    coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity._id),
+    availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || '',
     hostAvatar: activity.host?.avatar,

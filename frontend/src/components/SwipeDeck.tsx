@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import ActivityCard, { Activity } from './ActivityCard';
+import { colors, spacing } from '../theme';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 0.25 * SCREEN_WIDTH;
@@ -19,9 +20,11 @@ type Props = {
   onSwipeLeft: (activity: Activity) => void;
   onSwipeRight: (activity: Activity) => void;
   onPress: (activity: Activity) => void;
+  onViewParticipants?: (activity: Activity) => void;
+  onOpenProfile?: (participant: { id?: string; name: string; avatar?: string }) => void;
 };
 
-export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPress }: Props) {
+export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPress, onViewParticipants, onOpenProfile }: Props) {
   const [index, setIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
 
@@ -91,7 +94,7 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
     if (index >= activities.length) {
       return (
         <View style={[styles.cardStyle, styles.emptyCard]} key="empty">
-          <Text style={styles.emptyText}>No more events to swipe. Check back later for new activities.</Text>
+          <Text style={styles.emptyText}>No more curated activities right now. Check back soon.</Text>
         </View>
       );
     }
@@ -107,20 +110,25 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
               style={[styles.cardStyle, getCardStyle()]}
               {...panResponder.panHandlers}
             >
-              <ActivityCard activity={activity} onPress={() => onPress(activity)} />
+              <ActivityCard
+                activity={activity}
+                onPress={() => onPress(activity)}
+                onViewParticipants={onViewParticipants}
+                onOpenProfile={onOpenProfile}
+              />
               <Animated.View style={[styles.overlay, { opacity: position.x.interpolate({
                 inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
                 outputRange: [1, 0, 0],
                 extrapolate: 'clamp',
               }) }]}>
-                <Text style={[styles.overlayText, styles.nope]}>NOPE</Text>
+                <Text style={[styles.overlayText, styles.nope]}>SAVE</Text>
               </Animated.View>
               <Animated.View style={[styles.overlay, { opacity: position.x.interpolate({
                 inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
                 outputRange: [0, 0, 1],
                 extrapolate: 'clamp',
               }) }]}>
-                <Text style={[styles.overlayText, styles.like]}>LIKE</Text>
+                <Text style={[styles.overlayText, styles.like]}>JOIN</Text>
               </Animated.View>
             </Animated.View>
           );
@@ -131,7 +139,12 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
             key={activity.id}
             style={[styles.cardStyle, { top: 10 * (i - index), zIndex: -i }]}
           >
-            <ActivityCard activity={activity} onPress={() => onPress(activity)} />
+            <ActivityCard
+              activity={activity}
+              onPress={() => onPress(activity)}
+              onViewParticipants={onViewParticipants}
+              onOpenProfile={onOpenProfile}
+            />
           </Animated.View>
         );
       })
@@ -152,41 +165,41 @@ const styles = StyleSheet.create({
   emptyCard: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#111',
-    borderRadius: 28,
-    borderColor: '#333',
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderColor: colors.border,
     borderWidth: 1,
   },
   emptyText: {
-    color: '#eee',
+    color: colors.textMuted,
     fontSize: 16,
     lineHeight: 24,
     textAlign: 'center',
   },
   overlay: {
     position: 'absolute',
-    top: 24,
-    left: 24,
+    top: spacing.xl,
+    left: spacing.xl,
     zIndex: 10,
-    padding: 12,
-    borderRadius: 12,
+    padding: spacing.md,
+    borderRadius: 8,
     borderWidth: 2,
   },
   overlayText: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   like: {
-    color: '#a1ff9d',
-    borderColor: '#84d64c',
-    backgroundColor: 'rgba(38, 166, 91, 0.14)',
+    color: colors.success,
+    borderColor: colors.success,
+    backgroundColor: 'rgba(116, 227, 154, 0.12)',
   },
   nope: {
-    color: '#ff6b79',
-    borderColor: '#ff4a5c',
+    color: colors.danger,
+    borderColor: colors.danger,
     backgroundColor: 'rgba(255, 107, 121, 0.12)',
   },
 });

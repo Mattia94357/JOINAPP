@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { colors } from '../theme';
 
 type Props = {
   name: string;
@@ -8,7 +9,7 @@ type Props = {
 };
 
 const getAvatarUrl = (name: string) =>
-  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=111111&color=f5c12d&size=128`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1E1E1E&color=F4C542&size=128`;
 
 export default function AvatarBadge({ name, avatarUrl, size = 44 }: Props) {
   const imageUrl = avatarUrl || getAvatarUrl(name);
@@ -22,22 +23,22 @@ export default function AvatarBadge({ name, avatarUrl, size = 44 }: Props) {
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    backgroundColor: '#222',
+    backgroundColor: colors.surfaceElevated,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: colors.borderStrong,
   },
   image: {
     resizeMode: 'cover',
   },
   placeholder: {
-    backgroundColor: '#111',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
   initials: {
-    color: '#f5c12d',
+    color: colors.primary,
     fontWeight: '900',
   },
 });

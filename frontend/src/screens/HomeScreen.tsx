@@ -9,78 +9,39 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import AvatarBadge from '../components/AvatarBadge';
 import SwipeDeck from '../components/SwipeDeck';
+import ParticipantsModal from '../components/ParticipantsModal';
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest } from '../api';
+import { availabilityOptions } from '../utils/availability';
+import { curatedActivities } from '../utils/curatedActivities';
+import { colors, spacing } from '../theme';
 
 const categories = ['All', 'Wellness', 'Food', 'Networking', 'Adventure'];
-
-const suggestionActivities: ActivityResponse[] = [
-  {
-    id: 'template-1',
-    title: 'Sunset rooftop dinner',
-    category: 'Food',
-    location: 'Downtown Skyline',
-    description: 'An elevated evening with small plates, thoughtful conversation, and city views.',
-    date: 'Tonight',
-    time: '7:30 PM',
-    distance: '1.1 km',
-    vibe: 'Curated',
-    attendees: 6,
-    host: 'Avery',
-    hostId: 'host-1',
-    participants: [],
-  },
-  {
-    id: 'template-2',
-    title: 'Morning hike + coffee',
-    category: 'Adventure',
-    location: 'River Trail',
-    description: 'A scenic 5K with a coffee stop for easy pace, good company, and fresh air.',
-    date: 'Saturday',
-    time: '9:00 AM',
-    distance: '2.4 km',
-    vibe: 'Active',
-    attendees: 8,
-    host: 'Jordan',
-    hostId: 'host-2',
-    participants: [],
-  },
-  {
-    id: 'template-3',
-    title: 'Creative co-working lounge',
-    category: 'Networking',
-    location: 'Union House',
-    description: 'Make progress, exchange ideas, and stay inspired with a curated work circle.',
-    date: 'Monday',
-    time: '3:00 PM',
-    distance: '800 m',
-    vibe: 'Focused',
-    attendees: 5,
-    host: 'Sam',
-    hostId: 'host-3',
-    participants: [],
-  },
-];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedAvailability, setSelectedAvailability] = useState('All');
   const [activities, setActivities] = useState<ActivityResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [participantsActivity, setParticipantsActivity] = useState<ActivityResponse | null>(null);
 
   const filteredActivities = useMemo(
     () =>
-      selectedCategory === 'All'
-        ? activities
-        : activities.filter((activity) => activity.category === selectedCategory),
-    [activities, selectedCategory],
+      activities.filter((activity) => {
+        const matchesCategory = selectedCategory === 'All' || activity.category === selectedCategory;
+        const matchesAvailability = selectedAvailability === 'All' || activity.availabilityTag === selectedAvailability;
+        return matchesCategory && matchesAvailability;
+      }),
+    [activities, selectedAvailability, selectedCategory],
   );
 
   useEffect(() => {
@@ -115,6 +76,18 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
 
+    if (!user?.profileCompleted && !user?.profilePictureUrl && !user?.avatar) {
+      Alert.alert(
+        'Profile photo required',
+        'Profile photos are required before joining. This helps everyone see who is attending and keeps JOIN trusted.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Upload photo', onPress: () => navigation.navigate('Profile') },
+        ],
+      );
+      return;
+    }
+
     try {
       await joinActivityRequest(activity.id, token);
       Alert.alert('Joined', `You joined ${activity.title}.`);
@@ -129,21 +102,24 @@ export default function HomeScreen({ navigation }: Props) {
     navigation.navigate('Activity', { activityId: activity.id });
   };
 
-  const activeFeed = filteredActivities.length > 0 ? filteredActivities : suggestionActivities;
+  const activeFeed = filteredActivities.length > 0 ? filteredActivities : curatedActivities;
+  const nearbyCount = activeFeed.length;
+  const activeTonight = activeFeed.reduce((total, activity) => total + (activity.attendees ?? activity.participants.length), 0);
+  const nextStarts = activeFeed[0]?.time || 'Soon';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
-        <View>
+        <View style={styles.headingBlock}>
           <Text style={styles.greeting}>Hello, {user?.name || 'guest'}</Text>
-          <Text style={styles.title}>Discover premium local plans</Text>
+          <Text style={styles.title}>Find your next plan</Text>
         </View>
         <View style={styles.actionIcons}>
           <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.iconButton}>
-            <Text style={styles.notificationIcon}>🔔</Text>
+            <Ionicons name="notifications-outline" size={21} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.iconButton}>
-            <AvatarBadge name={user?.name || 'Guest'} avatarUrl={user?.avatar} size={40} />
+            <AvatarBadge name={user?.name || 'Guest'} avatarUrl={user?.avatar} size={38} />
           </TouchableOpacity>
         </View>
       </View>
@@ -162,41 +138,72 @@ export default function HomeScreen({ navigation }: Props) {
         ))}
       </ScrollView>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.availabilityRow} contentContainerStyle={styles.availabilityRowContent}>
+        {availabilityOptions.map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[styles.availabilityChip, selectedAvailability === option && styles.availabilityChipActive]}
+            onPress={() => setSelectedAvailability(option)}
+          >
+            <Text style={[styles.availabilityText, selectedAvailability === option && styles.availabilityTextActive]}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       <View style={styles.statsRow}>
-        <View>
-          <Text style={styles.statLabel}>Curated matches</Text>
-          <Text style={styles.statValue}>{activeFeed.length}</Text>
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>{nearbyCount === 1 ? 'Activity nearby' : 'Activities nearby'}</Text>
+          <Text style={styles.statValue}>{nearbyCount}</Text>
         </View>
-        <View>
-          <Text style={styles.statLabel}>Ready to join</Text>
-          <Text style={styles.statValue}>{loading ? 'Loading…' : selectedCategory === 'All' ? 'Live now' : selectedCategory}</Text>
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Next starts</Text>
+          <Text style={styles.statValue}>{loading ? 'Loading...' : nextStarts}</Text>
+        </View>
+        <View style={styles.statBlock}>
+          <Text style={styles.statLabel}>Active tonight</Text>
+          <Text style={styles.statValue}>{activeTonight} people</Text>
         </View>
       </View>
 
       <View style={styles.deckContainer}>
         {loading ? (
-          <ActivityIndicator color="#f5c12d" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
         ) : (
           <SwipeDeck
-            key={`${selectedCategory}-${activeFeed.length}`}
+            key={`${selectedCategory}-${selectedAvailability}-${activeFeed.length}`}
             activities={activeFeed}
-            onSwipeLeft={() => setMessage('Skipped. Keep browsing high-quality plans.')}
+            onSwipeLeft={() => setMessage('Saved for later. Keep browsing quality plans.')}
             onSwipeRight={handleSwipeRight}
             onPress={handlePress}
+            onViewParticipants={setParticipantsActivity}
+            onOpenProfile={(participant) => navigation.navigate('PublicProfile', { userId: participant.id, fallbackName: participant.name, fallbackAvatar: participant.avatar })}
           />
         )}
       </View>
 
       <View style={styles.footerRow}>
         <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('CreateActivity')}>
-          <Text style={styles.secondaryText}>Host an experience</Text>
+          <Ionicons name="add-circle-outline" size={17} color={colors.text} />
+          <Text style={styles.secondaryText}>Host</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Chat', { chatId: 'general', title: 'Community Chat' })}>
-          <Text style={styles.primaryText}>Join chat</Text>
+          <Ionicons name="chatbubbles-outline" size={17} color={colors.primaryText} />
+          <Text style={styles.primaryText}>Chat</Text>
         </TouchableOpacity>
       </View>
 
       {message ? <Text style={styles.statusText}>{message}</Text> : null}
+      <ParticipantsModal
+        visible={Boolean(participantsActivity)}
+        participants={participantsActivity?.participants || []}
+        onClose={() => setParticipantsActivity(null)}
+        onOpenProfile={(participant) => {
+          setParticipantsActivity(null);
+          navigation.navigate('PublicProfile', { userId: participant.id, fallbackName: participant.name, fallbackAvatar: participant.avatar });
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -204,119 +211,175 @@ export default function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050505',
-    paddingHorizontal: 18,
-    paddingTop: 16,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: spacing.lg,
+  },
+  headingBlock: {
+    flex: 1,
+    paddingRight: spacing.md,
   },
   greeting: {
-    color: '#aaa',
-    fontSize: 14,
-    marginBottom: 4,
+    color: colors.textMuted,
+    fontSize: 13,
+    marginBottom: spacing.xs,
+    fontWeight: '700',
   },
   title: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 28,
     fontWeight: '900',
-    lineHeight: 34,
+    lineHeight: 33,
   },
   actionIcons: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconButton: {
-    marginLeft: 14,
+    marginLeft: spacing.md,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  notificationIcon: {
-    fontSize: 22,
-    color: '#f5c12d',
-    lineHeight: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   categoryRow: {
-    maxHeight: 56,
+    maxHeight: 46,
   },
   categoryRowContent: {
-    paddingBottom: 10,
+    paddingBottom: spacing.sm,
   },
   categoryTag: {
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: colors.border,
     borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    marginRight: 10,
-    backgroundColor: '#101010',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginRight: spacing.sm,
+    backgroundColor: colors.surface,
   },
   categoryTagActive: {
-    backgroundColor: '#f5c12d',
-    borderColor: '#f5c12d',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   categoryText: {
-    color: '#ddd',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
   },
   categoryTextActive: {
-    color: '#050505',
+    color: colors.primaryText,
+  },
+  availabilityRow: {
+    maxHeight: 42,
+  },
+  availabilityRowContent: {
+    paddingBottom: spacing.sm,
+  },
+  availabilityChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.md,
+    marginRight: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  availabilityChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surfaceElevated,
+  },
+  availabilityText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  availabilityTextActive: {
+    color: colors.accent,
   },
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  statBlock: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: spacing.sm,
+    elevation: 4,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
   },
   statLabel: {
-    color: '#777',
+    color: colors.textSubtle,
     fontSize: 12,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
   },
   statValue: {
-    color: '#fff',
-    fontSize: 18,
+    color: colors.text,
+    fontSize: 14,
     fontWeight: '800',
   },
   deckContainer: {
     flex: 1,
-    marginTop: 18,
+    marginTop: spacing.md,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: spacing.md,
+    gap: spacing.md,
   },
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#f5c12d',
-    paddingVertical: 16,
-    borderRadius: 18,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    paddingVertical: 14,
+    borderRadius: 8,
     alignItems: 'center',
-    marginRight: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   secondaryText: {
-    color: '#f5c12d',
-    fontWeight: '700',
+    color: colors.text,
+    fontWeight: '800',
+    marginLeft: spacing.sm,
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#f5c12d',
-    paddingVertical: 16,
-    borderRadius: 18,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   primaryText: {
-    color: '#050505',
-    fontWeight: '800',
+    color: colors.primaryText,
+    fontWeight: '900',
+    marginLeft: spacing.sm,
   },
   statusText: {
-    color: '#fff',
+    color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.md,
+    fontWeight: '700',
   },
 });

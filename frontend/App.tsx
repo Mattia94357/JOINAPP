@@ -11,11 +11,18 @@ import CreateActivityScreen from './src/screens/CreateActivityScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { colors } from './src/theme';
 
 export type RootStackParamList = {
   Onboarding: undefined;
   Login: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token?: string } | undefined;
+  PublicProfile: { userId?: string; fallbackName?: string; fallbackAvatar?: string };
   Home: undefined;
   Activity: { activityId: string };
   CreateActivity: undefined;
@@ -32,21 +39,32 @@ function AppNavigator() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#f5c12d" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Restoring session...</Text>
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      linking={{
+        prefixes: ['http://localhost:19007', 'http://10.180.219.20:19007'],
+        config: {
+          screens: {
+            ForgotPassword: 'forgot-password',
+            ResetPassword: 'reset-password',
+            PublicProfile: 'users/:userId',
+          },
+        },
+      }}
+    >
       <Stack.Navigator
         initialRouteName={user ? 'Home' : 'Onboarding'}
         screenOptions={{
-          headerStyle: { backgroundColor: '#050505' },
-          headerTintColor: '#fff',
-          contentStyle: { backgroundColor: '#070707' },
-          headerTitleStyle: { fontWeight: '700' },
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
+          contentStyle: { backgroundColor: colors.background },
+          headerTitleStyle: { fontWeight: '800' },
         }}
       >
         <Stack.Screen
@@ -58,6 +76,21 @@ function AppNavigator() {
           name="Login"
           component={LoginScreen}
           options={{ title: 'Welcome to JoinApp', headerBackVisible: false }}
+        />
+        <Stack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+          options={{ title: 'Reset Password' }}
+        />
+        <Stack.Screen
+          name="ForgotPassword"
+          component={ForgotPasswordScreen}
+          options={{ title: 'Forgot Password' }}
+        />
+        <Stack.Screen
+          name="PublicProfile"
+          component={PublicProfileScreen}
+          options={{ title: 'Profile' }}
         />
         <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Discover Activities' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
@@ -82,13 +115,13 @@ export default function App() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
     marginTop: 16,
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
   },
 });

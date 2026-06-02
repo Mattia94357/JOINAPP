@@ -10,12 +10,14 @@ import {
   Image,
   ImageBackground,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
-import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { fetchActivity, joinActivityRequest } from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import { getActivityCoverImage } from '../utils/activityAssets';
+import { getCuratedActivity } from '../utils/curatedActivities';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -39,20 +41,36 @@ type ActivityDetails = {
   participants: Array<{ name: string; avatar?: string }>;
 };
 
+const discussionPreview = [
+  { author: 'Mia', text: 'Can bring a friend if there is room?', time: '4m' },
+  { author: 'Avery', text: 'Yes, two spots are still open.', time: '2m' },
+];
+
 export default function ActivityScreen({ route, navigation }: Props) {
   const { activityId } = route.params;
   const { token, user } = useAuth();
   const [activity, setActivity] = useState<ActivityDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const loadActivity = async () => {
       setLoading(true);
+      setErrorMessage('');
+
+      const curatedActivity = getCuratedActivity(activityId);
+      if (curatedActivity) {
+        setActivity(curatedActivity);
+        setLoading(false);
+        return;
+      }
+
       try {
         const result = await fetchActivity(activityId, token || undefined);
         setActivity(result);
       } catch (error) {
-        Alert.alert('Unable to load activity', 'Please try again later.');
+        setActivity(null);
+        setErrorMessage('This activity could not be loaded. Check that the backend is running, then try again.');
       } finally {
         setLoading(false);
       }
@@ -62,6 +80,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
   }, [activityId, token]);
 
   const handleJoin = async () => {
+    if (getCuratedActivity(activityId)) {
+      Alert.alert('Joined', 'You joined this curated activity.');
+      return;
+    }
+
     if (!token) {
       Alert.alert('Please log in', 'You must be signed in to join this activity.');
       return;
@@ -78,26 +101,35 @@ export default function ActivityScreen({ route, navigation }: Props) {
     }
   };
 
-  if (loading || !activity) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#f5c12d" />
-        <Text style={styles.loadingText}>Loading event details...</Text>
+        <Text style={styles.loadingText}>Loading activity...</Text>
       </View>
     );
   }
 
+  if (!activity) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Ionicons name="alert-circle-outline" size={34} color="#f5c12d" />
+        <Text style={styles.errorTitle}>Activity unavailable</Text>
+        <Text style={styles.errorText}>{errorMessage || 'This activity could not be loaded.'}</Text>
+        <TouchableOpacity style={styles.errorButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.errorButtonText}>Back to activities</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const attendees = activity.attendees ?? activity.participants.length;
   const alreadyJoined = user ? activity.participants.some((participant) => participant.name === user.name) : false;
-  const coverImage =
-    activity.coverImage ||
-    `https://via.placeholder.com/400x250/1a1a1a/f5c12d?text=${encodeURIComponent(activity.category)}`;
-  const capacity = activity.maxAttendees
-    ? `${activity.attendees}/${activity.maxAttendees}`
-    : `${activity.attendees} joined`;
+  const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
+  const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Hero Image */}
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <ImageBackground source={{ uri: coverImage }} style={styles.heroImage}>
         <View style={styles.heroOverlay} />
         <View style={styles.heroContent}>
@@ -111,113 +143,116 @@ export default function ActivityScreen({ route, navigation }: Props) {
               </View>
             )}
           </View>
+          <View>
+            <Text style={styles.title}>{activity.title}</Text>
+            <View style={styles.heroMetaRow}>
+              <Ionicons name="people-outline" size={16} color="#f5c12d" />
+              <Text style={styles.heroMeta}>{capacity} participants</Text>
+            </View>
+          </View>
         </View>
       </ImageBackground>
 
-      {/* Content */}
       <View style={styles.content}>
-        {/* Title */}
-        <Text style={styles.title}>{activity.title}</Text>
-
-        {/* Quick Info */}
-        <View style={styles.quickInfo}>
-          <View style={styles.quickInfoItem}>
-            <Text style={styles.quickInfoIcon}>📍</Text>
-            <Text style={styles.quickInfoText}>{activity.location}</Text>
-          </View>
-          <View style={styles.quickInfoItem}>
-            <Text style={styles.quickInfoIcon}>🕐</Text>
-            <Text style={styles.quickInfoText}>{activity.time || 'Anytime'}</Text>
-          </View>
-          <View style={styles.quickInfoItem}>
-            <Text style={styles.quickInfoIcon}>📏</Text>
-            <Text style={styles.quickInfoText}>{activity.distance || 'Nearby'}</Text>
-          </View>
-        </View>
-
-        {/* Host Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Host</Text>
-          <View style={styles.hostCard}>
-            <Image
-              source={{ uri: activity.hostAvatar || getAvatarUrl(activity.host) }}
-              style={styles.hostAvatar}
-            />
-            <View style={styles.hostDetails}>
-              <Text style={styles.hostName}>{activity.host}</Text>
-              <Text style={styles.hostSubtitle}>Activity organizer</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* About */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About this experience</Text>
-          <Text style={styles.descriptionText}>{activity.description}</Text>
-        </View>
-
-        {/* Vibe & Metadata */}
-        <View style={styles.metadataRow}>
+        <View style={styles.metadataGrid}>
           <View style={styles.metadataCard}>
+            <Ionicons name="time-outline" size={18} color="#f5c12d" />
+            <Text style={styles.metadataLabel}>Time</Text>
+            <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
+          </View>
+          <View style={styles.metadataCard}>
+            <Ionicons name="location-outline" size={18} color="#f5c12d" />
+            <Text style={styles.metadataLabel}>Place</Text>
+            <Text style={styles.metadataValue} numberOfLines={1}>{activity.location}</Text>
+          </View>
+          <View style={styles.metadataCard}>
+            <Ionicons name="navigate-outline" size={18} color="#f5c12d" />
+            <Text style={styles.metadataLabel}>Distance</Text>
+            <Text style={styles.metadataValue}>{activity.distance || 'Nearby'}</Text>
+          </View>
+          <View style={styles.metadataCard}>
+            <Ionicons name="star-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Vibe</Text>
             <Text style={styles.metadataValue}>{activity.vibe || 'Social'}</Text>
           </View>
-          <View style={styles.metadataCard}>
-            <Text style={styles.metadataLabel}>Attendees</Text>
-            <Text style={styles.metadataValue}>{capacity}</Text>
+        </View>
+
+        <View style={styles.hostCard}>
+          <Image source={{ uri: activity.hostAvatar || getAvatarUrl(activity.host) }} style={styles.hostAvatar} />
+          <View style={styles.hostDetails}>
+            <Text style={styles.hostLabel}>Hosted by</Text>
+            <Text style={styles.hostName}>{activity.host}</Text>
+          </View>
+          <View style={styles.hostBadge}>
+            <Ionicons name="shield-checkmark-outline" size={15} color="#050505" />
+            <Text style={styles.hostBadgeText}>Verified</Text>
           </View>
         </View>
 
-        {/* Participants */}
-        {activity.participants.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Joined so far ({activity.participants.length})</Text>
-            <View style={styles.participantsGrid}>
-              {activity.participants.slice(0, 6).map((participant, index) => (
-                <View key={index} style={styles.participantItem}>
-                  <Image
-                    source={{ uri: participant.avatar || getAvatarUrl(participant.name) }}
-                    style={styles.participantAvatar}
-                  />
-                  <Text style={styles.participantName} numberOfLines={1}>
-                    {participant.name}
-                  </Text>
-                </View>
-              ))}
-              {activity.participants.length > 6 && (
-                <View style={styles.participantItem}>
-                  <View style={styles.participantMoreOverlay}>
-                    <Text style={styles.participantMoreText}>+{activity.participants.length - 6}</Text>
-                  </View>
-                </View>
-              )}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About</Text>
+          <Text style={styles.descriptionText}>{activity.description}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Participants</Text>
+          <View style={styles.participantsRow}>
+            {activity.participants.slice(0, 5).map((participant, index) => (
+              <Image
+                key={`${participant.name}-${index}`}
+                source={{ uri: participant.avatar || getAvatarUrl(participant.name) }}
+                style={[styles.participantAvatar, { marginLeft: index === 0 ? 0 : -10 }]}
+              />
+            ))}
+            <View style={styles.participantCount}>
+              <Text style={styles.participantCountText}>{capacity}</Text>
             </View>
           </View>
-        )}
+        </View>
 
-        {/* Action Buttons */}
-        <TouchableOpacity
-          style={[styles.joinButton, alreadyJoined && styles.joinedButton]}
-          onPress={handleJoin}
-          disabled={alreadyJoined}
-        >
-          <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
-            {alreadyJoined ? '✓ Already joined' : '🎉 Join this event'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Discussion</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
+              <Text style={styles.sectionAction}>Open chat</Text>
+            </TouchableOpacity>
+          </View>
+          {discussionPreview.map((message) => (
+            <View key={`${message.author}-${message.time}`} style={styles.discussionRow}>
+              <Image source={{ uri: getAvatarUrl(message.author) }} style={styles.discussionAvatar} />
+              <View style={styles.discussionBubble}>
+                <View style={styles.discussionMeta}>
+                  <Text style={styles.discussionAuthor}>{message.author}</Text>
+                  <Text style={styles.discussionTime}>{message.time}</Text>
+                </View>
+                <Text style={styles.discussionText}>{message.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
 
-        <TouchableOpacity
-          style={styles.chatButton}
-          onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}
-        >
-          <Text style={styles.chatButtonText}>💬 Chat with participants</Text>
-        </TouchableOpacity>
+        <View style={styles.actions}>
+          <TouchableOpacity style={[styles.joinButton, alreadyJoined && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined}>
+            <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
+            <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
+              {alreadyJoined ? 'Already joined' : 'Join activity'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
+            <Ionicons name="chatbubbles-outline" size={18} color="#f5c12d" />
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
   loadingContainer: {
     flex: 1,
     backgroundColor: '#050505',
@@ -225,21 +260,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
+    marginTop: 14,
     color: '#fff',
+  },
+  errorTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+  errorText: {
+    color: '#a8a8a8',
+    fontSize: 14,
+    lineHeight: 20,
+    maxWidth: 300,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  errorButton: {
+    backgroundColor: '#f5c12d',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    marginTop: 18,
+  },
+  errorButtonText: {
+    color: '#050505',
+    fontWeight: '900',
   },
   container: {
     backgroundColor: '#050505',
-    paddingBottom: 40,
+    paddingBottom: 28,
   },
   heroImage: {
     width: '100%',
-    height: 240,
-    position: 'relative',
+    height: 290,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.34)',
   },
   heroContent: {
     flex: 1,
@@ -251,188 +310,238 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   categoryBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 193, 45, 0.35)',
   },
   categoryBadgeText: {
     color: '#f5c12d',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '900',
   },
   availabilityBadge: {
-    backgroundColor: 'rgba(245, 193, 45, 0.9)',
+    backgroundColor: '#f5c12d',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
   availabilityBadgeText: {
     color: '#050505',
     fontSize: 12,
-    fontWeight: '600',
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
+    fontWeight: '900',
   },
   title: {
     color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 16,
+    fontSize: 32,
+    fontWeight: '900',
+    lineHeight: 37,
   },
-  quickInfo: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222222',
-  },
-  quickInfoItem: {
+  heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginTop: 8,
   },
-  quickInfoIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  quickInfoText: {
-    color: '#b8b8b8',
-    fontSize: 13,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
+  heroMeta: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: '800',
+    marginLeft: 6,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  metadataGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  metadataCard: {
+    width: '50%',
+    padding: 4,
+  },
+  metadataLabel: {
+    color: '#858585',
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginTop: 7,
+  },
+  metadataValue: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 2,
   },
   hostCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111111',
+    backgroundColor: '#101010',
     borderRadius: 12,
-    padding: 12,
+    borderWidth: 1,
+    borderColor: '#242018',
+    padding: 11,
+    marginTop: 10,
   },
   hostAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    marginRight: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    marginRight: 11,
     borderWidth: 2,
     borderColor: '#f5c12d',
   },
   hostDetails: {
     flex: 1,
   },
+  hostLabel: {
+    color: '#8b8b8b',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   hostName: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  hostSubtitle: {
-    color: '#888888',
-    fontSize: 12,
+    fontSize: 15,
+    fontWeight: '900',
     marginTop: 2,
+  },
+  hostBadge: {
+    backgroundColor: '#f5c12d',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hostBadgeText: {
+    color: '#050505',
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 4,
+  },
+  section: {
+    marginTop: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 9,
+  },
+  sectionAction: {
+    color: '#f5c12d',
+    fontSize: 12,
+    fontWeight: '900',
+    marginBottom: 9,
   },
   descriptionText: {
     color: '#d1d1d1',
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 21,
   },
-  metadataRow: {
+  participantsRow: {
     flexDirection: 'row',
-    marginBottom: 20,
-    gap: 12,
-  },
-  metadataCard: {
-    flex: 1,
-    backgroundColor: '#111111',
-    borderRadius: 12,
-    padding: 12,
     alignItems: 'center',
-  },
-  metadataLabel: {
-    color: '#888888',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  metadataValue: {
-    color: '#f5c12d',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  participantsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  participantItem: {
-    alignItems: 'center',
-    width: '30%',
   },
   participantAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 8,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 2,
-    borderColor: '#f5c12d',
+    borderColor: '#050505',
+    backgroundColor: '#111111',
   },
-  participantMoreOverlay: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  participantCount: {
+    height: 42,
+    minWidth: 54,
+    borderRadius: 21,
     backgroundColor: '#f5c12d',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    marginLeft: -10,
   },
-  participantMoreText: {
+  participantCountText: {
     color: '#050505',
-    fontWeight: '700',
+    fontWeight: '900',
     fontSize: 12,
   },
-  participantName: {
-    color: '#b8b8b8',
+  discussionRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  discussionAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 9,
+  },
+  discussionBubble: {
+    flex: 1,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#222222',
+    borderRadius: 10,
+    padding: 10,
+  },
+  discussionMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  discussionAuthor: {
+    color: '#f5c12d',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  discussionTime: {
+    color: '#777777',
     fontSize: 11,
-    textAlign: 'center',
+  },
+  discussionText: {
+    color: '#eeeeee',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  actions: {
+    flexDirection: 'row',
+    marginTop: 12,
   },
   joinButton: {
+    flex: 1,
     backgroundColor: '#f5c12d',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginRight: 10,
   },
   joinButtonText: {
     color: '#050505',
-    fontWeight: '700',
+    fontWeight: '900',
     fontSize: 14,
+    marginLeft: 6,
   },
   joinedButton: {
-    backgroundColor: '#333333',
+    backgroundColor: '#242424',
   },
   joinedButtonText: {
     color: '#888888',
   },
   chatButton: {
-    backgroundColor: '#111111',
+    width: 50,
     borderWidth: 1,
     borderColor: '#f5c12d',
-    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-  },
-  chatButtonText: {
-    color: '#f5c12d',
-    fontWeight: '700',
-    fontSize: 14,
+    justifyContent: 'center',
   },
 });
