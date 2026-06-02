@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import ActivityCard, { Activity } from './ActivityCard';
@@ -24,19 +25,27 @@ type Props = {
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string }) => void;
 };
 
-export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPress, onViewParticipants, onOpenProfile }: Props) {
+export default function SwipeDeck({
+  activities,
+  onSwipeLeft,
+  onSwipeRight,
+  onPress,
+  onViewParticipants,
+  onOpenProfile,
+}: Props) {
   const [index, setIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
 
   useEffect(() => {
     position.setValue({ x: 0, y: 0 });
-  }, [index, position]);
+  }, [index]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10 || Math.abs(gesture.dy) > 10,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 10 || Math.abs(gesture.dy) > 10,
         onPanResponderMove: (_, gesture) => {
           position.setValue({ x: gesture.dx, y: gesture.dy });
         },
@@ -50,7 +59,7 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
           }
         },
       }),
-    [position],
+    [position]
   );
 
   const getCardStyle = () => {
@@ -76,7 +85,9 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
     const activity = activities[index];
     direction === 'right' ? onSwipeRight(activity) : onSwipeLeft(activity);
     Haptics.notificationAsync(
-      direction === 'right' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
+      direction === 'right'
+        ? Haptics.NotificationFeedbackType.Success
+        : Haptics.NotificationFeedbackType.Warning
     );
     position.setValue({ x: 0, y: 0 });
     setIndex((prev) => Math.min(prev + 1, activities.length));
@@ -94,7 +105,9 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
     if (index >= activities.length) {
       return (
         <View style={[styles.cardStyle, styles.emptyCard]} key="empty">
-          <Text style={styles.emptyText}>No more curated activities right now. Check back soon.</Text>
+          <Text style={styles.emptyText}>
+            No more activities right now. Check back soon!
+          </Text>
         </View>
       );
     }
@@ -103,47 +116,22 @@ export default function SwipeDeck({ activities, onSwipeLeft, onSwipeRight, onPre
       .map((activity, i) => {
         if (i < index) return null;
 
-        if (i === index) {
-          return (
-            <Animated.View
-              key={activity.id}
-              style={[styles.cardStyle, getCardStyle()]}
-              {...panResponder.panHandlers}
-            >
-              <ActivityCard
-                activity={activity}
-                onPress={() => onPress(activity)}
-                onViewParticipants={onViewParticipants}
-                onOpenProfile={onOpenProfile}
-              />
-              <Animated.View style={[styles.overlay, { opacity: position.x.interpolate({
-                inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-                outputRange: [1, 0, 0],
-                extrapolate: 'clamp',
-              }) }]}>
-                <Text style={[styles.overlayText, styles.nope]}>SAVE</Text>
-              </Animated.View>
-              <Animated.View style={[styles.overlay, { opacity: position.x.interpolate({
-                inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-                outputRange: [0, 0, 1],
-                extrapolate: 'clamp',
-              }) }]}>
-                <Text style={[styles.overlayText, styles.like]}>JOIN</Text>
-              </Animated.View>
-            </Animated.View>
-          );
-        }
-
+        const isTopCard = i === index;
         return (
           <Animated.View
             key={activity.id}
-            style={[styles.cardStyle, { top: 10 * (i - index), zIndex: -i }]}
+            style={[
+              styles.cardStyle,
+              isTopCard ? getCardStyle() : { top: 10 * (i - index), zIndex: -i },
+            ]}
+            {...(isTopCard ? panResponder.panHandlers : {})}
           >
             <ActivityCard
               activity={activity}
               onPress={() => onPress(activity)}
               onViewParticipants={onViewParticipants}
               onOpenProfile={onOpenProfile}
+              showJoinButton={true} // new prop for visible Join button
             />
           </Animated.View>
         );
@@ -168,38 +156,12 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     backgroundColor: colors.surface,
     borderRadius: 8,
-    borderColor: colors.border,
     borderWidth: 1,
+    borderColor: colors.border,
   },
   emptyText: {
     color: colors.textMuted,
     fontSize: 16,
-    lineHeight: 24,
     textAlign: 'center',
-  },
-  overlay: {
-    position: 'absolute',
-    top: spacing.xl,
-    left: spacing.xl,
-    zIndex: 10,
-    padding: spacing.md,
-    borderRadius: 8,
-    borderWidth: 2,
-  },
-  overlayText: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0,
-    textTransform: 'uppercase',
-  },
-  like: {
-    color: colors.success,
-    borderColor: colors.success,
-    backgroundColor: 'rgba(116, 227, 154, 0.12)',
-  },
-  nope: {
-    color: colors.danger,
-    borderColor: colors.danger,
-    backgroundColor: 'rgba(255, 107, 121, 0.12)',
   },
 });
