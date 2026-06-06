@@ -9,6 +9,7 @@ export interface IMessage {
 export interface IChat extends Document {
   activity: Types.ObjectId | null;
   members: Types.ObjectId[];
+  chatType: 'publicActivityChat' | 'privateActivityChat' | 'directPrivateChat';
   messages: IMessage[];
 }
 
@@ -21,6 +22,11 @@ const MessageSchema = new Schema<IMessage>({
 const ChatSchema = new Schema<IChat>({
   activity: { type: Schema.Types.ObjectId, ref: 'Activity' },
   members: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  chatType: {
+    type: String,
+    enum: ['publicActivityChat', 'privateActivityChat', 'directPrivateChat'],
+    default: 'publicActivityChat',
+  },
   messages: [MessageSchema],
 }, { timestamps: true });
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiUser, loginRequest, registerRequest } from '../api';
+import { ApiUser, loginRequest, registerRequest, updatePushTokenRequest } from '../api';
+import { registerForPushNotificationsAsync } from '../utils/notifications';
 
 type AuthState = {
   user: ApiUser | null;
@@ -57,7 +58,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (name: string, email: string, password: string) => {
     const response = await registerRequest(name, email, password);
-    const { token: newToken, user: newUser } = response.data;
+    const { token: newToken } = response.data;
+    let newUser = response.data.user;
+
+    try {
+      const pushToken = await registerForPushNotificationsAsync();
+      if (pushToken) {
+        const pushResponse = await updatePushTokenRequest(pushToken, newToken);
+        newUser = pushResponse.data;
+      }
+    } catch (error) {
+      console.warn('Unable to register push notifications', error);
+    }
+
     setUser(newUser);
     setToken(newToken);
     await Promise.all([

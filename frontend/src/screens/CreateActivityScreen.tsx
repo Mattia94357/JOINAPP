@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +13,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CreateActivity'>;
 
 export default function CreateActivityScreen({ navigation }: Props) {
   const { token } = useAuth();
+  const { width } = useWindowDimensions();
+  const compact = width < 420;
   const [title, setTitle] = useState('');
   const [venueName, setVenueName] = useState('');
   const [location, setLocation] = useState('');
@@ -27,6 +29,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [costType, setCostType] = useState<'Free' | 'Paid'>('Free');
   const [costAmount, setCostAmount] = useState('');
   const [coverImage, setCoverImage] = useState('');
+  const [galleryImagesText, setGalleryImagesText] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [joinApproval, setJoinApproval] = useState<'auto' | 'manual'>('auto');
   const [hostNote, setHostNote] = useState('');
   const [cancellationPolicy, setCancellationPolicy] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -47,6 +52,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
     if (!Number.isInteger(capacity) || capacity < 2) return showError('Max participants must be at least 2.');
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     if (costType === 'Paid' && Number(costAmount || 0) <= 0) return showError('Enter a cost amount or choose Free.');
+    const galleryImages = galleryImagesText.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 5);
 
     if (!token) {
       Alert.alert('Unauthorized', 'Log in to post an activity.');
@@ -74,6 +80,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
           hostNote: hostNote.trim(),
           cancellationPolicy: cancellationPolicy.trim(),
           vibe,
+          visibility,
+          joinApproval,
+          galleryImages,
         },
         token,
       );
@@ -109,6 +118,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <Text style={styles.label}>Activity image URL</Text>
       <TextInput value={coverImage} onChangeText={setCoverImage} style={styles.input} placeholder="Paste image URL for now" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
 
+      <Text style={styles.label}>Gallery image URLs</Text>
+      <TextInput value={galleryImagesText} onChangeText={setGalleryImagesText} style={[styles.input, styles.galleryInput]} placeholder="Optional: one image URL per line, up to 5" placeholderTextColor={colors.textSubtle} autoCapitalize="none" multiline />
+
       <Text style={styles.label}>Category</Text>
       <View style={styles.row}>
         {categoryOptions.map((option) => (
@@ -127,7 +139,31 @@ export default function CreateActivityScreen({ navigation }: Props) {
         ))}
       </View>
 
-      <View style={styles.twoColumn}>
+      <Text style={styles.label}>Visibility</Text>
+      <View style={styles.optionCards}>
+        <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
+          <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
+          <Text style={styles.optionDescription}>Anyone nearby can discover and join.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
+          <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
+          <Text style={styles.optionDescription}>Only invited people can see or join.</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.label}>Join approval</Text>
+      <View style={styles.optionCards}>
+        <TouchableOpacity style={[styles.optionCard, joinApproval === 'auto' && styles.optionCardActive]} onPress={() => setJoinApproval('auto')}>
+          <Text style={[styles.optionTitle, joinApproval === 'auto' && styles.optionTitleActive]}>Auto approve joins</Text>
+          <Text style={styles.optionDescription}>People join instantly and chat unlocks.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.optionCard, joinApproval === 'manual' && styles.optionCardActive]} onPress={() => setJoinApproval('manual')}>
+          <Text style={[styles.optionTitle, joinApproval === 'manual' && styles.optionTitleActive]}>Manual approval required</Text>
+          <Text style={styles.optionDescription}>Review requests before chat unlocks.</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <View style={styles.column}>
           <Text style={styles.label}>Date *</Text>
           <TextInput value={date} onChangeText={setDate} style={styles.input} placeholder="2026-06-05" placeholderTextColor={colors.textSubtle} />
@@ -138,7 +174,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <View style={styles.twoColumn}>
+      <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <View style={styles.column}>
           <Text style={styles.label}>Start time *</Text>
           <TextInput value={startTime} onChangeText={setStartTime} style={styles.input} placeholder="7:30 PM" placeholderTextColor={colors.textSubtle} />
@@ -183,6 +219,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   container: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     padding: spacing.lg,
     paddingBottom: 96,
   },
@@ -231,6 +270,10 @@ const styles = StyleSheet.create({
     minHeight: 112,
     textAlignVertical: 'top',
   },
+  galleryInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -239,6 +282,10 @@ const styles = StyleSheet.create({
   twoColumn: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  oneColumn: {
+    flexDirection: 'column',
+    gap: 0,
   },
   column: {
     flex: 1,
@@ -264,6 +311,33 @@ const styles = StyleSheet.create({
   },
   choiceLabelActive: {
     color: colors.primaryText,
+  },
+  optionCards: {
+    gap: spacing.sm,
+  },
+  optionCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: spacing.md,
+  },
+  optionCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.goldWash,
+  },
+  optionTitle: {
+    color: colors.text,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  optionTitleActive: {
+    color: colors.primary,
+  },
+  optionDescription: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   button: {
     marginTop: spacing.lg,

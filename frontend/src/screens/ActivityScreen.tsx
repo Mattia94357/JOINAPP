@@ -9,12 +9,16 @@ import {
   Alert,
   Image,
   ImageBackground,
+  Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
-import { fetchActivity, joinActivityRequest } from '../api';
+import { approveJoinRequest, cancelActivityRequest, declineJoinRequest, fetchActivity, joinActivityRequest } from '../api';
+import AvatarBadge from '../components/AvatarBadge';
+import ParticipantsModal from '../components/ParticipantsModal';
 import { getAvatarUrl } from '../utils/avatar';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { getCuratedActivity } from '../utils/curatedActivities';
@@ -35,10 +39,17 @@ type ActivityDetails = {
   maxAttendees?: number;
   coverImage?: string;
   availabilityTag?: string;
+  visibility?: 'public' | 'private';
+  joinApproval?: 'auto' | 'manual';
+  status?: 'active' | 'full' | 'cancelled' | 'completed';
+  cancellationReason?: string;
+  galleryImages?: string[];
   host: string;
   hostId: string;
   hostAvatar?: string;
-  participants: Array<{ name: string; avatar?: string }>;
+  participants: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
+  pendingParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
+  waitlist?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
 };
 
 const discussionPreview = [
@@ -49,9 +60,13 @@ const discussionPreview = [
 export default function ActivityScreen({ route, navigation }: Props) {
   const { activityId } = route.params;
   const { token, user } = useAuth();
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
   const [activity, setActivity] = useState<ActivityDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [participantsVisible, setParticipantsVisible] = useState(false);
+  const [photoRequiredVisible, setPhotoRequiredVisible] = useState(false);
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -90,14 +105,30 @@ export default function ActivityScreen({ route, navigation }: Props) {
       return;
     }
 
+    const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
+    if (!hasProfilePhoto) {
+      setPhotoRequiredVisible(true);
+      return;
+    }
+
     try {
-      await joinActivityRequest(activityId, token);
-      Alert.alert('Joined', 'You are now part of this activity.');
+      const status = (await joinActivityRequest(activityId, token)).data?.status;
+      if (status === 'pending') {
+        Alert.alert('Request sent', 'The host will review your request.');
+      } else if (status === 'waitlisted') {
+        Alert.alert('Waitlist joined', 'This activity is full, so you joined the waitlist.');
+      } else {
+        Alert.alert('Joined', 'You are now part of this activity.');
+      }
       const result = await fetchActivity(activityId, token);
       setActivity(result);
-    } catch (error) {
+    } catch (error: any) {
       console.warn(error);
-      Alert.alert('Could not join', 'You may already be joined or there was a network issue.');
+      if (error?.response?.data?.code === 'PROFILE_PHOTO_REQUIRED') {
+        setPhotoRequiredVisible(true);
+        return;
+      }
+      Alert.alert('Could not join', error?.response?.data?.message || 'You may already be joined or there was a network issue.');
     }
   };
 
@@ -124,13 +155,66 @@ export default function ActivityScreen({ route, navigation }: Props) {
   }
 
   const attendees = activity.attendees ?? activity.participants.length;
-  const alreadyJoined = user ? activity.participants.some((participant) => participant.name === user.name) : false;
+  const alreadyJoined = user
+    ? activity.participants.some((participant) => participant.id === user.id || participant.name === user.name)
+    : false;
   const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
   const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
+  const isHost = user?.id === activity.hostId;
+  const pendingApproval = user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
+  const waitlisted = user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
+  const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
+  const isCancelled = activity.status === 'cancelled';
+  const canOpenChat = alreadyJoined || isHost;
+  const joinLabel = alreadyJoined
+    ? 'Already joined'
+    : pendingApproval
+      ? 'Pending Approval'
+      : waitlisted
+        ? 'On Waitlist'
+        : isCancelled
+          ? 'Cancelled'
+          : isFull
+            ? 'Join Waitlist'
+            : activity.joinApproval === 'manual'
+              ? 'Request to Join'
+              : 'Join activity';
+
+  const refreshActivity = async () => {
+    const result = await fetchActivity(activityId, token || undefined);
+    setActivity(result);
+  };
+
+  const handleApprove = async (participantId?: string) => {
+    if (!token || !participantId) return;
+    await approveJoinRequest(activity.id, participantId, token);
+    await refreshActivity();
+  };
+
+  const handleDecline = async (participantId?: string) => {
+    if (!token || !participantId) return;
+    await declineJoinRequest(activity.id, participantId, token);
+    await refreshActivity();
+  };
+
+  const handleCancelActivity = async () => {
+    if (!token) return;
+    Alert.alert('Cancel activity?', 'Participants will no longer be able to join this activity.', [
+      { text: 'Keep activity', style: 'cancel' },
+      {
+        text: 'Cancel activity',
+        style: 'destructive',
+        onPress: async () => {
+          await cancelActivityRequest(activity.id, token, 'Cancelled by host.');
+          await refreshActivity();
+        },
+      },
+    ]);
+  };
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      <ImageBackground source={{ uri: coverImage }} style={styles.heroImage}>
+      <ImageBackground source={{ uri: coverImage }} style={[styles.heroImage, compact && styles.heroImageCompact]}>
         <View style={styles.heroOverlay} />
         <View style={styles.heroContent}>
           <View style={styles.heroBadges}>
@@ -142,6 +226,14 @@ export default function ActivityScreen({ route, navigation }: Props) {
                 <Text style={styles.availabilityBadgeText}>{activity.availabilityTag}</Text>
               </View>
             )}
+            <View style={styles.visibilityBadge}>
+              <Text style={styles.visibilityBadgeText}>{activity.visibility === 'private' ? 'Private' : 'Public'}</Text>
+            </View>
+            {isCancelled ? (
+              <View style={styles.cancelledBadge}>
+                <Text style={styles.cancelledBadgeText}>Cancelled</Text>
+              </View>
+            ) : null}
           </View>
           <View>
             <Text style={styles.title}>{activity.title}</Text>
@@ -155,22 +247,22 @@ export default function ActivityScreen({ route, navigation }: Props) {
 
       <View style={styles.content}>
         <View style={styles.metadataGrid}>
-          <View style={styles.metadataCard}>
+          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="time-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Time</Text>
             <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
           </View>
-          <View style={styles.metadataCard}>
+          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="location-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Place</Text>
             <Text style={styles.metadataValue} numberOfLines={1}>{activity.location}</Text>
           </View>
-          <View style={styles.metadataCard}>
+          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="navigate-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Distance</Text>
             <Text style={styles.metadataValue}>{activity.distance || 'Nearby'}</Text>
           </View>
-          <View style={styles.metadataCard}>
+          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="star-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Vibe</Text>
             <Text style={styles.metadataValue}>{activity.vibe || 'Social'}</Text>
@@ -178,7 +270,9 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.hostCard}>
-          <Image source={{ uri: activity.hostAvatar || getAvatarUrl(activity.host) }} style={styles.hostAvatar} />
+          <TouchableOpacity style={styles.hostAvatarButton} onPress={() => navigation.navigate('PublicProfile', { userId: activity.hostId, fallbackName: activity.host, fallbackAvatar: activity.hostAvatar })}>
+            <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={46} />
+          </TouchableOpacity>
           <View style={styles.hostDetails}>
             <Text style={styles.hostLabel}>Hosted by</Text>
             <Text style={styles.hostName}>{activity.host}</Text>
@@ -192,30 +286,79 @@ export default function ActivityScreen({ route, navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
           <Text style={styles.descriptionText}>{activity.description}</Text>
+          {isCancelled && activity.cancellationReason ? <Text style={styles.cancelReason}>{activity.cancellationReason}</Text> : null}
         </View>
+
+        {activity.galleryImages?.length ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Gallery</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {activity.galleryImages.slice(0, 5).map((image) => (
+                <Image key={image} source={{ uri: image }} style={styles.galleryImage} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {isHost && activity.pendingParticipants?.length ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Pending requests</Text>
+            {activity.pendingParticipants.map((participant) => (
+              <View key={participant.id || participant.name} style={styles.pendingRow}>
+                <AvatarBadge name={participant.name} avatarUrl={participant.profileThumbnailUrl || participant.profilePictureUrl || participant.avatar} size={34} />
+                <Text style={styles.pendingName}>{participant.name}</Text>
+                <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(participant.id)}>
+                  <Text style={styles.approveText}>Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.declineButton} onPress={() => handleDecline(participant.id)}>
+                  <Text style={styles.declineText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {isHost && !isCancelled ? (
+          <TouchableOpacity style={styles.cancelButton} onPress={handleCancelActivity}>
+            <Text style={styles.cancelButtonText}>Cancel activity</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Participants</Text>
           <View style={styles.participantsRow}>
             {activity.participants.slice(0, 5).map((participant, index) => (
-              <Image
+              <TouchableOpacity
                 key={`${participant.name}-${index}`}
-                source={{ uri: participant.avatar || getAvatarUrl(participant.name) }}
                 style={[styles.participantAvatar, { marginLeft: index === 0 ? 0 : -10 }]}
-              />
+                onPress={() => navigation.navigate('PublicProfile', {
+                  userId: participant.id,
+                  fallbackName: participant.name,
+                  fallbackAvatar: participant.avatar || participant.profileThumbnailUrl || participant.profilePictureUrl,
+                })}
+              >
+                <AvatarBadge
+                  name={participant.name}
+                  avatarUrl={participant.profileThumbnailUrl || participant.profilePictureUrl || participant.avatar}
+                  size={42}
+                />
+              </TouchableOpacity>
             ))}
-            <View style={styles.participantCount}>
+            <TouchableOpacity style={styles.participantCount} onPress={() => setParticipantsVisible(true)}>
               <Text style={styles.participantCountText}>{capacity}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
+          <TouchableOpacity style={styles.viewAllButton} onPress={() => setParticipantsVisible(true)}>
+            <Text style={styles.viewAllText}>View all participants</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Discussion</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
+            {canOpenChat ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
               <Text style={styles.sectionAction}>Open chat</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
           </View>
           {discussionPreview.map((message) => (
             <View key={`${message.author}-${message.time}`} style={styles.discussionRow}>
@@ -232,18 +375,66 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={[styles.joinButton, alreadyJoined && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined}>
+          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || waitlisted || isCancelled) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || waitlisted || isCancelled}>
             <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
             <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
-              {alreadyJoined ? 'Already joined' : 'Join activity'}
+              {joinLabel}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
+          {canOpenChat ? <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
             <Ionicons name="chatbubbles-outline" size={18} color="#f5c12d" />
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
       </View>
+
+      <ParticipantsModal
+        visible={participantsVisible}
+        participants={activity.participants}
+        onClose={() => setParticipantsVisible(false)}
+        onOpenProfile={(participant) => {
+          setParticipantsVisible(false);
+          navigation.navigate('PublicProfile', {
+            userId: participant.id,
+            fallbackName: participant.name,
+            fallbackAvatar: participant.avatar || participant.profileThumbnailUrl || participant.profilePictureUrl,
+          });
+        }}
+      />
+
+      <Modal
+        visible={photoRequiredVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoRequiredVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.photoRequiredModal}>
+            <View style={styles.photoRequiredIcon}>
+              <Ionicons name="camera-outline" size={24} color="#050505" />
+            </View>
+            <Text style={styles.modalTitle}>Profile photo required</Text>
+            <Text style={styles.photoRequiredText}>
+              Profile photos are required before joining activities so everyone can see who is attending.
+            </Text>
+            <TouchableOpacity
+              style={styles.photoRequiredPrimary}
+              onPress={() => {
+                setPhotoRequiredVisible(false);
+                navigation.navigate('Profile');
+              }}
+            >
+              <Text style={styles.photoRequiredPrimaryText}>Upload profile photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.photoRequiredSecondary}
+              onPress={() => setPhotoRequiredVisible(false)}
+            >
+              <Text style={styles.photoRequiredSecondaryText}>Not now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -294,7 +485,12 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     height: 290,
+  },
+  heroImageCompact: {
+    height: 240,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -333,6 +529,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
+  visibilityBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 193, 45, 0.35)',
+    marginLeft: 8,
+  },
+  visibilityBadgeText: {
+    color: '#f5c12d',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  cancelledBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    marginLeft: 8,
+  },
+  cancelledBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
   title: {
     color: '#ffffff',
     fontSize: 32,
@@ -351,6 +573,9 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   content: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     paddingHorizontal: 16,
     paddingTop: 14,
   },
@@ -362,6 +587,9 @@ const styles = StyleSheet.create({
   metadataCard: {
     width: '50%',
     padding: 4,
+  },
+  metadataCardCompact: {
+    width: '100%',
   },
   metadataLabel: {
     color: '#858585',
@@ -385,13 +613,8 @@ const styles = StyleSheet.create({
     padding: 11,
     marginTop: 10,
   },
-  hostAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  hostAvatarButton: {
     marginRight: 11,
-    borderWidth: 2,
-    borderColor: '#f5c12d',
   },
   hostDetails: {
     flex: 1,
@@ -447,6 +670,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  cancelReason: {
+    color: '#fca5a5',
+    marginTop: 8,
+    fontWeight: '800',
+  },
+  galleryImage: {
+    width: 120,
+    height: 88,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: '#111111',
+  },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#222222',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  pendingName: {
+    flex: 1,
+    color: '#ffffff',
+    fontWeight: '900',
+    marginLeft: 9,
+  },
+  approveButton: {
+    backgroundColor: '#f5c12d',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginLeft: 6,
+  },
+  approveText: {
+    color: '#050505',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  declineButton: {
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginLeft: 6,
+  },
+  declineText: {
+    color: '#B3B3B3',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  cancelButtonText: {
+    color: '#EF4444',
+    fontWeight: '900',
+  },
   participantsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -455,7 +743,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#050505',
     backgroundColor: '#111111',
   },
@@ -473,6 +761,20 @@ const styles = StyleSheet.create({
     color: '#050505',
     fontWeight: '900',
     fontSize: 12,
+  },
+  viewAllButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  viewAllText: {
+    color: '#f5c12d',
+    fontSize: 12,
+    fontWeight: '900',
   },
   discussionRow: {
     flexDirection: 'row',
@@ -543,5 +845,58 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  photoRequiredModal: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 18,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(244, 197, 66, 0.28)',
+  },
+  photoRequiredIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#f5c12d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 12,
+  },
+  photoRequiredText: {
+    color: '#B3B3B3',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '700',
+    marginBottom: 24,
+  },
+  photoRequiredPrimary: {
+    backgroundColor: '#f5c12d',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  photoRequiredPrimaryText: {
+    color: '#050505',
+    fontWeight: '900',
+  },
+  photoRequiredSecondary: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  photoRequiredSecondaryText: {
+    color: '#B3B3B3',
+    fontWeight: '800',
   },
 });

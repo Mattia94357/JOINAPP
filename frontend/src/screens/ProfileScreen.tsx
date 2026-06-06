@@ -1,69 +1,298 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { deleteAccountRequest, updateProfilePhotoRequest, updateProfileRequest } from '../api';
+import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
-import { getAvatarUrl } from '../utils/avatar';
+import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
+const maxProfileImageBytes = 5 * 1024 * 1024;
+const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
 const hosted = [
-  { title: 'Rooftop dinner circle', meta: 'Food · 10 guests' },
-  { title: 'Founders coffee walk', meta: 'Networking · 8 guests' },
-  { title: 'Reset yoga session', meta: 'Wellness · 12 guests' },
+  { title: 'Rooftop dinner circle', meta: 'Food - 10 guests' },
+  { title: 'Founders coffee walk', meta: 'Networking - 8 guests' },
+  { title: 'Reset yoga session', meta: 'Wellness - 12 guests' },
 ];
 
 const joined = [
-  { title: 'Gallery opening night', meta: 'Tonight · 1.4 km' },
-  { title: 'Trail hike + brunch', meta: 'This weekend · 2.4 km' },
+  { title: 'Gallery opening night', meta: 'Tonight - 1.4 km' },
+  { title: 'Trail hike + brunch', meta: 'This weekend - 2.4 km' },
 ];
 
+const getMimeTypeFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
+  const mimeType = (asset as ImagePicker.ImagePickerAsset & { mimeType?: string }).mimeType;
+  if (mimeType) return mimeType.toLowerCase();
+
+  const extension = asset.uri.split('?')[0].split('.').pop()?.toLowerCase();
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  return '';
+};
+
+const getBase64ByteSize = (value: string) => Math.ceil((value.length * 3) / 4);
+
 export default function ProfileScreen({ navigation }: Props) {
-  const { user, logout } = useAuth();
+  const { user, token, updateUser, logout } = useAuth();
+  const { width } = useWindowDimensions();
+  const compact = width < 390;
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [aboutMe, setAboutMe] = useState(user?.aboutMe || user?.bio || '');
+  const [profileLocation, setProfileLocation] = useState(user?.location || '');
+  const [languagesText, setLanguagesText] = useState((user?.languages || []).join(', '));
+  const [interestsText, setInterestsText] = useState((user?.interests || []).join(', '));
+  const [nationality, setNationality] = useState(user?.nationality || '');
+  const [instagram, setInstagram] = useState(user?.instagram || '');
+  const [ageRange, setAgeRange] = useState(user?.ageRange || '');
+
   const interests = user?.interests?.length ? user.interests : ['Wellness', 'Food', 'Networking', 'Culture'];
   const location = user?.location || 'Perth, Australia';
-  const profileImage = user?.avatar || getAvatarUrl(user?.name || 'Guest', 256);
-  const badges = [
-    { icon: 'shield-checkmark-outline', label: user?.verified ? 'Identity verified' : 'Profile reviewed' },
-    { icon: 'star-outline', label: 'Trusted host' },
-    { icon: 'people-outline', label: 'Community active' },
-  ];
+  const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
+  const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
+  const displayHostedCount = user?.hostedCount ?? hosted.length;
+  const displayJoinedCount = user?.joinedCount ?? joined.length;
+  const displayRating = user?.hostRating?.toFixed(1) || '4.8';
+
+  const badges = useMemo(
+    () => [
+      { icon: 'shield-checkmark-outline', label: user?.verified ? 'Identity verified' : 'Profile reviewed' },
+      { icon: 'star-outline', label: hasProfilePhoto ? 'Photo verified' : 'Photo required' },
+      { icon: 'people-outline', label: 'Community active' },
+    ],
+    [hasProfilePhoto, user?.verified],
+  );
+
+  const handlePickPhoto = async () => {
+    if (!token) {
+      Alert.alert('Sign in required', 'Please log in before updating your profile photo.');
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo access needed', 'JOIN needs access to your photos so you can upload a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.75,
+      base64: true,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    const mimeType = getMimeTypeFromAsset(asset);
+
+    if (!supportedMimeTypes.includes(mimeType)) {
+      setUploadMessage('Use a JPEG, PNG, or WEBP profile photo.');
+      return;
+    }
+
+    if (asset.fileSize && asset.fileSize > maxProfileImageBytes) {
+      setUploadMessage('Profile photos must be 5MB or smaller.');
+      return;
+    }
+
+    if (!asset.base64) {
+      setUploadMessage('Could not read this image. Please try another photo.');
+      return;
+    }
+
+    if (getBase64ByteSize(asset.base64) > maxProfileImageBytes) {
+      setUploadMessage('Profile photos must be 5MB or smaller.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadMessage('');
+
+    try {
+      const imageDataUrl = `data:${mimeType};base64,${asset.base64}`;
+      const response = await updateProfilePhotoRequest(imageDataUrl, token);
+      await updateUser(response.data);
+      setUploadMessage('Profile photo updated.');
+    } catch (error: any) {
+      setUploadMessage(error?.response?.data?.message || 'Unable to upload profile photo right now.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openPolicyLink = (path: string) => {
+    Linking.openURL(`https://joinapp.app/${path}`).catch(() => {
+      Alert.alert('Link unavailable', 'This link could not be opened right now.');
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    if (!token) return;
+
+    Alert.alert(
+      'Delete account?',
+      'This permanently removes your JOIN account. Existing activities may still show historical attendance.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccountRequest(token);
+              await logout();
+            } catch (error: any) {
+              Alert.alert('Unable to delete account', error?.response?.data?.message || 'Please try again later.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSaveProfile = async () => {
+    if (!token) return;
+    setSavingProfile(true);
+    try {
+      const response = await updateProfileRequest(
+        {
+          aboutMe: aboutMe.trim(),
+          bio: aboutMe.trim(),
+          location: profileLocation.trim(),
+          languages: languagesText.split(',').map((item) => item.trim()).filter(Boolean),
+          interests: interestsText.split(',').map((item) => item.trim()).filter(Boolean),
+          nationality: nationality.trim(),
+          instagram: instagram.trim(),
+          ageRange: ageRange.trim(),
+        },
+        token,
+      );
+      await updateUser(response.data);
+      setUploadMessage('Profile updated.');
+    } catch (error: any) {
+      Alert.alert('Unable to save profile', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Image source={{ uri: profileImage }} style={styles.profileImage} />
-        <View style={styles.profileCopy}>
+      <View style={[styles.header, compact && styles.headerCompact]}>
+        <View style={[styles.photoColumn, compact && styles.photoColumnCompact]}>
+          <View style={styles.profileImageFrame}>
+            <AvatarBadge name={user?.name || 'Guest'} avatarUrl={profileImage} size={104} />
+          </View>
+          <TouchableOpacity
+            style={[styles.photoButton, uploading && styles.photoButtonDisabled]}
+            onPress={handlePickPhoto}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <ActivityIndicator color={colors.primaryText} size="small" />
+            ) : (
+              <>
+                <Ionicons name="camera-outline" size={17} color={colors.primaryText} />
+                <Text style={styles.photoButtonText}>{hasProfilePhoto ? 'Change photo' : 'Upload profile photo'}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.profileCopy, compact && styles.profileCopyCompact]}>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{user?.name || 'Guest'}</Text>
-            <View style={styles.verifiedDot}>
-              <Ionicons name="checkmark" size={14} color="#050505" />
-            </View>
+            {user?.verified ? (
+              <View style={styles.verifiedDot}>
+                <Ionicons name="checkmark" size={14} color={colors.primaryText} />
+              </View>
+            ) : null}
           </View>
           <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={14} color="#f5c12d" />
+            <Ionicons name="location-outline" size={14} color={colors.primary} />
             <Text style={styles.location}>{location}</Text>
           </View>
           <Text style={styles.bio} numberOfLines={3}>
             {user?.bio || 'Curates high-quality plans with thoughtful people, polished details, and good energy.'}
           </Text>
+          <View style={[styles.completionPill, hasProfilePhoto ? styles.completionPillReady : styles.completionPillNeeded]}>
+            <Ionicons
+              name={hasProfilePhoto ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+              size={15}
+              color={hasProfilePhoto ? colors.success : colors.warning}
+            />
+            <Text style={styles.completionText}>
+              {hasProfilePhoto ? 'Ready to join activities' : 'Photo required before joining'}
+            </Text>
+          </View>
         </View>
+      </View>
+
+      {uploadMessage ? <Text style={styles.uploadMessage}>{uploadMessage}</Text> : null}
+
+      <View style={styles.trustCard}>
+        <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+        <Text style={styles.trustText}>
+          Profile photos are required before joining activities so everyone can see who is attending.
+        </Text>
       </View>
 
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{hosted.length}</Text>
+          <Text style={styles.statValue}>{displayHostedCount}</Text>
           <Text style={styles.statLabel}>Hosted</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>12</Text>
+          <Text style={styles.statValue}>{displayJoinedCount}</Text>
           <Text style={styles.statLabel}>Joined</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>4.9</Text>
+          <Text style={styles.statValue}>{displayRating}</Text>
           <Text style={styles.statLabel}>Rating</Text>
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Beta profile</Text>
+        <TextInput
+          value={aboutMe}
+          onChangeText={setAboutMe}
+          style={[styles.input, styles.textArea]}
+          placeholder="About Me"
+          placeholderTextColor={colors.textSubtle}
+          multiline
+        />
+        <TextInput value={profileLocation} onChangeText={setProfileLocation} style={styles.input} placeholder="Location, e.g. Phuket" placeholderTextColor={colors.textSubtle} />
+        <TextInput value={languagesText} onChangeText={setLanguagesText} style={styles.input} placeholder="Languages, comma separated" placeholderTextColor={colors.textSubtle} />
+        <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
+        <TextInput value={nationality} onChangeText={setNationality} style={styles.input} placeholder="Nationality optional" placeholderTextColor={colors.textSubtle} />
+        <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
+        <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
+        <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
+          <Text style={styles.saveProfileText}>{savingProfile ? 'Saving...' : 'Save profile'}</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -71,7 +300,7 @@ export default function ProfileScreen({ navigation }: Props) {
         <View style={styles.badgeGrid}>
           {badges.map((badge) => (
             <View key={badge.label} style={styles.badge}>
-              <Ionicons name={badge.icon as any} size={16} color="#f5c12d" />
+              <Ionicons name={badge.icon as any} size={16} color={colors.primary} />
               <Text style={styles.badgeText}>{badge.label}</Text>
             </View>
           ))}
@@ -91,39 +320,50 @@ export default function ProfileScreen({ navigation }: Props) {
 
       <View style={styles.activityColumns}>
         <View style={styles.activityColumn}>
+          <Text style={styles.sectionTitle}>Saved Activities</Text>
+          <View style={styles.activityRow}>
+            <Ionicons name="bookmark-outline" size={16} color={colors.primary} />
+            <View style={styles.activityTextBlock}>
+              <Text style={styles.activityTitle}>{user?.savedActivities?.length || 0} saved plans</Text>
+              <Text style={styles.activityMeta}>Return to Home to keep browsing your saved activities.</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.activityColumn}>
           <Text style={styles.sectionTitle}>Hosted</Text>
-          {hosted.map((activity) => (
+          {hosted.length ? hosted.map((activity) => (
             <View key={activity.title} style={styles.activityRow}>
-              <Ionicons name="star-outline" size={16} color="#f5c12d" />
+              <Ionicons name="star-outline" size={16} color={colors.primary} />
               <View style={styles.activityTextBlock}>
                 <Text style={styles.activityTitle}>{activity.title}</Text>
                 <Text style={styles.activityMeta}>{activity.meta}</Text>
               </View>
             </View>
-          ))}
+          )) : <Text style={styles.emptyText}>No hosted activities yet.</Text>}
         </View>
 
         <View style={styles.activityColumn}>
           <Text style={styles.sectionTitle}>Joined</Text>
-          {joined.map((activity) => (
+          {joined.length ? joined.map((activity) => (
             <View key={activity.title} style={styles.activityRow}>
-              <Ionicons name="calendar-outline" size={16} color="#f5c12d" />
+              <Ionicons name="calendar-outline" size={16} color={colors.primary} />
               <View style={styles.activityTextBlock}>
                 <Text style={styles.activityTitle}>{activity.title}</Text>
                 <Text style={styles.activityMeta}>{activity.meta}</Text>
               </View>
             </View>
-          ))}
+          )) : <Text style={styles.emptyText}>No joined activities yet.</Text>}
         </View>
       </View>
 
       <View style={styles.actions}>
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('CreateActivity')}>
-          <Ionicons name="add-circle-outline" size={18} color="#050505" />
+          <Ionicons name="add-circle-outline" size={18} color={colors.primaryText} />
           <Text style={styles.actionButtonText}>Host an experience</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryAction} onPress={() => navigation.navigate('Notifications')}>
-          <Ionicons name="notifications-outline" size={18} color="#f5c12d" />
+          <Ionicons name="notifications-outline" size={18} color={colors.primary} />
           <Text style={styles.secondaryActionText}>Notifications</Text>
         </TouchableOpacity>
       </View>
@@ -131,6 +371,24 @@ export default function ProfileScreen({ navigation }: Props) {
       <TouchableOpacity style={styles.signOutButton} onPress={logout}>
         <Text style={styles.signOutText}>Sign out</Text>
       </TouchableOpacity>
+
+      <View style={styles.legalSection}>
+        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('privacy')}>
+          <Text style={styles.legalText}>Privacy Policy</Text>
+          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('terms')}>
+          <Text style={styles.legalText}>Terms of Service</Text>
+          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('community-guidelines')}>
+          <Text style={styles.legalText}>Community Guidelines</Text>
+          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
+          <Text style={styles.deleteAccountText}>Delete account</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -138,40 +396,84 @@ export default function ProfileScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: colors.background,
   },
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? 48 : spacing.xxl,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#101010',
+    backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
-    borderColor: '#242018',
+    borderColor: colors.border,
     borderRadius: 12,
-    padding: 12,
+    padding: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
-  profileImage: {
-    width: 92,
-    height: 92,
-    borderRadius: 12,
+  headerCompact: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  photoColumn: {
+    width: 112,
+  },
+  photoColumnCompact: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  profileImageFrame: {
+    width: 104,
+    height: 104,
+    borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#f5c12d',
-    backgroundColor: '#111111',
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surface,
+  },
+  photoButton: {
+    minHeight: 36,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  photoButtonDisabled: {
+    opacity: 0.72,
+  },
+  photoButtonText: {
+    color: colors.primaryText,
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 5,
+    textAlign: 'center',
   },
   profileCopy: {
     flex: 1,
-    marginLeft: 13,
+    marginLeft: spacing.md,
+  },
+  profileCopyCompact: {
+    width: '100%',
+    marginLeft: 0,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   name: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 24,
     fontWeight: '900',
     flexShrink: 1,
@@ -180,10 +482,10 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#f5c12d',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
   locationRow: {
     flexDirection: 'row',
@@ -191,23 +493,71 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   location: {
-    color: '#d5d5d5',
+    color: colors.textMuted,
     fontSize: 13,
     marginLeft: 5,
   },
   bio: {
-    color: '#aaa',
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
-    marginTop: 8,
+    marginTop: spacing.sm,
+  },
+  completionPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    marginTop: spacing.sm,
+  },
+  completionPillReady: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
+  completionPillNeeded: {
+    backgroundColor: 'rgba(245,158,11,0.1)',
+    borderColor: 'rgba(245,158,11,0.28)',
+  },
+  completionText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 5,
+  },
+  uploadMessage: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+  },
+  trustCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.goldWash,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  trustText: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    marginLeft: spacing.sm,
+    flex: 1,
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: '#0d0d0d',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#222222',
-    marginTop: 12,
+    borderColor: colors.border,
+    marginTop: spacing.md,
     paddingVertical: 12,
   },
   stat: {
@@ -215,20 +565,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    color: '#f5c12d',
+    color: colors.primary,
     fontSize: 22,
     fontWeight: '900',
   },
   statLabel: {
-    color: '#929292',
+    color: colors.textSubtle,
     fontSize: 12,
     marginTop: 2,
   },
   section: {
-    marginTop: 16,
+    marginTop: spacing.md,
   },
   sectionTitle: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '900',
     textTransform: 'uppercase',
@@ -243,15 +593,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#2d2716',
-    backgroundColor: '#111111',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    marginRight: 8,
-    marginBottom: 8,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
   },
   badgeText: {
-    color: '#eeeeee',
+    color: colors.text,
     fontSize: 12,
     fontWeight: '700',
     marginLeft: 6,
@@ -261,15 +611,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   interestTag: {
-    backgroundColor: '#f5c12d',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    marginRight: 8,
-    marginBottom: 8,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
   },
   interestText: {
-    color: '#050505',
+    color: colors.text,
     fontSize: 12,
     fontWeight: '900',
   },
@@ -282,34 +634,63 @@ const styles = StyleSheet.create({
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#101010',
+    backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
-    borderColor: '#222222',
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 10,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   activityTextBlock: {
     flex: 1,
     marginLeft: 9,
   },
   activityTitle: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '800',
   },
   activityMeta: {
-    color: '#9a9a9a',
+    color: colors.textSubtle,
     fontSize: 12,
     marginTop: 2,
   },
+  input: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    color: colors.text,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  textArea: {
+    minHeight: 92,
+    textAlignVertical: 'top',
+  },
+  saveProfileButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 13,
+  },
+  saveProfileText: {
+    color: colors.primaryText,
+    fontWeight: '900',
+  },
+  emptyText: {
+    color: colors.textSubtle,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
   actions: {
     flexDirection: 'row',
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   actionButton: {
     flex: 1.4,
-    backgroundColor: '#f5c12d',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
@@ -318,13 +699,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   actionButtonText: {
-    color: '#050505',
+    color: colors.primaryText,
     fontWeight: '900',
     marginLeft: 6,
   },
   secondaryAction: {
     flex: 1,
-    borderColor: '#f5c12d',
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 13,
@@ -333,17 +715,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   secondaryActionText: {
-    color: '#f5c12d',
+    color: colors.primary,
     fontWeight: '800',
     marginLeft: 6,
   },
   signOutButton: {
     alignItems: 'center',
     paddingVertical: 13,
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   signOutText: {
-    color: '#a0a0a0',
+    color: colors.textSubtle,
     fontWeight: '700',
+  },
+  legalSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  legalRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  legalText: {
+    color: colors.textMuted,
+    fontWeight: '800',
+  },
+  deleteAccountButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  deleteAccountText: {
+    color: colors.danger,
+    fontWeight: '900',
   },
 });

@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import { ActivityIndicator, StyleSheet, View, Text } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
@@ -33,6 +34,14 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const getLinkingPrefixes = () => {
+  const configuredUrl = (Constants.expoConfig?.extra as any)?.FRONTEND_URL;
+  const productionPrefixes = [configuredUrl || 'https://joinapp.app'];
+  const developmentPrefixes = ['http://localhost:19007', 'http://10.180.219.20:19007'];
+
+  return __DEV__ ? [...developmentPrefixes, ...productionPrefixes] : productionPrefixes;
+};
+
 function AppNavigator() {
   const { user, loading } = useAuth();
 
@@ -48,7 +57,7 @@ function AppNavigator() {
   return (
     <NavigationContainer
       linking={{
-        prefixes: ['http://localhost:19007', 'http://10.180.219.20:19007'],
+        prefixes: getLinkingPrefixes(),
         config: {
           screens: {
             ForgotPassword: 'forgot-password',

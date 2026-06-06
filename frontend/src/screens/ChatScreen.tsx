@@ -10,14 +10,13 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
-import { fetchChatRequest } from '../api';
-import { getAvatarUrl } from '../utils/avatar';
+import { fetchChatRequest, sendChatMessageRequest } from '../api';
+import AvatarBadge from '../components/AvatarBadge';
 import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
@@ -64,7 +63,7 @@ export default function ChatScreen({ route }: Props) {
           }
         } catch (error) {
           console.warn(error);
-          Alert.alert('Chat unavailable', 'Could not load chat from the server.');
+          Alert.alert('Chat unavailable', 'You need to join this activity to access the chat.');
         } finally {
           setLoading(false);
         }
@@ -74,19 +73,27 @@ export default function ChatScreen({ route }: Props) {
     }
   }, [chatId, token]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!draft.trim()) return;
+    const nextMessage = draft.trim();
     setMessages((prev) => [
       ...prev,
       {
         id: String(prev.length + 1),
         author: user?.name || 'You',
-        text: draft.trim(),
+        text: nextMessage,
         time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         reactions: [],
       },
     ]);
     setDraft('');
+    if (token && chatId !== 'general') {
+      try {
+        await sendChatMessageRequest(chatId, nextMessage, token);
+      } catch (error: any) {
+        Alert.alert('Message not sent', error?.response?.data?.message || 'You need to join this activity to access the chat.');
+      }
+    }
   };
 
   if (loading) {
@@ -103,14 +110,13 @@ export default function ChatScreen({ route }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={100}
     >
+      <View style={styles.shell}>
       <View style={styles.chatHeader}>
         <View style={styles.avatarStack}>
           {['Mia', 'Ava', 'Avery'].map((name, index) => (
-            <Image
-              key={name}
-              source={{ uri: getAvatarUrl(name) }}
-              style={[styles.stackAvatar, { marginLeft: index === 0 ? 0 : -9 }]}
-            />
+            <View key={name} style={[styles.stackAvatar, { marginLeft: index === 0 ? 0 : -9 }]}>
+              <AvatarBadge name={name} size={34} />
+            </View>
           ))}
         </View>
         <View style={styles.headerCopy}>
@@ -128,7 +134,7 @@ export default function ChatScreen({ route }: Props) {
           const isMe = item.author === user?.name || item.author === 'You';
           return (
             <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
-              {!isMe && <Image source={{ uri: getAvatarUrl(item.author) }} style={styles.messageAvatar} />}
+              {!isMe && <View style={styles.messageAvatar}><AvatarBadge name={item.author} size={32} /></View>}
               <View style={[styles.messageBubble, item.pinned && styles.messageBubblePinned, isMe && styles.messageBubbleMe]}>
                 {item.pinned && (
                   <View style={styles.pinnedRow}>
@@ -177,6 +183,7 @@ export default function ChatScreen({ route }: Props) {
           <Ionicons name="send" size={17} color={colors.primaryText} />
         </TouchableOpacity>
       </View>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -191,6 +198,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  shell: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   chatHeader: {
     flexDirection: 'row',
@@ -209,8 +222,6 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    borderWidth: 2,
-    borderColor: colors.background,
   },
   headerCopy: {
     marginLeft: spacing.md,

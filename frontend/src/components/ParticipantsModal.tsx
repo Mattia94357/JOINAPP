@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getAvatarUrl } from '../utils/avatar';
+import AvatarBadge from './AvatarBadge';
 import { colors, spacing } from '../theme';
 
 export type ParticipantSummary = {
@@ -50,10 +50,10 @@ export default function ParticipantsModal({ visible, participants, onClose, onOp
 
           <ScrollView contentContainerStyle={styles.grid}>
             {visibleParticipants.map((participant, index) => {
-              const image = participant.profileThumbnailUrl || participant.profilePictureUrl || participant.avatar || getAvatarUrl(participant.name);
+              const image = participant.profileThumbnailUrl || participant.profilePictureUrl || participant.avatar;
               return (
                 <TouchableOpacity key={`${participant.name}-${participant.id || index}`} style={styles.person} onPress={() => onOpenProfile(participant)}>
-                  <Image source={{ uri: image }} style={styles.avatar} />
+                  <AvatarBadge name={participant.name} avatarUrl={image} size={64} />
                   <Text style={styles.name} numberOfLines={1}>{participant.name}</Text>
                 </TouchableOpacity>
               );
@@ -70,8 +70,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.62)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   sheet: {
+    width: '100%',
+    maxWidth: 760,
     maxHeight: '84%',
     backgroundColor: colors.background,
     borderTopLeftRadius: 12,
@@ -123,14 +126,6 @@ const styles = StyleSheet.create({
     width: '30%',
     alignItems: 'center',
     marginBottom: spacing.md,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.surface,
   },
   name: {
     color: colors.text,

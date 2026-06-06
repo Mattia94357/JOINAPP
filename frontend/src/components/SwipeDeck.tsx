@@ -20,7 +20,9 @@ type Props = {
   activities: Activity[];
   onSwipeLeft: (activity: Activity) => void;
   onSwipeRight: (activity: Activity) => void;
+  onSave?: (activity: Activity) => void;
   onPress: (activity: Activity) => void;
+  onOpenChat?: (activity: Activity) => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string }) => void;
 };
@@ -29,7 +31,9 @@ export default function SwipeDeck({
   activities,
   onSwipeLeft,
   onSwipeRight,
+  onSave,
   onPress,
+  onOpenChat,
   onViewParticipants,
   onOpenProfile,
 }: Props) {
@@ -129,9 +133,11 @@ export default function SwipeDeck({
             <ActivityCard
               activity={activity}
               onPress={() => onPress(activity)}
+              onJoin={() => onSwipeRight(activity)}
+              onSave={() => onSave?.(activity)}
+              onOpenChat={() => onOpenChat?.(activity)}
               onViewParticipants={onViewParticipants}
               onOpenProfile={onOpenProfile}
-              showJoinButton={true} // new prop for visible Join button
             />
           </Animated.View>
         );
@@ -145,6 +151,9 @@ export default function SwipeDeck({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   cardStyle: {
     position: 'absolute',
