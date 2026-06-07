@@ -27,26 +27,23 @@ type ChatMessage = {
   text: string;
   time: string;
   pinned?: boolean;
+  status?: 'pending' | 'sent' | 'failed';
   reactions?: Array<{ label: string; count: number }>;
 };
-
-const initialMessages: ChatMessage[] = [
-  { id: '1', author: 'Mia', text: 'Welcome in. Who is joining tonight?', time: '7:12 PM', reactions: [{ label: 'Going', count: 4 }] },
-  { id: '2', author: 'Ava', text: 'I am in. The rooftop plan looks perfect.', time: '7:15 PM', reactions: [{ label: 'Yes', count: 2 }] },
-  { id: '3', author: 'Avery', text: 'I booked the corner table. Arrive any time after 7:20.', time: '7:18 PM', pinned: true, reactions: [{ label: 'Pinned', count: 1 }] },
-];
 
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
   const { token, user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lockedMessage, setLockedMessage] = useState('');
 
   useEffect(() => {
     if (chatId !== 'general' && token) {
       const loadChat = async () => {
         setLoading(true);
+        setLockedMessage('');
         try {
           const response = await fetchChatRequest(chatId, token);
           const chatData = response.data;
@@ -63,7 +60,8 @@ export default function ChatScreen({ route }: Props) {
           }
         } catch (error) {
           console.warn(error);
-          Alert.alert('Chat unavailable', 'You need to join this activity to access the chat.');
+          setMessages([]);
+          setLockedMessage('You need to join this activity to access the chat.');
         } finally {
           setLoading(false);
         }
@@ -74,15 +72,17 @@ export default function ChatScreen({ route }: Props) {
   }, [chatId, token]);
 
   const sendMessage = async () => {
-    if (!draft.trim()) return;
+    if (!draft.trim() || lockedMessage) return;
     const nextMessage = draft.trim();
+    const tempId = `local-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       {
-        id: String(prev.length + 1),
+        id: tempId,
         author: user?.name || 'You',
         text: nextMessage,
         time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        status: token && chatId !== 'general' ? 'pending' : 'sent',
         reactions: [],
       },
     ]);
@@ -90,7 +90,9 @@ export default function ChatScreen({ route }: Props) {
     if (token && chatId !== 'general') {
       try {
         await sendChatMessageRequest(chatId, nextMessage, token);
+        setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'sent' } : message));
       } catch (error: any) {
+        setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
         Alert.alert('Message not sent', error?.response?.data?.message || 'You need to join this activity to access the chat.');
       }
     }
@@ -100,6 +102,16 @@ export default function ChatScreen({ route }: Props) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (lockedMessage) {
+    return (
+      <View style={styles.lockedContainer}>
+        <Ionicons name="lock-closed-outline" size={34} color={colors.primary} />
+        <Text style={styles.lockedTitle}>Chat locked</Text>
+        <Text style={styles.lockedText}>{lockedMessage}</Text>
       </View>
     );
   }
@@ -130,6 +142,12 @@ export default function ChatScreen({ route }: Props) {
         keyExtractor={(item) => item.id}
         style={styles.messageList}
         contentContainerStyle={styles.messageContent}
+        ListEmptyComponent={
+          <View style={styles.emptyChat}>
+            <Text style={styles.emptyChatTitle}>No messages yet.</Text>
+            <Text style={styles.emptyChatText}>Start the conversation.</Text>
+          </View>
+        }
         renderItem={({ item }) => {
           const isMe = item.author === user?.name || item.author === 'You';
           return (
@@ -147,6 +165,8 @@ export default function ChatScreen({ route }: Props) {
                   <Text style={styles.messageTime}>{item.time}</Text>
                 </View>
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text}</Text>
+                {item.status === 'pending' ? <Text style={styles.messageStatus}>Sending...</Text> : null}
+                {item.status === 'failed' ? <Text style={styles.messageStatusFailed}>Failed to send</Text> : null}
                 {item.reactions?.length ? (
                   <View style={styles.reactionsRow}>
                     {item.reactions.map((reaction) => (
@@ -199,6 +219,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  lockedContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  lockedTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: spacing.md,
+  },
+  lockedText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginTop: spacing.sm,
+  },
   shell: {
     flex: 1,
     width: '100%',
@@ -243,6 +282,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
+    flexGrow: 1,
+  },
+  emptyChat: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  emptyChatTitle: {
+    color: colors.text,
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  emptyChatText: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   messageRow: {
     flexDirection: 'row',
@@ -312,6 +367,17 @@ const styles = StyleSheet.create({
   messageTextMe: {
     color: colors.primaryText,
     fontWeight: '700',
+  },
+  messageStatus: {
+    color: colors.textSubtle,
+    fontSize: 11,
+    marginTop: spacing.xs,
+  },
+  messageStatusFailed: {
+    color: colors.danger,
+    fontSize: 11,
+    marginTop: spacing.xs,
+    fontWeight: '800',
   },
   reactionsRow: {
     flexDirection: 'row',

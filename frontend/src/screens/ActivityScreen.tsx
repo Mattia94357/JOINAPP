@@ -19,7 +19,6 @@ import { useAuth } from '../context/AuthContext';
 import { approveJoinRequest, cancelActivityRequest, declineJoinRequest, fetchActivity, joinActivityRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import ParticipantsModal from '../components/ParticipantsModal';
-import { getAvatarUrl } from '../utils/avatar';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { getCuratedActivity } from '../utils/curatedActivities';
 
@@ -49,13 +48,9 @@ type ActivityDetails = {
   hostAvatar?: string;
   participants: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   pendingParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
+  declinedParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   waitlist?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
 };
-
-const discussionPreview = [
-  { author: 'Mia', text: 'Can bring a friend if there is room?', time: '4m' },
-  { author: 'Avery', text: 'Yes, two spots are still open.', time: '2m' },
-];
 
 export default function ActivityScreen({ route, navigation }: Props) {
   const { activityId } = route.params;
@@ -115,6 +110,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
       const status = (await joinActivityRequest(activityId, token)).data?.status;
       if (status === 'pending') {
         Alert.alert('Request sent', 'The host will review your request.');
+      } else if (status === 'declined') {
+        Alert.alert('Request declined', 'The host declined this request.');
       } else if (status === 'waitlisted') {
         Alert.alert('Waitlist joined', 'This activity is full, so you joined the waitlist.');
       } else {
@@ -162,22 +159,27 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
   const isHost = user?.id === activity.hostId;
   const pendingApproval = user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
+  const requestDeclined = user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
   const waitlisted = user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
   const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
   const isCancelled = activity.status === 'cancelled';
   const canOpenChat = alreadyJoined || isHost;
   const joinLabel = alreadyJoined
     ? 'Already joined'
+    : requestDeclined
+      ? 'Request Declined'
     : pendingApproval
-      ? 'Pending Approval'
+      ? 'Request Pending'
       : waitlisted
         ? 'On Waitlist'
         : isCancelled
           ? 'Cancelled'
           : isFull
             ? 'Join Waitlist'
-            : activity.joinApproval === 'manual'
-              ? 'Request to Join'
+            : activity.visibility === 'private'
+              ? 'Ask to Join'
+              : activity.joinApproval === 'manual'
+                ? 'Ask to Join'
               : 'Join activity';
 
   const refreshActivity = async () => {
@@ -236,7 +238,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
             ) : null}
           </View>
           <View>
-            <Text style={styles.title}>{activity.title}</Text>
+            <Text style={styles.title} numberOfLines={3}>{activity.title}</Text>
             <View style={styles.heroMetaRow}>
               <Ionicons name="people-outline" size={16} color="#f5c12d" />
               <Text style={styles.heroMeta}>{capacity} participants</Text>
@@ -353,29 +355,17 @@ export default function ActivityScreen({ route, navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
+        {canOpenChat ? <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Discussion</Text>
-            {canOpenChat ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
+            <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
               <Text style={styles.sectionAction}>Open chat</Text>
-            </TouchableOpacity> : null}
+            </TouchableOpacity>
           </View>
-          {discussionPreview.map((message) => (
-            <View key={`${message.author}-${message.time}`} style={styles.discussionRow}>
-              <Image source={{ uri: getAvatarUrl(message.author) }} style={styles.discussionAvatar} />
-              <View style={styles.discussionBubble}>
-                <View style={styles.discussionMeta}>
-                  <Text style={styles.discussionAuthor}>{message.author}</Text>
-                  <Text style={styles.discussionTime}>{message.time}</Text>
-                </View>
-                <Text style={styles.discussionText}>{message.text}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
+        </View> : null}
 
         <View style={styles.actions}>
-          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || waitlisted || isCancelled) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || waitlisted || isCancelled}>
+          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled}>
             <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
             <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
               {joinLabel}
@@ -503,7 +493,9 @@ const styles = StyleSheet.create({
   },
   heroBadges: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   categoryBadge: {
     backgroundColor: 'rgba(0, 0, 0, 0.68)',
@@ -536,7 +528,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(245, 193, 45, 0.35)',
-    marginLeft: 8,
   },
   visibilityBadgeText: {
     color: '#f5c12d',
@@ -548,7 +539,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    marginLeft: 8,
   },
   cancelledBadgeText: {
     color: '#ffffff',

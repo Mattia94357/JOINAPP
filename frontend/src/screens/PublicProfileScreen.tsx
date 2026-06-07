@@ -118,9 +118,8 @@ export default function PublicProfileScreen({ route }: Props) {
         {languages.map((language) => <Text key={language} style={styles.tagSecondary}>{language}</Text>)}
       </View>
 
-      {profile?.nationality || profile?.ageRange || profile?.instagram ? (
+      {profile?.ageRange || profile?.instagram ? (
         <View style={styles.profileFacts}>
-          {profile?.nationality ? <Text style={styles.factText}>Nationality: {profile.nationality}</Text> : null}
           {profile?.ageRange ? <Text style={styles.factText}>Age range: {profile.ageRange}</Text> : null}
           {profile?.instagram ? <Text style={styles.factText}>Instagram: {profile.instagram}</Text> : null}
         </View>

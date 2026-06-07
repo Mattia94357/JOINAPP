@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { getActivityCoverImage, getVibeForCategory } from './utils/activityAssets';
 import { getAvailabilityTag } from './utils/availability';
+import { normalizeActivityCategory } from './utils/categories';
 
 const getHost = () => {
   const manifest = Constants.manifest ?? Constants.expoConfig ?? {};
@@ -12,26 +13,31 @@ const getHost = () => {
     return envApiUrl;
   }
 
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
       const isIpAddress = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
-      if (isLocal) return 'http://localhost:4000';
-      if (isIpAddress) return `http://${hostname}:4000`;
-      // Production: use your Vercel backend
-      return 'https://joinapp-backend-8lsb.vercel.app';
+      if (isDev && isLocal) return 'http://localhost:4000';
+      if (isDev && isIpAddress) return `http://${hostname}:4000`;
+      throw new Error('JOIN API_URL is not configured for this production build.');
     }
-    return 'https://joinapp-backend-8lsb.vercel.app';
+    throw new Error('JOIN API_URL is not configured for this production build.');
   }
 
   const debuggerHost = (manifest as any).debuggerHost as string | undefined;
-  if (debuggerHost) {
+  if (isDev && debuggerHost) {
     const address = debuggerHost.split(':').shift();
     return `http://${address}:4000`;
   }
 
-  return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
+  if (isDev) {
+    return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
+  }
+
+  throw new Error('JOIN API_URL is not configured for this production build.');
 };
 
 const BASE_URL = getHost();
@@ -56,7 +62,6 @@ export type ApiUser = {
   bio?: string;
   aboutMe?: string;
   languages?: string[];
-  nationality?: string;
   instagram?: string;
   ageRange?: string;
   hostRating?: number;
@@ -72,7 +77,8 @@ export type ApiUser = {
 };
 
 export type RawAvatarUser = {
-  _id: string;
+  _id?: string;
+  id?: string;
   name: string;
   avatar?: string;
   profilePictureUrl?: string;
@@ -109,6 +115,7 @@ export type RawActivity = {
   activityRating?: number;
   reviewCount?: number;
   pendingParticipants?: RawAvatarUser[];
+  declinedParticipants?: RawAvatarUser[];
   waitlist?: RawAvatarUser[];
   host: RawAvatarUser;
   participants: RawAvatarUser[];
@@ -151,16 +158,18 @@ export type ActivityResponse = {
   hostAvatar?: string;
   participants: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string; verified?: boolean }>;
   pendingParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string; verified?: boolean }>;
+  declinedParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string; verified?: boolean }>;
   waitlist?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string; verified?: boolean }>;
   joined?: boolean;
   pending?: boolean;
+  declined?: boolean;
   waitlisted?: boolean;
   saved?: boolean;
   chatId?: string;
 };
 
 const mapParticipant = (participant: RawAvatarUser) => ({
-  id: participant._id,
+  id: participant._id || participant.id,
   name: participant.name,
   avatar: participant.profileThumbnailUrl || participant.profilePictureUrl || (participant.profileCompleted ? participant.avatar : undefined),
   profilePictureUrl: participant.profilePictureUrl,
@@ -181,13 +190,13 @@ export const fetchActivities = async (token?: string) => {
   return response.data.map((activity) => ({
     id: activity._id,
     title: activity.title,
-    category: activity.category,
+    category: normalizeActivityCategory(activity.category),
     location: activity.location,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
-    vibe: activity.vibe || getVibeForCategory(activity.category),
+    vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
     visibility: activity.visibility || 'public',
@@ -197,13 +206,14 @@ export const fetchActivities = async (token?: string) => {
     galleryImages: activity.galleryImages || [],
     activityRating: activity.activityRating,
     reviewCount: activity.reviewCount,
-    coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity._id),
+    coverImage: activity.coverImage || getActivityCoverImage(normalizeActivityCategory(activity.category), activity._id),
     availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
-    hostId: activity.host?._id || '',
+    hostId: activity.host?._id || activity.host?.id || '',
     hostAvatar: activity.host?.profileThumbnailUrl || activity.host?.profilePictureUrl || (activity.host?.profileCompleted ? activity.host?.avatar : undefined),
     participants: activity.participants?.map(mapParticipant) || [],
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
+    declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
   }));
 };
@@ -216,13 +226,13 @@ export const fetchActivity = async (activityId: string, token?: string) => {
   return {
     id: activity._id,
     title: activity.title,
-    category: activity.category,
+    category: normalizeActivityCategory(activity.category),
     location: activity.location,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
-    vibe: activity.vibe || getVibeForCategory(activity.category),
+    vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
     visibility: activity.visibility || 'public',
@@ -232,13 +242,14 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     galleryImages: activity.galleryImages || [],
     activityRating: activity.activityRating,
     reviewCount: activity.reviewCount,
-    coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity._id),
+    coverImage: activity.coverImage || getActivityCoverImage(normalizeActivityCategory(activity.category), activity._id),
     availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
-    hostId: activity.host?._id || '',
+    hostId: activity.host?._id || activity.host?.id || '',
     hostAvatar: activity.host?.profileThumbnailUrl || activity.host?.profilePictureUrl || (activity.host?.profileCompleted ? activity.host?.avatar : undefined),
     participants: activity.participants?.map(mapParticipant) || [],
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
+    declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
   };
 };
@@ -307,7 +318,7 @@ export const updateProfilePhotoRequest = async (profilePictureUrl: string, token
   );
 
 export const updateProfileRequest = async (
-  payload: Partial<Pick<ApiUser, 'bio' | 'aboutMe' | 'location' | 'languages' | 'interests' | 'nationality' | 'instagram' | 'ageRange' | 'hasCompletedOnboardingTutorial'>>,
+  payload: Partial<Pick<ApiUser, 'bio' | 'aboutMe' | 'location' | 'languages' | 'interests' | 'instagram' | 'ageRange' | 'hasCompletedOnboardingTutorial'>>,
   token: string,
 ) =>
   api.patch<ApiUser>('/api/users/me/profile', payload, {

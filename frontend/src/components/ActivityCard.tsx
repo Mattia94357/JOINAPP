@@ -27,6 +27,7 @@ export type Activity = {
   description: string;
   joined?: boolean;
   pending?: boolean;
+  declined?: boolean;
   waitlisted?: boolean;
   saved?: boolean;
   chatId?: string;
@@ -59,16 +60,20 @@ export default function ActivityCard({
   const isFull = activity.status === 'full' || spotsLeft === 0;
   const primaryLabel = activity.joined
     ? 'Open Chat'
+    : activity.declined
+      ? 'Request Declined'
     : activity.pending
-      ? 'Pending Approval'
+      ? 'Request Pending'
       : activity.waitlisted
         ? 'On Waitlist'
         : isClosed
           ? 'Unavailable'
           : isFull
             ? 'Join Waitlist'
-            : activity.joinApproval === 'manual'
-              ? 'Request to Join'
+            : activity.visibility === 'private'
+              ? 'Ask to Join'
+              : activity.joinApproval === 'manual'
+                ? 'Ask to Join'
               : 'Join Activity';
 
   return (
@@ -157,9 +162,9 @@ export default function ActivityCard({
       {/* Join / Chat / Details */}
       <View style={styles.actionRow}>
         <TouchableOpacity
-          style={[styles.joinButton, activity.joined && styles.joinedButton, (activity.pending || activity.waitlisted || isClosed) && styles.disabledButton]}
+          style={[styles.joinButton, activity.joined && styles.joinedButton, (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton]}
           onPress={activity.joined ? onOpenChat : onJoin}
-          disabled={activity.pending || activity.waitlisted || isClosed}
+          disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
         >
           <Ionicons
             name={activity.joined ? 'chatbubbles-outline' : 'checkmark-circle-outline'}

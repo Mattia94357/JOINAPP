@@ -6,20 +6,7 @@ import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Notifications'>;
 
-const notifications = [
-  {
-    title: 'New activity nearby',
-    body: 'Sunset rooftop dinner is now open for RSVP at 7:30 PM.',
-  },
-  {
-    title: 'Booking confirmed',
-    body: 'You have secured a spot in the Creative co-working lounge.',
-  },
-  {
-    title: 'Host message',
-    body: 'Jordan updated the hike route to make it more scenic.',
-  },
-];
+const notifications: Array<{ title: string; body: string }> = [];
 
 export default function NotificationsScreen({ navigation }: Props) {
   return (
@@ -27,12 +14,17 @@ export default function NotificationsScreen({ navigation }: Props) {
       <Text style={styles.title}>Notifications</Text>
       <Text style={styles.subtitle}>Real-time updates for your upcoming experiences.</Text>
 
-      {notifications.map((notification, index) => (
+      {notifications.length ? notifications.map((notification, index) => (
         <View key={index} style={styles.notificationCard}>
           <Text style={styles.notificationTitle}>{notification.title}</Text>
           <Text style={styles.notificationBody}>{notification.body}</Text>
         </View>
-      ))}
+      )) : (
+        <View style={styles.notificationCard}>
+          <Text style={styles.notificationTitle}>No notifications yet</Text>
+          <Text style={styles.notificationBody}>Updates about joined activities, chat messages, and requests will appear here.</Text>
+        </View>
+      )}
 
       <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Home')}>
         <Text style={styles.actionText}>Return to feed</Text>

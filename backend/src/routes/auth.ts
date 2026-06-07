@@ -14,7 +14,18 @@ const passwordStrengthMessage = 'Password must be at least 8 characters and incl
 
 const hashResetToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
-const getFrontendUrl = () => process.env.FRONTEND_URL || 'http://localhost:19007';
+const isProduction = () => process.env.NODE_ENV === 'production';
+const logAuthDebug = (message: string, error?: unknown) => {
+  if (!isProduction()) {
+    error ? console.warn(message, error) : console.log(message);
+  }
+};
+
+const getFrontendUrl = () => {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+  if (!isProduction()) return 'http://localhost:19007';
+  return '';
+};
 
 const isStrongPassword = (password: string) => password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
 
@@ -33,7 +44,6 @@ const publicUserPayload = (user: any) => ({
   bio: user.bio,
   aboutMe: user.aboutMe,
   languages: user.languages || [],
-  nationality: user.nationality,
   instagram: user.instagram,
   ageRange: user.ageRange,
   hostRating: user.hostRating,
@@ -52,10 +62,10 @@ router.post(
   '/register',
   body('name').notEmpty(),
   body('email').isEmail(),
-  body('password').isLength({ min: 6 }),
+  body('password').custom(isStrongPassword),
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ message: passwordStrengthMessage });
 
     const { name, email, password } = req.body;
     const existing = await User.findOne({ email });
@@ -75,10 +85,10 @@ router.post(
   '/forgot-password',
   body('email').isEmail(),
   async (req, res) => {
-    console.log('[auth:forgot-password] Request received');
+    logAuthDebug('[auth:forgot-password] Request received');
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.warn('[auth:forgot-password] Invalid email submitted');
+      logAuthDebug('[auth:forgot-password] Invalid email submitted');
       return res.status(400).json({ message: 'Enter a valid email address.' });
     }
 
@@ -86,24 +96,29 @@ router.post(
     const user = await User.findOne({ email: String(email).toLowerCase() });
 
     if (!user) {
-      console.log('[auth:forgot-password] User not found');
+      logAuthDebug('[auth:forgot-password] User not found');
       return res.json({ message: genericResetMessage });
     }
 
-    console.log(`[auth:forgot-password] User found: ${user.id}`);
+    logAuthDebug('[auth:forgot-password] User found');
     const resetToken = crypto.randomBytes(32).toString('hex');
-    console.log('[auth:forgot-password] Reset token generated');
+    logAuthDebug('[auth:forgot-password] Reset token generated');
     user.passwordResetTokenHash = hashResetToken(resetToken);
     user.passwordResetExpires = new Date(Date.now() + resetTokenMinutes * 60 * 1000);
     await user.save();
-    console.log(`[auth:forgot-password] Reset token saved to MongoDB. Expires in ${resetTokenMinutes} minutes.`);
+    logAuthDebug(`[auth:forgot-password] Reset token saved to MongoDB. Expires in ${resetTokenMinutes} minutes.`);
 
-    const resetUrl = `${getFrontendUrl()}/reset-password?token=${resetToken}`;
+    const frontendUrl = getFrontendUrl();
+    if (!frontendUrl) {
+      console.warn('[auth:forgot-password] FRONTEND_URL missing in production.');
+      return res.status(503).json({ message: 'Password reset is temporarily unavailable. Contact support.' });
+    }
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     try {
-      console.log(`[auth:forgot-password] Reset email send attempted. SMTP configured: ${isMailConfigured()}`);
+      logAuthDebug(`[auth:forgot-password] Reset email send attempted. SMTP configured: ${isMailConfigured()}`);
       const sent = await sendPasswordResetEmail(user.email, resetUrl);
-      console.log(`[auth:forgot-password] Reset email ${sent ? 'sent successfully' : 'not sent because SMTP is missing'}`);
+      logAuthDebug(`[auth:forgot-password] Reset email ${sent ? 'sent successfully' : 'not sent because SMTP is missing'}`);
       if (!sent && !isDevelopment()) {
         return res.status(503).json({ message: 'Password reset email is not configured. Contact support.' });
       }
@@ -121,7 +136,8 @@ router.post(
         ...devPayload,
       });
     } catch (error) {
-      console.error('[auth:forgot-password] Reset email send failed', error);
+      logAuthDebug('[auth:forgot-password] Reset email send failed', error);
+      if (isProduction()) console.warn('[auth:forgot-password] Reset email send failed.');
       return res.status(500).json({ message: 'Unable to send reset email. Check mail server configuration.' });
     }
   }
@@ -132,10 +148,10 @@ router.post(
   body('token').isString().notEmpty(),
   body('password').custom(isStrongPassword),
   async (req, res) => {
-    console.log('[auth:reset-password] Request received');
+    logAuthDebug('[auth:reset-password] Request received');
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.warn('[auth:reset-password] Invalid request payload');
+      logAuthDebug('[auth:reset-password] Invalid request payload');
       return res.status(400).json({ message: passwordStrengthMessage });
     }
 
@@ -146,21 +162,21 @@ router.post(
     });
 
     if (!user) {
-      console.warn('[auth:reset-password] Invalid reset token');
+      logAuthDebug('[auth:reset-password] Invalid reset token');
       return res.status(400).json({ message: 'Reset token is invalid. Request a new password reset link.' });
     }
 
     if (!user.passwordResetExpires || user.passwordResetExpires <= new Date()) {
-      console.warn(`[auth:reset-password] Expired reset token for user: ${user.id}`);
+      logAuthDebug('[auth:reset-password] Expired reset token');
       return res.status(400).json({ message: 'Reset token has expired. Request a new password reset link.' });
     }
 
-    console.log(`[auth:reset-password] Reset token valid for user: ${user.id}`);
+    logAuthDebug('[auth:reset-password] Reset token valid');
     user.password = await bcrypt.hash(password, 10);
     user.passwordResetTokenHash = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
-    console.log(`[auth:reset-password] Password updated successfully for user: ${user.id}. Reset token cleared.`);
+    logAuthDebug('[auth:reset-password] Password updated successfully. Reset token cleared.');
 
     res.json({ message: 'Password updated. You can now log in.' });
   }

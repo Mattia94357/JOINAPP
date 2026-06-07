@@ -1,5 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
+import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import User from '../models/User';
 import Activity from '../models/Activity';
@@ -37,7 +38,6 @@ const userPayload = (user: any) => ({
   bio: user.bio,
   aboutMe: user.aboutMe,
   languages: user.languages || [],
-  nationality: user.nationality,
   instagram: user.instagram,
   ageRange: user.ageRange,
   hostRating: user.hostRating,
@@ -52,6 +52,26 @@ const userPayload = (user: any) => ({
   joinedActivitiesPublic: user.joinedActivitiesPublic,
 });
 
+const publicUserPayload = (user: any) => ({
+  id: user.id,
+  name: user.name,
+  avatar: user.profileThumbnailUrl || user.profilePictureUrl || (user.profileCompleted ? user.avatar : undefined),
+  profilePictureUrl: user.profilePictureUrl,
+  profileThumbnailUrl: user.profileThumbnailUrl,
+  bio: user.bio,
+  aboutMe: user.aboutMe,
+  location: user.locationPublic ? user.location : undefined,
+  languages: user.languages || [],
+  interests: user.interests || [],
+  instagram: user.instagram,
+  verified: user.verified,
+  hostRating: user.hostRating,
+  activityRating: user.activityRating,
+  reviewCount: user.reviewCount,
+  hostedCount: user.hostedCount,
+  joinedCount: user.joinedCount,
+});
+
 router.patch(
   '/me/profile',
   auth,
@@ -60,7 +80,6 @@ router.patch(
   body('location').optional().isString().isLength({ max: 120 }),
   body('languages').optional().isArray({ max: 12 }),
   body('interests').optional().isArray({ max: 20 }),
-  body('nationality').optional().isString().isLength({ max: 80 }),
   body('instagram').optional().isString().isLength({ max: 80 }),
   body('ageRange').optional().isString().isLength({ max: 40 }),
   body('hasCompletedOnboardingTutorial').optional().isBoolean(),
@@ -78,7 +97,6 @@ router.patch(
     assignString('bio');
     assignString('aboutMe');
     assignString('location');
-    assignString('nationality');
     assignString('instagram');
     assignString('ageRange');
     if (Array.isArray(req.body.languages)) user.languages = req.body.languages.map((item: string) => String(item).trim()).filter(Boolean).slice(0, 12);
@@ -175,6 +193,10 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Report reason is too long.' });
 
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     const reportedUser = await User.findById(req.params.id);
     if (!reportedUser) return res.status(404).json({ message: 'User not found' });
 
@@ -190,6 +212,10 @@ router.post(
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.
 router.post('/:id/block', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'User to block not found' });
+  }
+
   if (req.params.id === req.userId) {
     return res.status(400).json({ message: 'You cannot block yourself.' });
   }
@@ -212,6 +238,10 @@ router.post('/:id/block', auth, async (req: AuthRequest, res) => {
 
 // Removes a user from the signed-in user's block list.
 router.post('/:id/unblock', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
 
@@ -222,19 +252,22 @@ router.post('/:id/unblock', auth, async (req: AuthRequest, res) => {
 });
 
 router.get('/:id', async (req, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
   const user = await User.findById(req.params.id).select('-password -passwordResetTokenHash -passwordResetExpires');
   if (!user) return res.status(404).json({ message: 'User not found' });
 
   const hostedActivities = user.hostedActivitiesPublic
-    ? await Activity.find({ host: user.id, visibility: { $ne: 'private' } }).sort({ createdAt: -1 }).limit(5).select('title category location date')
+    ? await Activity.find({ host: user.id }).sort({ createdAt: -1 }).limit(5).select('title category location date visibility')
     : [];
   const joinedActivities = user.joinedActivitiesPublic
-    ? await Activity.find({ participants: user.id, visibility: { $ne: 'private' } }).sort({ createdAt: -1 }).limit(5).select('title category location date')
+    ? await Activity.find({ participants: user.id }).sort({ createdAt: -1 }).limit(5).select('title category location date visibility')
     : [];
 
   res.json({
-    ...userPayload(user),
-    location: user.locationPublic ? user.location : undefined,
+    ...publicUserPayload(user),
     hostedActivities,
     joinedActivities,
   });

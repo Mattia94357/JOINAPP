@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,9 +21,10 @@ import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest, updatePushTokenRequest } from '../api';
 import { curatedActivities } from '../utils/curatedActivities';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
+import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
 
-const categories = ['All', 'Wellness', 'Food', 'Networking', 'Adventure'];
+const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -81,6 +83,7 @@ export default function HomeScreen({ navigation }: Props) {
         ? activity.participants.some((participant) => participant.id === user.id || participant.name === user.name)
         : false,
       pending: user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
+      declined: user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
       waitlisted: user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
       saved: user ? user.savedActivities?.some((id) => id === activity.id) : false,
     }));
@@ -115,6 +118,8 @@ export default function HomeScreen({ navigation }: Props) {
       const status = response.data?.status;
       if (status === 'pending') {
         Alert.alert('Request sent', 'The host will review your request.');
+      } else if (status === 'declined') {
+        Alert.alert('Request declined', 'The host declined this request.');
       } else if (status === 'waitlisted') {
         Alert.alert('Waitlist joined', 'This activity is full, so you joined the waitlist.');
       } else {
@@ -149,7 +154,13 @@ export default function HomeScreen({ navigation }: Props) {
     }
 
     try {
-      await saveActivityRequest(activity.id, token);
+      const response = await saveActivityRequest(activity.id, token);
+      if (user && response.data?.savedActivities) {
+        await updateUser({
+          ...user,
+          savedActivities: response.data.savedActivities.map((id: any) => String(id)),
+        });
+      }
       setActivities((prev) => prev.map((item) => item.id === activity.id ? { ...item, saved: !item.saved } : item));
     } catch (error: any) {
       Alert.alert('Unable to save', error?.response?.data?.message || 'Please try again.');
@@ -179,6 +190,8 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const activeFeed = filteredActivities.length > 0 ? filteredActivities : curatedActivities;
+  const hasNoCategoryResults = !loading && selectedCategory !== 'All' && activities.length > 0 && filteredActivities.length === 0;
+  const visibleFeed = hasNoCategoryResults ? [] : activeFeed;
 
   return (
     <SafeAreaView style={[styles.container, compact && styles.containerCompact]}>
@@ -227,8 +240,8 @@ export default function HomeScreen({ navigation }: Props) {
           <ActivityIndicator color={colors.primary} size="large" />
         ) : (
           <SwipeDeck
-            key={`${selectedCategory}-${activeFeed.length}`}
-            activities={activeFeed}
+            key={`${selectedCategory}-${visibleFeed.length}`}
+            activities={visibleFeed}
             onSwipeLeft={() => setMessage('Skipped. Keep browsing quality plans.')}
             onSwipeRight={handleJoinActivity}
             onSave={handleSaveActivity}
@@ -240,6 +253,7 @@ export default function HomeScreen({ navigation }: Props) {
         )}
       </View>
 
+      {hasNoCategoryResults ? <Text style={styles.statusText}>No {selectedCategory} activities yet. Try another category or host the first one.</Text> : null}
       {message ? <Text style={styles.statusText}>{message}</Text> : null}
 
       <ParticipantsModal
@@ -325,28 +339,30 @@ export default function HomeScreen({ navigation }: Props) {
           <View style={styles.categoryModal}>
             <Text style={styles.modalTitle}>Browse Categories</Text>
 
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.modalCategoryItem,
-                  selectedCategory === category && styles.modalCategoryItemActive,
-                ]}
-                onPress={() => {
-                  setSelectedCategory(category);
-                  setCategoryModalVisible(false);
-                }}
-              >
-                <Text
+            <ScrollView style={styles.categoryList} showsVerticalScrollIndicator={false}>
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category}
                   style={[
-                    styles.modalCategoryText,
-                    selectedCategory === category && styles.modalCategoryTextActive,
+                    styles.modalCategoryItem,
+                    selectedCategory === category && styles.modalCategoryItemActive,
                   ]}
+                  onPress={() => {
+                    setSelectedCategory(category);
+                    setCategoryModalVisible(false);
+                  }}
                 >
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.modalCategoryText,
+                      selectedCategory === category && styles.modalCategoryTextActive,
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.modalCloseButton}
@@ -543,6 +559,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.sm,
     backgroundColor: colors.background,
+  },
+  categoryList: {
+    maxHeight: 420,
   },
   modalCategoryItemActive: {
     backgroundColor: colors.primary,

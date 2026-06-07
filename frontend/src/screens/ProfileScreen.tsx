@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -61,7 +62,6 @@ export default function ProfileScreen({ navigation }: Props) {
   const [profileLocation, setProfileLocation] = useState(user?.location || '');
   const [languagesText, setLanguagesText] = useState((user?.languages || []).join(', '));
   const [interestsText, setInterestsText] = useState((user?.interests || []).join(', '));
-  const [nationality, setNationality] = useState(user?.nationality || '');
   const [instagram, setInstagram] = useState(user?.instagram || '');
   const [ageRange, setAgeRange] = useState(user?.ageRange || '');
 
@@ -143,7 +143,8 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const openPolicyLink = (path: string) => {
-    Linking.openURL(`https://joinapp.app/${path}`).catch(() => {
+    const legalBaseUrl = (Constants.expoConfig?.extra as any)?.LEGAL_BASE_URL || 'https://joinapp.app';
+    Linking.openURL(`${legalBaseUrl.replace(/\/$/, '')}/${path}`).catch(() => {
       Alert.alert('Link unavailable', 'This link could not be opened right now.');
     });
   };
@@ -183,7 +184,6 @@ export default function ProfileScreen({ navigation }: Props) {
           location: profileLocation.trim(),
           languages: languagesText.split(',').map((item) => item.trim()).filter(Boolean),
           interests: interestsText.split(',').map((item) => item.trim()).filter(Boolean),
-          nationality: nationality.trim(),
           instagram: instagram.trim(),
           ageRange: ageRange.trim(),
         },
@@ -287,7 +287,6 @@ export default function ProfileScreen({ navigation }: Props) {
         <TextInput value={profileLocation} onChangeText={setProfileLocation} style={styles.input} placeholder="Location, e.g. Phuket" placeholderTextColor={colors.textSubtle} />
         <TextInput value={languagesText} onChangeText={setLanguagesText} style={styles.input} placeholder="Languages, comma separated" placeholderTextColor={colors.textSubtle} />
         <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
-        <TextInput value={nationality} onChangeText={setNationality} style={styles.input} placeholder="Nationality optional" placeholderTextColor={colors.textSubtle} />
         <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
         <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
         <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
@@ -325,7 +324,7 @@ export default function ProfileScreen({ navigation }: Props) {
             <Ionicons name="bookmark-outline" size={16} color={colors.primary} />
             <View style={styles.activityTextBlock}>
               <Text style={styles.activityTitle}>{user?.savedActivities?.length || 0} saved plans</Text>
-              <Text style={styles.activityMeta}>Return to Home to keep browsing your saved activities.</Text>
+              <Text style={styles.activityMeta}>{user?.savedActivities?.length ? 'Return to Home to keep browsing your saved activities.' : 'No saved activities yet. Use the bookmark button on activity cards.'}</Text>
             </View>
           </View>
         </View>

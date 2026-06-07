@@ -115,7 +115,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           <Text style={styles.description}>{slides[current].description}</Text>
           <View style={styles.swipeHint}>
             <Ionicons name="arrow-back-outline" size={14} color={colors.textSubtle} />
-            <Text style={styles.swipeHintText}>Swipe to explore</Text>
+            <Text style={styles.swipeHintText}>Explore activities</Text>
             <Ionicons name="arrow-forward-outline" size={14} color={colors.textSubtle} />
           </View>
         </Animated.View>

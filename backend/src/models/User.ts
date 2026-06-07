@@ -15,7 +15,6 @@ export interface IUser extends Document {
   bio?: string;
   aboutMe?: string;
   languages?: string[];
-  nationality?: string;
   instagram?: string;
   ageRange?: string;
   hostRating?: number;
@@ -48,7 +47,6 @@ const UserSchema = new Schema<IUser>({
   bio: { type: String },
   aboutMe: { type: String },
   languages: [{ type: String }],
-  nationality: { type: String },
   instagram: { type: String },
   ageRange: { type: String },
   hostRating: { type: Number, default: 4.8 },

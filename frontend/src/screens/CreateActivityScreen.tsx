@@ -5,9 +5,11 @@ import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { createActivityRequest } from '../api';
 import { colors, spacing } from '../theme';
+import { activityCategories } from '../utils/categories';
 
-const categoryOptions = ['Wellness', 'Food', 'Networking', 'Adventure', 'Culture'];
+const categoryOptions = activityCategories;
 const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
+const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateActivity'>;
 
@@ -53,6 +55,12 @@ export default function CreateActivityScreen({ navigation }: Props) {
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     if (costType === 'Paid' && Number(costAmount || 0) <= 0) return showError('Enter a cost amount or choose Free.');
     const galleryImages = galleryImagesText.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 5);
+    if (coverImage.trim() && !imageUrlPattern.test(coverImage.trim())) {
+      return showError('Use a valid JPEG, PNG, or WEBP cover image URL.');
+    }
+    if (galleryImages.some((image) => !imageUrlPattern.test(image))) {
+      return showError('Gallery images must be valid JPEG, PNG, or WEBP URLs.');
+    }
 
     if (!token) {
       Alert.alert('Unauthorized', 'Log in to post an activity.');

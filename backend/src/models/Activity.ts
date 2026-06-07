@@ -8,6 +8,7 @@ export interface IActivity extends Document {
   host: Types.ObjectId;
   participants: Types.ObjectId[];
   pendingParticipants?: Types.ObjectId[];
+  declinedParticipants?: Types.ObjectId[];
   waitlist?: Types.ObjectId[];
   invitedUsers?: Types.ObjectId[];
   date: Date;
@@ -33,6 +34,7 @@ const ActivitySchema = new Schema<IActivity>({
   host: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   participants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   pendingParticipants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  declinedParticipants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   waitlist: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   invitedUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   date: { type: Date, default: Date.now },

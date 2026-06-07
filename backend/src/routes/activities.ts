@@ -1,12 +1,30 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
+import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import Activity from '../models/Activity';
 import User from '../models/User';
 
 const router = express.Router();
-const participantFields = 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests nationality ageRange activityRating reviewCount';
+const allowedCategories = [
+  'Wellness',
+  'Food',
+  'Networking',
+  'Adventure',
+  'Sports',
+  'Fitness',
+  'Beach',
+  'Nightlife',
+  'Travel',
+  'Dating & Singles',
+  'Culture',
+  'Music',
+  'Coworking',
+  'Other',
+];
+const participantFields = 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
+const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 
 const getRequesterId = (req: express.Request) => {
   const header = req.headers.authorization;
@@ -21,7 +39,7 @@ const getRequesterId = (req: express.Request) => {
 };
 
 const idInList = (list: any[] | undefined, id?: string) =>
-  Boolean(id && (list || []).some((item) => item?.toString() === id));
+  Boolean(id && (list || []).some((item) => (item?._id?.toString?.() || item?.toString?.()) === id));
 
 const isBlockedBetween = (first: any, second: any) => {
   const firstBlocked = (first?.blockedUsers || []).some((id: any) => id.toString() === second?.id);
@@ -31,11 +49,13 @@ const isBlockedBetween = (first: any, second: any) => {
 
 const canAccessActivity = (activity: any, userId?: string, inviteCode?: string) => {
   if (activity.visibility !== 'private') return true;
+  if (!userId && !inviteCode) return true;
   if (inviteCode && activity.inviteCode && inviteCode === activity.inviteCode) return true;
   return (
     idInList([activity.host], userId) ||
     idInList(activity.participants, userId) ||
     idInList(activity.pendingParticipants, userId) ||
+    idInList(activity.declinedParticipants, userId) ||
     idInList(activity.invitedUsers, userId)
   );
 };
@@ -49,22 +69,77 @@ const updateCapacityStatus = (activity: any) => {
   }
 };
 
+const publicPersonPayload = (user: any) => ({
+  id: user?.id || user?._id?.toString(),
+  name: user?.name,
+  avatar: user?.profileThumbnailUrl || user?.profilePictureUrl || (user?.profileCompleted ? user?.avatar : undefined),
+  profilePictureUrl: user?.profilePictureUrl,
+  profileThumbnailUrl: user?.profileThumbnailUrl,
+  verified: user?.verified,
+});
+
+const activityPayload = (activity: any, viewerId?: string) => {
+  const isHost = activity.host?._id?.toString?.() === viewerId || activity.host?.toString?.() === viewerId;
+  const participants = activity.participants || [];
+  const pendingParticipants = activity.pendingParticipants || [];
+  const declinedParticipants = activity.declinedParticipants || [];
+  const waitlist = activity.waitlist || [];
+  const viewerPending = idInList(pendingParticipants, viewerId);
+  const viewerDeclined = idInList(declinedParticipants, viewerId);
+  const viewerWaitlisted = idInList(waitlist, viewerId);
+  const safePayload: any = {
+    ...activity.toObject(),
+    host: publicPersonPayload(activity.host),
+    participants: participants.map(publicPersonPayload),
+    participantCount: participants.length,
+    spotsLeft: activity.maxAttendees ? Math.max(activity.maxAttendees - participants.length, 0) : undefined,
+  };
+
+  delete safePayload.pendingParticipants;
+  delete safePayload.declinedParticipants;
+  delete safePayload.waitlist;
+  delete safePayload.invitedUsers;
+  delete safePayload.inviteCode;
+
+  if (isHost) {
+    safePayload.pendingParticipants = pendingParticipants.map(publicPersonPayload);
+    safePayload.declinedParticipants = declinedParticipants.map(publicPersonPayload);
+    safePayload.waitlist = waitlist.map(publicPersonPayload);
+  } else {
+    safePayload.viewerJoinStatus = viewerPending
+      ? 'pending'
+      : viewerDeclined
+        ? 'declined'
+        : viewerWaitlisted
+          ? 'waitlisted'
+          : undefined;
+  }
+
+  return safePayload;
+};
+
 router.get('/', async (req, res) => {
-  const activities = await Activity.find({ visibility: { $ne: 'private' } })
+  const userId = getRequesterId(req);
+  const activities = await Activity.find()
     .populate('host', participantFields)
-    .populate('participants', participantFields);
-  res.json(activities);
+    .populate('participants', participantFields)
+    .populate('pendingParticipants', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified')
+    .populate('declinedParticipants', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified')
+    .populate('waitlist', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified');
+  res.json(activities.map((activity) => activityPayload(activity, userId)));
 });
 
 router.post(
   '/',
   auth,
   body('title').notEmpty(),
-  body('category').notEmpty(),
+  body('category').optional().isString(),
   body('location').notEmpty(),
   body('description').isLength({ min: 20 }),
   body('date').notEmpty(),
   body('maxAttendees').isInt({ min: 2 }),
+  body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
+  body('galleryImages').optional().isArray({ max: 5 }),
   async (req: AuthRequest, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -91,15 +166,23 @@ router.post(
       joinApproval,
       galleryImages,
     } = req.body;
+    const gallery = Array.isArray(galleryImages) ? galleryImages.map((image) => String(image).trim()).filter(Boolean).slice(0, 5) : [];
+    if (coverImage && !imageUrlPattern.test(String(coverImage))) {
+      return res.status(400).json({ message: 'Use a valid JPEG, PNG, or WEBP cover image URL.' });
+    }
+    if (gallery.some((image) => !imageUrlPattern.test(image))) {
+      return res.status(400).json({ message: 'Gallery images must be valid JPEG, PNG, or WEBP URLs.' });
+    }
+
     const activity = new Activity({
       title,
-      category,
+      category: allowedCategories.includes(category) ? category : 'Other',
       location,
       description,
       date: date ? new Date(date) : new Date(),
       vibe,
       coverImage,
-      galleryImages: Array.isArray(galleryImages) ? galleryImages.slice(0, 5) : [],
+      galleryImages: gallery,
       maxAttendees,
       visibility: visibility === 'private' ? 'private' : 'public',
       joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
@@ -124,20 +207,29 @@ router.post(
 );
 
 router.get('/:id', async (req, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
   const userId = getRequesterId(req);
   const activity = await Activity.findById(req.params.id)
     .populate('host', participantFields)
     .populate('participants', participantFields)
     .populate('pendingParticipants', participantFields)
+    .populate('declinedParticipants', participantFields)
     .populate('waitlist', participantFields);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (!canAccessActivity(activity, userId, req.query.inviteCode as string | undefined)) {
     return res.status(403).json({ message: 'This private activity is invite-only.' });
   }
-  res.json(activity);
+  res.json(activityPayload(activity, userId));
 });
 
 router.post('/:id/join', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
   if (!user.profileCompleted || !user.profilePictureUrl) {
@@ -153,9 +245,6 @@ router.post('/:id/join', auth, async (req: AuthRequest, res) => {
   if (host && isBlockedBetween(user, host)) {
     return res.status(403).json({ message: 'You cannot join this activity.' });
   }
-  if (activity.visibility === 'private' && !idInList(activity.invitedUsers, req.userId) && activity.host.toString() !== req.userId) {
-    return res.status(403).json({ message: 'This private activity is invite-only.' });
-  }
   if (activity.status === 'cancelled') {
     return res.status(400).json({ message: 'This activity has been cancelled.' });
   }
@@ -166,6 +255,9 @@ router.post('/:id/join', auth, async (req: AuthRequest, res) => {
   if (activity.pendingParticipants?.some((participant) => participant.toString() === req.userId)) {
     return res.json({ status: 'pending', message: 'Pending approval.' });
   }
+  if (activity.declinedParticipants?.some((participant) => participant.toString() === req.userId)) {
+    return res.json({ status: 'declined', message: 'Request declined.' });
+  }
   if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) {
     if (!activity.waitlist?.some((participant) => participant.toString() === req.userId)) {
       activity.waitlist = [...(activity.waitlist || []), req.userId as any];
@@ -174,7 +266,7 @@ router.post('/:id/join', auth, async (req: AuthRequest, res) => {
     return res.json({ status: 'waitlisted', message: 'Activity full. You joined the waitlist.' });
   }
 
-  if (activity.joinApproval === 'manual' && activity.host.toString() !== req.userId) {
+  if ((activity.joinApproval === 'manual' || activity.visibility === 'private') && activity.host.toString() !== req.userId) {
     activity.pendingParticipants = [...(activity.pendingParticipants || []), req.userId as any];
     await activity.save();
     return res.json({ status: 'pending', message: 'Join request sent.' });
@@ -188,6 +280,10 @@ router.post('/:id/join', auth, async (req: AuthRequest, res) => {
 
 // Lets a signed-in user explicitly save an activity without joining it.
 router.post('/:id/save', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
   const user = await User.findById(req.userId);
   const activity = await Activity.findById(req.params.id);
   if (!user) return res.status(404).json({ message: 'User not found' });
@@ -203,12 +299,17 @@ router.post('/:id/save', auth, async (req: AuthRequest, res) => {
 
 // Host-only endpoint for approving a manual join request.
 router.post('/:id/approve/:userId', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
+    return res.status(404).json({ message: 'Activity or user not found' });
+  }
+
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can approve requests.' });
   if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return res.status(400).json({ message: 'Activity is full.' });
 
   activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
+  activity.declinedParticipants = (activity.declinedParticipants || []).filter((id) => id.toString() !== req.params.userId);
   if (!idInList(activity.participants, req.params.userId)) {
     activity.participants.push(req.params.userId as any);
   }
@@ -219,17 +320,28 @@ router.post('/:id/approve/:userId', auth, async (req: AuthRequest, res) => {
 
 // Host-only endpoint for declining a manual join request.
 router.post('/:id/decline/:userId', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
+    return res.status(404).json({ message: 'Activity or user not found' });
+  }
+
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can decline requests.' });
 
   activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
+  if (!idInList(activity.declinedParticipants, req.params.userId)) {
+    activity.declinedParticipants = [...(activity.declinedParticipants || []), req.params.userId as any];
+  }
   await activity.save();
   res.json({ message: 'Join request declined.' });
 });
 
 // Host-only cancellation endpoint. Cancelled activities remain readable but cannot be joined.
 router.post('/:id/cancel', auth, async (req: AuthRequest, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can cancel this activity.' });

@@ -8,7 +8,7 @@ import { Types } from 'mongoose';
 
 const router = express.Router();
 const idInList = (list: any[] | undefined, id?: string) =>
-  Boolean(id && (list || []).some((item) => item?.toString() === id));
+  Boolean(id && (list || []).some((item) => (item?._id?.toString?.() || item?.toString?.()) === id));
 
 const isBlockedBetween = (first: any, second: any) => {
   const firstBlocked = (first?.blockedUsers || []).some((id: any) => id.toString() === second?.id);
@@ -43,11 +43,9 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
   }
 
   const user = await User.findById(userId);
-  const blockedMember = await User.findOne({
-    _id: { $in: activity.participants },
-    blockedUsers: user?._id,
-  });
-  if (user && blockedMember && isBlockedBetween(user, blockedMember)) {
+  const members = await User.find({ _id: { $in: activity.participants } }).select('blockedUsers');
+  const blockedMember = members.some((member) => member.id !== userId && user && isBlockedBetween(user, member));
+  if (user && blockedMember) {
     return { error: 'Chat is unavailable for this activity.' };
   }
 
