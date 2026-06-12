@@ -11,6 +11,8 @@ const router = express.Router();
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 const maxProfileImageBytes = 5 * 1024 * 1024;
+const maxProfileImagePayloadLength = Math.ceil((maxProfileImageBytes * 4) / 3) + 128;
+const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
 
 const getBase64ByteSize = (value: string) => {
   const base64 = value.split(',')[1] || '';
@@ -18,9 +20,17 @@ const getBase64ByteSize = (value: string) => {
 };
 
 const isValidProfileImage = (value: string) => {
+  if (value.length > maxProfileImagePayloadLength) return false;
   if (imageUrlPattern.test(value)) return true;
   if (!imageDataPattern.test(value)) return false;
+  const base64 = value.split(',')[1] || '';
+  if (!base64 || !/^[a-zA-Z0-9+/=]+$/.test(base64)) return false;
   return getBase64ByteSize(value) <= maxProfileImageBytes;
+};
+
+const publicGenderValue = (user: any) => {
+  if (!user?.publicGender || user.gender === 'prefer_not_to_say') return undefined;
+  return allowedGenders.includes(user.gender) ? user.gender : undefined;
 };
 
 const userPayload = (user: any) => ({
@@ -40,6 +50,8 @@ const userPayload = (user: any) => ({
   languages: user.languages || [],
   instagram: user.instagram,
   ageRange: user.ageRange,
+  gender: user.gender,
+  publicGender: Boolean(user.publicGender),
   hostRating: user.hostRating,
   activityRating: user.activityRating,
   reviewCount: user.reviewCount,
@@ -64,6 +76,7 @@ const publicUserPayload = (user: any) => ({
   languages: user.languages || [],
   interests: user.interests || [],
   instagram: user.instagram,
+  gender: publicGenderValue(user),
   verified: user.verified,
   hostRating: user.hostRating,
   activityRating: user.activityRating,
@@ -82,6 +95,8 @@ router.patch(
   body('interests').optional().isArray({ max: 20 }),
   body('instagram').optional().isString().isLength({ max: 80 }),
   body('ageRange').optional().isString().isLength({ max: 40 }),
+  body('gender').optional({ nullable: true, checkFalsy: true }).isIn(allowedGenders),
+  body('publicGender').optional().isBoolean(),
   body('hasCompletedOnboardingTutorial').optional().isBoolean(),
   async (req: AuthRequest, res) => {
     const errors = validationResult(req);
@@ -99,6 +114,12 @@ router.patch(
     assignString('location');
     assignString('instagram');
     assignString('ageRange');
+    if (typeof req.body.gender === 'string' && allowedGenders.includes(req.body.gender)) {
+      user.gender = req.body.gender as any;
+    }
+    if (typeof req.body.publicGender === 'boolean') {
+      user.publicGender = req.body.publicGender;
+    }
     if (Array.isArray(req.body.languages)) user.languages = req.body.languages.map((item: string) => String(item).trim()).filter(Boolean).slice(0, 12);
     if (Array.isArray(req.body.interests)) user.interests = req.body.interests.map((item: string) => String(item).trim()).filter(Boolean).slice(0, 20);
     if (typeof req.body.hasCompletedOnboardingTutorial === 'boolean') {
@@ -170,6 +191,7 @@ router.patch('/me/privacy', auth, async (req: AuthRequest, res) => {
   user.locationPublic = req.body.locationPublic ?? user.locationPublic;
   user.hostedActivitiesPublic = req.body.hostedActivitiesPublic ?? user.hostedActivitiesPublic;
   user.joinedActivitiesPublic = req.body.joinedActivitiesPublic ?? user.joinedActivitiesPublic;
+  user.publicGender = req.body.publicGender ?? user.publicGender;
   await user.save();
 
   res.json(userPayload(user));

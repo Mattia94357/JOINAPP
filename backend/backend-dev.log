@@ -2,70 +2,27 @@
 > joinapp-backend@1.0.0 dev
 > set NODE_ENV=development&& ts-node-dev --respawn --transpile-only src/index.ts
 
-[INFO] 09:47:44 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
+[INFO] 20:06:11 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
 Backend listening on port 4000
 MongoDB connected
-[INFO] 10:02:32 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
+[INFO] 20:18:06 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
 Backend listening on port 4000
 MongoDB connected
-[INFO] 10:04:08 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
-[ERROR] 10:04:13 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:21:50 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
-[ERROR] 20:21:54 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:22:04 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 20:22:09 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:23:38 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\index.ts has been modified
-[ERROR] 20:23:41 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:15:55 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
-[ERROR] 20:15:59 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:16:04 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
-[ERROR] 20:16:06 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:16:26 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 20:16:30 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:17:13 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
-[ERROR] 20:17:17 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 20:17:21 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\activities.ts has been modified
-[ERROR] 20:17:23 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:13:48 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\User.ts has been modified
+[INFO] 20:18:20 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
 Backend listening on port 4000
 MongoDB connected
-[INFO] 21:14:21 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\Chat.ts has been modified
-[ERROR] 21:14:28 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:14:46 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:14:52 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:14:59 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
-[ERROR] 21:15:03 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:15:55 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\activities.ts has been modified
-[ERROR] 21:15:59 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:16:32 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\chats.ts has been modified
-[ERROR] 21:16:37 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:16:51 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
+[INFO] 20:18:35 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\activities.ts has been modified
 Backend listening on port 4000
 MongoDB connected
-[INFO] 21:25:40 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:25:45 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:25:52 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:25:56 Error: listen EADDRINUSE: address already in use :::4000
-] 20:17:13 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
-Backend [ERROR] 20:17:16 Error:MongoDB connected
-[INFO] 20:17:21 Restarting: C:\Us[INFO] 20:17:21 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes[ERROR] 20:17:24 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:13:48 Restarting: C:\Us[INFO] 21:13:48 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\[ERROR] 21:14:12 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:14:21 Restarting: C:\Us[INFO] 21:14:21 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\[ERROR] 21:14:28 Error: listen EA[ERROR] 21:14:28 Error: listen EADDRINUSE[INFO] 21:14:46 Restarting: C:\Us[INFO] 21:14:46 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\r[ERROR] 21:14:51 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:14:59 Restarting: C:\Us[INFO] 21:14:59 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\[ERROR] 21:15:03 Error: listen EA[ERROR] 21:15:03 Error: listen EADDRINUSE[INFO] 21:15:55 Restarting: C:\Us[INFO] 21:15:55 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes[ERROR] 21:15:59 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:16:32 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\chats.ts has been modified
+[INFO] 20:27:25 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
 Backend listening on port 4000
 MongoDB connected
-[INFO] 21:16:51 Restarting: C:\Users\freed\Desktop\JOINAPP[INFO] 21:16:51 Restarting: C:\Users\freed\Desk[ERROR] 21:16:54 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:25:40 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:25:45 Error: listen EADDRINUSE: address already in use :::4000
-[INFO] 21:25:52 Restarting: C:\Users\freed\Desktop\JOINAPP[INFO] 21:25:52 Restarting: C:\Users\freed\Desk[ERROR] 21:25:56 Error: listen EADDRINUSE: address already in use :::4000
-g on port 4000
-MongoDB connected
-DRINUSE: address already in use :::4000
-[INFO] 21:25:52 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:25:56 Error: listen EADDRINUSE: address already in use :::4000
-users.ts has been modified
+[INFO] 20:27:32 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\models\Activity.ts has been modified
 Backend listening on port 4000
 MongoDB connected
-[INFO] 21:25:52 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
-[ERROR] 21:25:56 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 20:27:41 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\activities.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[INFO] 20:29:38 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\chats.ts has been modified
+Backend listening on port 4000
+MongoDB connected

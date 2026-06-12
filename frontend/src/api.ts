@@ -5,47 +5,110 @@ import { getActivityCoverImage, getVibeForCategory } from './utils/activityAsset
 import { getAvailabilityTag } from './utils/availability';
 import { normalizeActivityCategory } from './utils/categories';
 
-const getHost = () => {
-  const manifest = Constants.manifest ?? Constants.expoConfig ?? {};
-  const envApiUrl = (manifest as any).extra?.API_URL;
+type ApiConfigStatus = {
+  apiUrl: string | null;
+  source: 'expo-extra' | 'public-env' | 'web-local-dev' | 'expo-host-dev' | 'platform-dev-fallback' | 'missing';
+  isDev: boolean;
+  hasExpoExtraApiUrl: boolean;
+  error?: string;
+};
 
-  if (typeof envApiUrl === 'string' && envApiUrl.trim()) {
-    return envApiUrl;
+const cleanUrl = (value?: unknown) => (typeof value === 'string' && value.trim() ? value.trim().replace(/\/$/, '') : null);
+
+const getExpoExtraApiUrl = () =>
+  cleanUrl(
+    (Constants.expoConfig?.extra as any)?.API_URL ||
+      (Constants.manifest as any)?.extra?.API_URL ||
+      (Constants as any).manifest2?.extra?.expoClient?.extra?.API_URL,
+  );
+
+const getPublicEnvApiUrl = () => cleanUrl(process.env.EXPO_PUBLIC_API_URL);
+
+const getExpoHostAddress = () => {
+  const hostUri =
+    (Constants.expoConfig as any)?.hostUri ||
+    (Constants.manifest as any)?.debuggerHost ||
+    (Constants.manifest as any)?.hostUri ||
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost;
+
+  if (typeof hostUri !== 'string' || !hostUri.trim()) return null;
+  return hostUri.split(':').shift() || null;
+};
+
+const resolveApiConfig = (): ApiConfigStatus => {
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+  const expoExtraApiUrl = getExpoExtraApiUrl();
+  const publicEnvApiUrl = getPublicEnvApiUrl();
+
+  if (expoExtraApiUrl) {
+    return { apiUrl: expoExtraApiUrl, source: 'expo-extra', isDev, hasExpoExtraApiUrl: true };
   }
 
-  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+  if (publicEnvApiUrl) {
+    return { apiUrl: publicEnvApiUrl, source: 'public-env', isDev, hasExpoExtraApiUrl: false };
+  }
 
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
       const isIpAddress = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
-      if (isDev && isLocal) return 'http://localhost:4000';
-      if (isDev && isIpAddress) return `http://${hostname}:4000`;
-      throw new Error('JOIN API_URL is not configured for this production build.');
+      if (isDev && isLocal) {
+        return { apiUrl: 'http://localhost:4000', source: 'web-local-dev', isDev, hasExpoExtraApiUrl: false };
+      }
+      if (isDev && isIpAddress) {
+        return { apiUrl: `http://${hostname}:4000`, source: 'web-local-dev', isDev, hasExpoExtraApiUrl: false };
+      }
     }
-    throw new Error('JOIN API_URL is not configured for this production build.');
   }
 
-  const debuggerHost = (manifest as any).debuggerHost as string | undefined;
-  if (isDev && debuggerHost) {
-    const address = debuggerHost.split(':').shift();
-    return `http://${address}:4000`;
+  const expoHostAddress = getExpoHostAddress();
+  if (isDev && expoHostAddress) {
+    return { apiUrl: `http://${expoHostAddress}:4000`, source: 'expo-host-dev', isDev, hasExpoExtraApiUrl: false };
   }
 
   if (isDev) {
-    return Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
+    return {
+      apiUrl: Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000',
+      source: 'platform-dev-fallback',
+      isDev,
+      hasExpoExtraApiUrl: false,
+    };
   }
 
-  throw new Error('JOIN API_URL is not configured for this production build.');
+  return {
+    apiUrl: null,
+    source: 'missing',
+    isDev,
+    hasExpoExtraApiUrl: false,
+    error: 'JOIN API_URL is not configured for this production build.',
+  };
 };
 
-const BASE_URL = getHost();
+const apiConfig = resolveApiConfig();
+
+if (apiConfig.isDev) {
+  console.info('[JOIN API]', {
+    apiUrl: apiConfig.apiUrl,
+    environment: 'development',
+    source: apiConfig.source,
+    fromExpoExtraConfig: apiConfig.hasExpoExtraApiUrl,
+  });
+}
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: apiConfig.apiUrl || '',
   timeout: 10000,
 });
+
+api.interceptors.request.use((config) => {
+  if (!apiConfig.apiUrl) {
+    return Promise.reject(new Error(apiConfig.error || 'JOIN API URL is not configured.'));
+  }
+  return config;
+});
+
+export const getApiConfigStatus = () => apiConfig;
 
 export type ApiUser = {
   id: string;
@@ -64,6 +127,8 @@ export type ApiUser = {
   languages?: string[];
   instagram?: string;
   ageRange?: string;
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
+  publicGender?: boolean;
   hostRating?: number;
   activityRating?: number;
   reviewCount?: number;
@@ -85,6 +150,7 @@ export type RawAvatarUser = {
   profileThumbnailUrl?: string;
   profileCompleted?: boolean;
   verified?: boolean;
+  gender?: 'male' | 'female' | 'non_binary';
   bio?: string;
   aboutMe?: string;
   languages?: string[];
@@ -114,6 +180,7 @@ export type RawActivity = {
   galleryImages?: string[];
   activityRating?: number;
   reviewCount?: number;
+  viewerJoinStatus?: 'pending' | 'declined' | 'waitlisted';
   pendingParticipants?: RawAvatarUser[];
   declinedParticipants?: RawAvatarUser[];
   waitlist?: RawAvatarUser[];
@@ -143,7 +210,10 @@ export type ActivityResponse = {
   endTime?: string;
   hostRating?: number;
   hostHostedCount?: number;
+  hostJoinedCount?: number;
+  hostReviewCount?: number;
   hostVerified?: boolean;
+  hostGender?: 'male' | 'female' | 'non_binary';
   coverImage?: string;
   availabilityTag?: string;
   visibility?: 'public' | 'private';
@@ -183,9 +253,10 @@ export const loginRequest = (email: string, password: string) =>
 export const registerRequest = (name: string, email: string, password: string) =>
   api.post<{ token: string; user: ApiUser }>('/api/auth/register', { name, email, password });
 
-export const fetchActivities = async (token?: string) => {
+export const fetchActivities = async (token?: string, filters?: { hostGender?: 'male' | 'female' | 'non_binary' }) => {
   const response = await api.get<RawActivity[]>('/api/activities', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    params: { limit: 20, ...(filters?.hostGender ? { hostGender: filters.hostGender } : {}) },
   });
   return response.data.map((activity) => ({
     id: activity._id,
@@ -211,10 +282,19 @@ export const fetchActivities = async (token?: string) => {
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || activity.host?.id || '',
     hostAvatar: activity.host?.profileThumbnailUrl || activity.host?.profilePictureUrl || (activity.host?.profileCompleted ? activity.host?.avatar : undefined),
+    hostRating: activity.host?.hostRating,
+    hostHostedCount: activity.host?.hostedCount,
+    hostJoinedCount: activity.host?.joinedCount,
+    hostReviewCount: activity.host?.reviewCount,
+    hostVerified: activity.host?.verified,
+    hostGender: activity.host?.gender,
     participants: activity.participants?.map(mapParticipant) || [],
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
     declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
+    pending: activity.viewerJoinStatus === 'pending',
+    declined: activity.viewerJoinStatus === 'declined',
+    waitlisted: activity.viewerJoinStatus === 'waitlisted',
   }));
 };
 
@@ -247,10 +327,19 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || activity.host?.id || '',
     hostAvatar: activity.host?.profileThumbnailUrl || activity.host?.profilePictureUrl || (activity.host?.profileCompleted ? activity.host?.avatar : undefined),
+    hostRating: activity.host?.hostRating,
+    hostHostedCount: activity.host?.hostedCount,
+    hostJoinedCount: activity.host?.joinedCount,
+    hostReviewCount: activity.host?.reviewCount,
+    hostVerified: activity.host?.verified,
+    hostGender: activity.host?.gender,
     participants: activity.participants?.map(mapParticipant) || [],
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
     declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
+    pending: activity.viewerJoinStatus === 'pending',
+    declined: activity.viewerJoinStatus === 'declined',
+    waitlisted: activity.viewerJoinStatus === 'waitlisted',
   };
 };
 
@@ -308,17 +397,17 @@ export const cancelActivityRequest = async (activityId: string, token: string, r
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const updateProfilePhotoRequest = async (profilePictureUrl: string, token: string) =>
+export const updateProfilePhotoRequest = async (profilePictureUrl: string, token: string, profileThumbnailUrl?: string) =>
   api.patch<ApiUser>(
     '/api/users/me/profile-photo',
-    { profilePictureUrl },
+    { profilePictureUrl, profileThumbnailUrl: profileThumbnailUrl || profilePictureUrl },
     {
       headers: { Authorization: `Bearer ${token}` },
     },
   );
 
 export const updateProfileRequest = async (
-  payload: Partial<Pick<ApiUser, 'bio' | 'aboutMe' | 'location' | 'languages' | 'interests' | 'instagram' | 'ageRange' | 'hasCompletedOnboardingTutorial'>>,
+  payload: Partial<Pick<ApiUser, 'bio' | 'aboutMe' | 'location' | 'languages' | 'interests' | 'instagram' | 'ageRange' | 'gender' | 'publicGender' | 'hasCompletedOnboardingTutorial'>>,
   token: string,
 ) =>
   api.patch<ApiUser>('/api/users/me/profile', payload, {
@@ -360,6 +449,7 @@ export const blockUserRequest = async (userId: string, token: string) =>
 export const fetchChatRequest = async (chatId: string, token: string) =>
   api.get(`/api/chats/${chatId}`, {
     headers: { Authorization: `Bearer ${token}` },
+    params: { limit: 50 },
   });
 
 export const sendChatMessageRequest = async (chatId: string, message: string, token: string) =>

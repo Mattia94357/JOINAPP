@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +37,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [joinApproval, setJoinApproval] = useState<'auto' | 'manual'>('auto');
   const [hostNote, setHostNote] = useState('');
   const [cancellationPolicy, setCancellationPolicy] = useState('');
+  const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -114,22 +116,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <Text style={styles.label}>Activity title *</Text>
       <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="e.g. Brew & Board Games" placeholderTextColor={colors.textSubtle} />
 
-      <Text style={styles.label}>Venue name</Text>
-      <TextInput value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
-
-      <Text style={styles.label}>Location *</Text>
-      <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
-
-      <Text style={styles.label}>Exact address</Text>
-      <TextInput value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or meeting point" placeholderTextColor={colors.textSubtle} />
-
-      <Text style={styles.label}>Activity image URL</Text>
-      <TextInput value={coverImage} onChangeText={setCoverImage} style={styles.input} placeholder="Paste image URL for now" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
-
-      <Text style={styles.label}>Gallery image URLs</Text>
-      <TextInput value={galleryImagesText} onChangeText={setGalleryImagesText} style={[styles.input, styles.galleryInput]} placeholder="Optional: one image URL per line, up to 5" placeholderTextColor={colors.textSubtle} autoCapitalize="none" multiline />
-
-      <Text style={styles.label}>Category</Text>
+      <Text style={styles.label}>Category *</Text>
       <View style={styles.row}>
         {categoryOptions.map((option) => (
           <TouchableOpacity key={option} style={[styles.choiceChip, category === option && styles.choiceChipActive]} onPress={() => setCategory(option)}>
@@ -138,38 +125,8 @@ export default function CreateActivityScreen({ navigation }: Props) {
         ))}
       </View>
 
-      <Text style={styles.label}>Vibe</Text>
-      <View style={styles.row}>
-        {vibeOptions.map((option) => (
-          <TouchableOpacity key={option} style={[styles.choiceChip, vibe === option && styles.choiceChipActive]} onPress={() => setVibe(option)}>
-            <Text style={[styles.choiceLabel, vibe === option && styles.choiceLabelActive]}>{option}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Visibility</Text>
-      <View style={styles.optionCards}>
-        <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
-          <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
-          <Text style={styles.optionDescription}>Anyone nearby can discover and join.</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
-          <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
-          <Text style={styles.optionDescription}>Only invited people can see or join.</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.label}>Join approval</Text>
-      <View style={styles.optionCards}>
-        <TouchableOpacity style={[styles.optionCard, joinApproval === 'auto' && styles.optionCardActive]} onPress={() => setJoinApproval('auto')}>
-          <Text style={[styles.optionTitle, joinApproval === 'auto' && styles.optionTitleActive]}>Auto approve joins</Text>
-          <Text style={styles.optionDescription}>People join instantly and chat unlocks.</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.optionCard, joinApproval === 'manual' && styles.optionCardActive]} onPress={() => setJoinApproval('manual')}>
-          <Text style={[styles.optionTitle, joinApproval === 'manual' && styles.optionTitleActive]}>Manual approval required</Text>
-          <Text style={styles.optionDescription}>Review requests before chat unlocks.</Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={styles.label}>Location *</Text>
+      <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
 
       <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <View style={styles.column}>
@@ -193,26 +150,80 @@ export default function CreateActivityScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <Text style={styles.label}>Cost</Text>
-      <View style={styles.row}>
-        {(['Free', 'Paid'] as const).map((option) => (
-          <TouchableOpacity key={option} style={[styles.choiceChip, costType === option && styles.choiceChipActive]} onPress={() => setCostType(option)}>
-            <Text style={[styles.choiceLabel, costType === option && styles.choiceLabelActive]}>{option}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {costType === 'Paid' && (
-        <TextInput value={costAmount} onChangeText={setCostAmount} style={styles.input} keyboardType="decimal-pad" placeholder="Cost in AUD" placeholderTextColor={colors.textSubtle} />
-      )}
-
       <Text style={styles.label}>Description * <Text style={styles.labelHint}>min 20 chars</Text></Text>
       <TextInput value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this event special" placeholderTextColor={colors.textSubtle} multiline />
 
-      <Text style={styles.label}>Host note</Text>
-      <TextInput value={hostNote} onChangeText={setHostNote} style={styles.input} placeholder="Optional arrival, dress code or bring-along note" placeholderTextColor={colors.textSubtle} />
+      <TouchableOpacity style={styles.moreDetailsButton} onPress={() => setMoreDetailsOpen((value) => !value)}>
+        <Text style={styles.moreDetailsText}>More details</Text>
+        <Ionicons name={moreDetailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={18} color={colors.primary} />
+      </TouchableOpacity>
 
-      <Text style={styles.label}>Cancellation note</Text>
-      <TextInput value={cancellationPolicy} onChangeText={setCancellationPolicy} style={styles.input} placeholder="Optional cancellation or weather policy" placeholderTextColor={colors.textSubtle} />
+      {moreDetailsOpen ? (
+        <View style={styles.moreDetailsPanel}>
+          <Text style={styles.label}>Venue name</Text>
+          <TextInput value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
+
+          <Text style={styles.label}>Meeting point</Text>
+          <TextInput value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
+
+          <Text style={styles.label}>Cover photo</Text>
+          <TextInput value={coverImage} onChangeText={setCoverImage} style={styles.input} placeholder="Paste image URL for now" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
+
+          <Text style={styles.label}>More photos</Text>
+          <TextInput value={galleryImagesText} onChangeText={setGalleryImagesText} style={[styles.input, styles.galleryInput]} placeholder="Optional: one image URL per line, up to 5" placeholderTextColor={colors.textSubtle} autoCapitalize="none" multiline />
+
+          <Text style={styles.label}>Vibe</Text>
+          <View style={styles.row}>
+            {vibeOptions.map((option) => (
+              <TouchableOpacity key={option} style={[styles.choiceChip, vibe === option && styles.choiceChipActive]} onPress={() => setVibe(option)}>
+                <Text style={[styles.choiceLabel, vibe === option && styles.choiceLabelActive]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Visibility</Text>
+          <View style={styles.optionCards}>
+            <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
+              <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
+              <Text style={styles.optionDescription}>Anyone nearby can discover and join.</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
+              <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
+              <Text style={styles.optionDescription}>Invite-only plans with an exclusive feel.</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>Join approval</Text>
+          <View style={styles.optionCards}>
+            <TouchableOpacity style={[styles.optionCard, joinApproval === 'auto' && styles.optionCardActive]} onPress={() => setJoinApproval('auto')}>
+              <Text style={[styles.optionTitle, joinApproval === 'auto' && styles.optionTitleActive]}>Auto approve joins</Text>
+              <Text style={styles.optionDescription}>People join instantly and chat unlocks.</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.optionCard, joinApproval === 'manual' && styles.optionCardActive]} onPress={() => setJoinApproval('manual')}>
+              <Text style={[styles.optionTitle, joinApproval === 'manual' && styles.optionTitleActive]}>Ask to Join</Text>
+              <Text style={styles.optionDescription}>Review requests before chat unlocks.</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>Cost</Text>
+          <View style={styles.row}>
+            {(['Free', 'Paid'] as const).map((option) => (
+              <TouchableOpacity key={option} style={[styles.choiceChip, costType === option && styles.choiceChipActive]} onPress={() => setCostType(option)}>
+                <Text style={[styles.choiceLabel, costType === option && styles.choiceLabelActive]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {costType === 'Paid' && (
+            <TextInput value={costAmount} onChangeText={setCostAmount} style={styles.input} keyboardType="decimal-pad" placeholder="Cost in AUD" placeholderTextColor={colors.textSubtle} />
+          )}
+
+          <Text style={styles.label}>Host note</Text>
+          <TextInput value={hostNote} onChangeText={setHostNote} style={styles.input} placeholder="Optional arrival, dress code or bring-along note" placeholderTextColor={colors.textSubtle} />
+
+          <Text style={styles.label}>Cancellation note</Text>
+          <TextInput value={cancellationPolicy} onChangeText={setCancellationPolicy} style={styles.input} placeholder="Optional cancellation or weather policy" placeholderTextColor={colors.textSubtle} />
+        </View>
+      ) : null}
 
       <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
         <Text style={styles.buttonText}>{loading ? 'Posting...' : 'Publish experience'}</Text>
@@ -346,6 +357,29 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  moreDetailsButton: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreDetailsText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  moreDetailsPanel: {
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
   },
   button: {
     marginTop: spacing.lg,

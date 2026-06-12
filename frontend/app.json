@@ -6,6 +6,13 @@
     "sdkVersion": "48.0.0",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "JOIN needs camera access so you can take a profile picture.",
+        "NSPhotoLibraryUsageDescription": "JOIN needs access to your photos so you can upload a profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "JOIN needs access to your photos so you can upload a profile picture."
+      }
+    },
     "splash": {
       "backgroundColor": "#000000"
     },

@@ -17,6 +17,7 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
+import { getApiConfigStatus } from './src/api';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -113,6 +114,18 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const apiConfig = getApiConfigStatus();
+
+  if (!apiConfig.apiUrl) {
+    return (
+      <View style={styles.configErrorContainer}>
+        <Text style={styles.configErrorTitle}>JOIN is not configured correctly.</Text>
+        <Text style={styles.configErrorText}>Please contact support or check environment settings.</Text>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <AppNavigator />
@@ -132,5 +145,22 @@ const styles = StyleSheet.create({
     marginTop: 16,
     color: colors.text,
     fontSize: 16,
+  },
+  configErrorContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    padding: 28,
+  },
+  configErrorTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 12,
+  },
+  configErrorText: {
+    color: colors.textMuted,
+    fontSize: 16,
+    lineHeight: 24,
   },
 });

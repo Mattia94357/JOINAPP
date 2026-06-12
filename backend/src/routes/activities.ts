@@ -25,6 +25,12 @@ const allowedCategories = [
 ];
 const participantFields = 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
+const allowedHostGenderFilters = ['male', 'female', 'non_binary'];
+
+const publicGenderValue = (user: any) => {
+  if (!user?.publicGender || user.gender === 'prefer_not_to_say') return undefined;
+  return ['male', 'female', 'non_binary'].includes(user.gender) ? user.gender : undefined;
+};
 
 const getRequesterId = (req: express.Request) => {
   const header = req.headers.authorization;
@@ -76,6 +82,11 @@ const publicPersonPayload = (user: any) => ({
   profilePictureUrl: user?.profilePictureUrl,
   profileThumbnailUrl: user?.profileThumbnailUrl,
   verified: user?.verified,
+  gender: publicGenderValue(user),
+  hostRating: user?.hostRating,
+  hostedCount: user?.hostedCount,
+  joinedCount: user?.joinedCount,
+  reviewCount: user?.reviewCount,
 });
 
 const activityPayload = (activity: any, viewerId?: string) => {
@@ -120,13 +131,19 @@ const activityPayload = (activity: any, viewerId?: string) => {
 
 router.get('/', async (req, res) => {
   const userId = getRequesterId(req);
+  const hostGender = typeof req.query.hostGender === 'string' ? req.query.hostGender : undefined;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+  const page = Math.max(Number(req.query.page) || 1, 1);
   const activities = await Activity.find()
-    .populate('host', participantFields)
-    .populate('participants', participantFields)
-    .populate('pendingParticipants', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified')
-    .populate('declinedParticipants', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified')
-    .populate('waitlist', 'name profilePictureUrl profileThumbnailUrl avatar profileCompleted verified');
-  res.json(activities.map((activity) => activityPayload(activity, userId)));
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .populate('host', `${participantFields} gender publicGender`)
+    .populate('participants', 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified');
+  const filteredActivities = allowedHostGenderFilters.includes(hostGender || '')
+    ? activities.filter((activity) => publicGenderValue(activity.host) === hostGender)
+    : activities;
+  res.json(filteredActivities.map((activity) => activityPayload(activity, userId)));
 });
 
 router.post(
@@ -213,7 +230,7 @@ router.get('/:id', async (req, res) => {
 
   const userId = getRequesterId(req);
   const activity = await Activity.findById(req.params.id)
-    .populate('host', participantFields)
+    .populate('host', `${participantFields} gender publicGender`)
     .populate('participants', participantFields)
     .populate('pendingParticipants', participantFields)
     .populate('declinedParticipants', participantFields)

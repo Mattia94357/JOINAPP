@@ -46,6 +46,7 @@ export default function PublicProfileScreen({ route }: Props) {
   const languages = profile?.languages?.length ? profile.languages : ['English'];
   const targetUserId = profile?.id || userId;
   const recentActivities = [...(profile?.hostedActivities || []), ...(profile?.joinedActivities || [])].slice(0, 5);
+  const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
 
   const handleReport = async () => {
     if (!token || !targetUserId) {
@@ -118,8 +119,9 @@ export default function PublicProfileScreen({ route }: Props) {
         {languages.map((language) => <Text key={language} style={styles.tagSecondary}>{language}</Text>)}
       </View>
 
-      {profile?.ageRange || profile?.instagram ? (
+      {profile?.ageRange || profile?.instagram || genderLabel ? (
         <View style={styles.profileFacts}>
+          {genderLabel ? <Text style={styles.factText}>Host gender: {genderLabel}</Text> : null}
           {profile?.ageRange ? <Text style={styles.factText}>Age range: {profile.ageRange}</Text> : null}
           {profile?.instagram ? <Text style={styles.factText}>Instagram: {profile.instagram}</Text> : null}
         </View>

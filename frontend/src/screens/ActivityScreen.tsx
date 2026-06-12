@@ -46,6 +46,11 @@ type ActivityDetails = {
   host: string;
   hostId: string;
   hostAvatar?: string;
+  hostRating?: number;
+  hostHostedCount?: number;
+  hostJoinedCount?: number;
+  hostReviewCount?: number;
+  hostVerified?: boolean;
   participants: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   pendingParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   declinedParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
@@ -164,6 +169,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
   const isCancelled = activity.status === 'cancelled';
   const canOpenChat = alreadyJoined || isHost;
+  const hostRating = activity.hostRating ? activity.hostRating.toFixed(1) : 'New';
   const joinLabel = alreadyJoined
     ? 'Already joined'
     : requestDeclined
@@ -278,11 +284,19 @@ export default function ActivityScreen({ route, navigation }: Props) {
           <View style={styles.hostDetails}>
             <Text style={styles.hostLabel}>Hosted by</Text>
             <Text style={styles.hostName}>{activity.host}</Text>
+            <Text style={styles.hostMeta}>
+              {hostRating} rating - {activity.hostHostedCount || 0} hosted - {activity.hostJoinedCount || 0} joined
+            </Text>
           </View>
           <View style={styles.hostBadge}>
             <Ionicons name="shield-checkmark-outline" size={15} color="#050505" />
-            <Text style={styles.hostBadgeText}>Verified</Text>
+            <Text style={styles.hostBadgeText}>{activity.hostVerified ? 'Verified host' : 'Profile reviewed'}</Text>
           </View>
+        </View>
+
+        <View style={styles.positioningCard}>
+          <Text style={styles.positioningTitle}>See who's going before you join</Text>
+          <Text style={styles.positioningText}>JOIN is built for small-group social plans with trusted hosts and real people around the table, trail, class, or beach.</Text>
         </View>
 
         <View style={styles.section}>
@@ -363,6 +377,17 @@ export default function ActivityScreen({ route, navigation }: Props) {
             </TouchableOpacity>
           </View>
         </View> : null}
+
+        <View style={styles.shareActions}>
+          <TouchableOpacity style={styles.shareButton}>
+            <Ionicons name="share-outline" size={16} color="#f5c12d" />
+            <Text style={styles.shareButtonText}>Share plan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.shareButton}>
+            <Ionicons name="person-add-outline" size={16} color="#f5c12d" />
+            <Text style={styles.shareButtonText}>Invite a friend</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.actions}>
           <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled}>
@@ -620,6 +645,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 2,
   },
+  hostMeta: {
+    color: '#8b8b8b',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 3,
+  },
   hostBadge: {
     backgroundColor: '#f5c12d',
     borderRadius: 999,
@@ -633,6 +664,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     marginLeft: 4,
+  },
+  positioningCard: {
+    backgroundColor: 'rgba(245, 193, 45, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 193, 45, 0.28)',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+  },
+  positioningTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 5,
+  },
+  positioningText: {
+    color: '#d1d1d1',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   section: {
     marginTop: 16,
@@ -805,6 +856,27 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     marginTop: 12,
+  },
+  shareActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  shareButton: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  shareButtonText: {
+    color: '#f5c12d',
+    fontSize: 13,
+    fontWeight: '900',
+    marginLeft: 6,
   },
   joinButton: {
     flex: 1,

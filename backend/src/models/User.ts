@@ -17,6 +17,8 @@ export interface IUser extends Document {
   languages?: string[];
   instagram?: string;
   ageRange?: string;
+  gender?: 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
+  publicGender?: boolean;
   hostRating?: number;
   activityRating?: number;
   reviewCount?: number;
@@ -49,6 +51,8 @@ const UserSchema = new Schema<IUser>({
   languages: [{ type: String }],
   instagram: { type: String },
   ageRange: { type: String },
+  gender: { type: String, enum: ['male', 'female', 'non_binary', 'prefer_not_to_say'] },
+  publicGender: { type: Boolean, default: false },
   hostRating: { type: Number, default: 4.8 },
   activityRating: { type: Number, default: 0 },
   reviewCount: { type: Number, default: 0 },

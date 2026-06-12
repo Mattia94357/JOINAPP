@@ -25,6 +25,13 @@ import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
 
 const categories = ['All', ...activityCategories];
+const hostGenderFilters = [
+  { label: 'All hosts', value: 'all' },
+  { label: 'Male hosts', value: 'male' },
+  { label: 'Female hosts', value: 'female' },
+  { label: 'Non-binary hosts', value: 'non_binary' },
+] as const;
+type HostGenderFilter = typeof hostGenderFilters[number]['value'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -34,6 +41,7 @@ export default function HomeScreen({ navigation }: Props) {
   const compact = width < 380;
 
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [photoRequiredVisible, setPhotoRequiredVisible] = useState(false);
   const [activities, setActivities] = useState<ActivityResponse[]>([]);
@@ -44,10 +52,10 @@ export default function HomeScreen({ navigation }: Props) {
 
   const showTutorial = user && !user.hasCompletedOnboardingTutorial;
   const tutorialScreens = [
-    { title: 'Welcome to JOIN', text: 'Find real plans nearby and meet people through activities.' },
-    { title: 'Join an activity', text: 'Tap Join Activity when something looks good.' },
-    { title: 'Skip and keep browsing', text: 'Not your vibe? Swipe left or tap Skip to see the next plan.' },
-    { title: 'Create your own plan', text: 'Want to make something happen? Host your own activity in under a minute.' },
+    { icon: 'compass-outline', title: 'Discover real plans', text: "Browse activities nearby and see what's happening. Swipe left to skip or use the Skip button." },
+    { icon: 'add-circle-outline', title: 'Join or ask to join', text: 'Swipe right to join or tap Join Activity. Private plans use Ask to Join.' },
+    { icon: 'people-outline', title: "See who's going", text: 'View hosts and participants before you join.' },
+    { icon: 'star-outline', title: 'Host your own', text: 'Create a plan in under a minute and invite people in.' },
   ];
 
   const filteredActivities = useMemo(
@@ -64,7 +72,7 @@ export default function HomeScreen({ navigation }: Props) {
       setMessage('');
 
       try {
-        const result = await fetchActivities(token || undefined);
+        const result = await fetchActivities(token || undefined, selectedHostGender === 'all' ? undefined : { hostGender: selectedHostGender });
         setActivities(markJoinedActivities(result));
       } catch (error) {
         setMessage('Unable to fetch activities. Showing curated plans instead.');
@@ -74,7 +82,7 @@ export default function HomeScreen({ navigation }: Props) {
     };
 
     load();
-  }, [token, user?.id, user?.name]);
+  }, [token, user?.id, user?.name, selectedHostGender]);
 
   const markJoinedActivities = (items: ActivityResponse[]) =>
     items.map((activity) => ({
@@ -82,15 +90,15 @@ export default function HomeScreen({ navigation }: Props) {
       joined: user
         ? activity.participants.some((participant) => participant.id === user.id || participant.name === user.name)
         : false,
-      pending: user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
-      declined: user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
-      waitlisted: user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false,
+      pending: activity.pending || (user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
+      declined: activity.declined || (user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
+      waitlisted: activity.waitlisted || (user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
       saved: user ? user.savedActivities?.some((id) => id === activity.id) : false,
     }));
 
   const refreshActivities = async () => {
     try {
-      const result = await fetchActivities(token || undefined);
+      const result = await fetchActivities(token || undefined, selectedHostGender === 'all' ? undefined : { hostGender: selectedHostGender });
       setActivities(markJoinedActivities(result));
     } catch (error) {
       console.warn(error);
@@ -102,15 +110,23 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleJoinActivity = async (activity: ActivityResponse) => {
+    if (activity.joined) {
+      navigation.navigate('Chat', { chatId: activity.id, title: activity.title });
+      return true;
+    }
+    if (activity.pending || activity.declined || activity.waitlisted || activity.status === 'cancelled' || activity.status === 'completed') {
+      return false;
+    }
+
     if (!token) {
       Alert.alert('Sign in required', 'Please log in to join this activity.');
-      return;
+      return false;
     }
 
     const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
     if (!hasProfilePhoto) {
       showProfilePhotoRequired();
-      return;
+      return false;
     }
 
     try {
@@ -137,13 +153,15 @@ export default function HomeScreen({ navigation }: Props) {
         }
       }
       await refreshActivities();
+      return true;
     } catch (error: any) {
       console.warn(error);
       if (error?.response?.data?.code === 'PROFILE_PHOTO_REQUIRED') {
         showProfilePhotoRequired();
-        return;
+        return false;
       }
       Alert.alert('Unable to join', error?.response?.data?.message || 'There was an issue joining this activity.');
+      return false;
     }
   };
 
@@ -177,6 +195,10 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
+  const skipTutorial = () => {
+    finishTutorial();
+  };
+
   const handlePress = (activity: ActivityResponse) => {
     navigation.navigate('Activity', { activityId: activity.id });
   };
@@ -197,8 +219,8 @@ export default function HomeScreen({ navigation }: Props) {
     <SafeAreaView style={[styles.container, compact && styles.containerCompact]}>
       <View style={styles.topBar}>
         <View style={styles.headingBlock}>
-          <Text style={styles.greeting}>Hello, {user?.name || 'guest'}</Text>
-          <Text style={styles.title}>Find your next plan</Text>
+          <Text style={styles.title}>Discover</Text>
+          <Text style={styles.subtitle}>Real plans nearby</Text>
         </View>
 
         <View style={styles.actionIcons}>
@@ -223,26 +245,47 @@ export default function HomeScreen({ navigation }: Props) {
         >
           <Ionicons name="grid-outline" size={17} color={colors.primaryText} />
           <Text style={styles.browseCategoriesText}>
-            Browse Categories{selectedCategory !== 'All' ? ` - ${selectedCategory}` : ''}
+            Filters{selectedCategory !== 'All' ? ` - ${selectedCategory}` : ''}{selectedHostGender !== 'all' ? ` - ${hostGenderFilters.find((item) => item.value === selectedHostGender)?.label}` : ''}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.hostButtonSmall}
+          style={styles.hostButton}
           onPress={() => navigation.navigate('CreateActivity')}
         >
-          <Ionicons name="add-outline" size={22} color={colors.text} />
+          <Ionicons name="add-outline" size={18} color={colors.primary} />
+          <Text style={styles.hostButtonText}>Host</Text>
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.curatedStrip}>
+        {['Featured tonight', 'Curated near you', 'Small group'].map((label) => (
+          <View key={label} style={styles.curatedChip}>
+            <Ionicons name="star-outline" size={12} color={colors.primary} />
+            <Text style={styles.curatedChipText}>{label}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={styles.deckContainer}>
         {loading ? (
-          <ActivityIndicator color={colors.primary} size="large" />
+          <View style={styles.skeletonCard}>
+            <View style={styles.skeletonImage} />
+            <View style={styles.skeletonLineLarge} />
+            <View style={styles.skeletonLine} />
+            <View style={styles.skeletonAvatars}>
+              {[0, 1, 2].map((item) => <View key={item} style={styles.skeletonAvatar} />)}
+            </View>
+            <ActivityIndicator color={colors.primary} size="small" />
+          </View>
         ) : (
           <SwipeDeck
             key={`${selectedCategory}-${visibleFeed.length}`}
             activities={visibleFeed}
-            onSwipeLeft={() => setMessage('Skipped. Keep browsing quality plans.')}
+            onSwipeLeft={() => {
+              setMessage('Skipped. Keep browsing quality plans.');
+              return true;
+            }}
             onSwipeRight={handleJoinActivity}
             onSave={handleSaveActivity}
             onPress={handlePress}
@@ -308,6 +351,16 @@ export default function HomeScreen({ navigation }: Props) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.tutorialModal}>
+            <View style={styles.tutorialHero}>
+              <View style={styles.tutorialIcon}>
+                <Ionicons name={tutorialScreens[tutorialStep].icon as any} size={24} color={colors.primaryText} />
+              </View>
+              <View style={styles.tutorialPreviewCard}>
+                <Text style={styles.tutorialPreviewEyebrow}>Featured tonight</Text>
+                <Text style={styles.tutorialPreviewTitle}>Small dinner circle</Text>
+                <Text style={styles.tutorialPreviewMeta}>6 going - Verified host</Text>
+              </View>
+            </View>
             <Text style={styles.modalTitle}>{tutorialScreens[tutorialStep].title}</Text>
             <Text style={styles.photoRequiredText}>{tutorialScreens[tutorialStep].text}</Text>
             <View style={styles.tutorialDots}>
@@ -325,6 +378,9 @@ export default function HomeScreen({ navigation }: Props) {
             >
               <Text style={styles.photoRequiredPrimaryText}>{tutorialStep >= tutorialScreens.length - 1 ? 'Start exploring' : 'Next'}</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.photoRequiredSecondary} onPress={skipTutorial}>
+              <Text style={styles.photoRequiredSecondaryText}>Skip</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -337,9 +393,11 @@ export default function HomeScreen({ navigation }: Props) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.categoryModal}>
-            <Text style={styles.modalTitle}>Browse Categories</Text>
+            <Text style={styles.modalTitle}>Curated near you</Text>
+            <Text style={styles.modalIntro}>Filter discovery by activity or visible host details. Host gender is optional and only shown when hosts choose to make it public.</Text>
 
             <ScrollView style={styles.categoryList} showsVerticalScrollIndicator={false}>
+              <Text style={styles.filterGroupTitle}>Activity</Text>
               {categories.map((category) => (
                 <TouchableOpacity
                   key={category}
@@ -362,6 +420,26 @@ export default function HomeScreen({ navigation }: Props) {
                   </Text>
                 </TouchableOpacity>
               ))}
+              <Text style={styles.filterGroupTitle}>Host gender</Text>
+              {hostGenderFilters.map((filter) => (
+                <TouchableOpacity
+                  key={filter.value}
+                  style={[
+                    styles.modalCategoryItem,
+                    selectedHostGender === filter.value && styles.modalCategoryItemActive,
+                  ]}
+                  onPress={() => setSelectedHostGender(filter.value)}
+                >
+                  <Text
+                    style={[
+                      styles.modalCategoryText,
+                      selectedHostGender === filter.value && styles.modalCategoryTextActive,
+                    ]}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
 
             <TouchableOpacity
@@ -381,46 +459,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   containerCompact: {
     paddingHorizontal: spacing.md,
   },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   headingBlock: {
     flex: 1,
     paddingRight: spacing.md,
   },
-  greeting: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginBottom: spacing.xs,
-    fontWeight: '700',
-  },
   title: {
     color: colors.text,
     fontSize: 28,
     fontWeight: '900',
-    lineHeight: 33,
+    lineHeight: 32,
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    marginTop: 2,
   },
   actionIcons: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconButton: {
-    marginLeft: spacing.md,
+    marginLeft: spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -428,13 +507,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  curatedStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: 6,
+  },
+  curatedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  curatedChipText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    marginLeft: 4,
   },
   browseCategoriesButton: {
     flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 12,
-    paddingVertical: 14,
+    minHeight: 44,
+    paddingVertical: 11,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -445,19 +547,75 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginLeft: spacing.sm,
   },
-  hostButtonSmall: {
-    width: 48,
-    height: 48,
+  hostButton: {
+    minWidth: 86,
+    minHeight: 44,
     borderRadius: 12,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.goldBorder,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+  },
+  hostButtonText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    marginLeft: 5,
   },
   deckContainer: {
     flex: 1,
-    marginTop: spacing.sm,
+    marginTop: 2,
+  },
+  skeletonCard: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    padding: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  skeletonImage: {
+    height: 176,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceElevated,
+    marginBottom: spacing.md,
+  },
+  skeletonLineLarge: {
+    width: '76%',
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: colors.borderStrong,
+    marginBottom: spacing.sm,
+  },
+  skeletonLine: {
+    width: '52%',
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  skeletonAvatars: {
+    flexDirection: 'row',
+    marginBottom: spacing.md,
+  },
+  skeletonAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.borderStrong,
+    marginRight: -6,
+    borderWidth: 1,
+    borderColor: colors.surface,
   },
   statusText: {
     color: colors.textMuted,
@@ -496,6 +654,51 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.goldBorder,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.36,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  tutorialHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  tutorialIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  tutorialPreviewCard: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 12,
+    padding: spacing.md,
+  },
+  tutorialPreviewEyebrow: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  tutorialPreviewTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 5,
+  },
+  tutorialPreviewMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
   },
   tutorialDots: {
     flexDirection: 'row',
@@ -550,6 +753,21 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     marginBottom: spacing.md,
+  },
+  modalIntro: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+  },
+  filterGroupTitle: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
   modalCategoryItem: {
     paddingVertical: 14,

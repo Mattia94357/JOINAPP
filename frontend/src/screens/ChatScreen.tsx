@@ -101,7 +101,11 @@ export default function ChatScreen({ route }: Props) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator color={colors.primary} size="large" />
+        <View style={styles.chatSkeletonHeader} />
+        {[0, 1, 2].map((item) => (
+          <View key={item} style={[styles.chatSkeletonBubble, item === 1 && styles.chatSkeletonBubbleRight]} />
+        ))}
+        <ActivityIndicator color={colors.primary} size="small" />
       </View>
     );
   }
@@ -217,7 +221,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     justifyContent: 'center',
-    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  chatSkeletonHeader: {
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  chatSkeletonBubble: {
+    width: '78%',
+    height: 72,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  chatSkeletonBubbleRight: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.goldWash,
+    borderColor: colors.goldBorder,
   },
   lockedContainer: {
     flex: 1,

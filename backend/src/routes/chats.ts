@@ -61,7 +61,15 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
   if (!result) return res.status(404).json({ message: 'Chat not found' });
   if ('error' in result) return res.status(403).json({ message: result.error });
 
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+  const before = req.query.before ? new Date(String(req.query.before)) : null;
   const chat = await Chat.findById(result.chat._id).populate('members', 'name profilePictureUrl profileThumbnailUrl avatar').populate('messages.author', 'name profilePictureUrl profileThumbnailUrl avatar');
+  if (chat) {
+    const messages = before && !Number.isNaN(before.getTime())
+      ? chat.messages.filter((message: any) => new Date(message.sentAt).getTime() < before.getTime())
+      : chat.messages;
+    chat.messages = messages.slice(-limit) as any;
+  }
   res.json(chat);
 });
 

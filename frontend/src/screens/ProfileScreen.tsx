@@ -21,11 +21,18 @@ import { deleteAccountRequest, updateProfilePhotoRequest, updateProfileRequest }
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
+import { choosePhotoSource, pickProfileImage, PhotoSource } from '../utils/mediaPermissions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 const maxProfileImageBytes = 5 * 1024 * 1024;
 const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const genderOptions = [
+  { label: 'Male', value: 'male' },
+  { label: 'Female', value: 'female' },
+  { label: 'Non-binary', value: 'non_binary' },
+  { label: 'Prefer not to say', value: 'prefer_not_to_say' },
+] as const;
 
 const hosted = [
   { title: 'Rooftop dinner circle', meta: 'Food - 10 guests' },
@@ -64,6 +71,8 @@ export default function ProfileScreen({ navigation }: Props) {
   const [interestsText, setInterestsText] = useState((user?.interests || []).join(', '));
   const [instagram, setInstagram] = useState(user?.instagram || '');
   const [ageRange, setAgeRange] = useState(user?.ageRange || '');
+  const [gender, setGender] = useState(user?.gender || 'prefer_not_to_say');
+  const [publicGender, setPublicGender] = useState(Boolean(user?.publicGender));
 
   const interests = user?.interests?.length ? user.interests : ['Wellness', 'Food', 'Networking', 'Culture'];
   const location = user?.location || 'Perth, Australia';
@@ -82,48 +91,37 @@ export default function ProfileScreen({ navigation }: Props) {
     [hasProfilePhoto, user?.verified],
   );
 
-  const handlePickPhoto = async () => {
+  const uploadSelectedPhoto = async (source: PhotoSource) => {
     if (!token) {
       Alert.alert('Sign in required', 'Please log in before updating your profile photo.');
       return;
     }
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photo access needed', 'JOIN needs access to your photos so you can upload a profile picture.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.75,
-      base64: true,
-    });
-
-    if (result.canceled || !result.assets?.length) return;
-
-    const asset = result.assets[0];
+    const asset = await pickProfileImage(source);
+    if (!asset) return;
     const mimeType = getMimeTypeFromAsset(asset);
 
     if (!supportedMimeTypes.includes(mimeType)) {
       setUploadMessage('Use a JPEG, PNG, or WEBP profile photo.');
+      Alert.alert('Unsupported image', 'Use a JPEG, PNG, or WEBP profile photo.');
       return;
     }
 
     if (asset.fileSize && asset.fileSize > maxProfileImageBytes) {
       setUploadMessage('Profile photos must be 5MB or smaller.');
+      Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
       return;
     }
 
     if (!asset.base64) {
       setUploadMessage('Could not read this image. Please try another photo.');
+      Alert.alert('Photo unavailable', 'Could not read this image. Please try another photo.');
       return;
     }
 
     if (getBase64ByteSize(asset.base64) > maxProfileImageBytes) {
       setUploadMessage('Profile photos must be 5MB or smaller.');
+      Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
       return;
     }
 
@@ -132,14 +130,20 @@ export default function ProfileScreen({ navigation }: Props) {
 
     try {
       const imageDataUrl = `data:${mimeType};base64,${asset.base64}`;
-      const response = await updateProfilePhotoRequest(imageDataUrl, token);
+      const response = await updateProfilePhotoRequest(imageDataUrl, token, imageDataUrl);
       await updateUser(response.data);
-      setUploadMessage('Profile photo updated.');
+      setUploadMessage('Profile photo updated. It will now appear across JOIN.');
     } catch (error: any) {
-      setUploadMessage(error?.response?.data?.message || 'Unable to upload profile photo right now.');
+      const message = error?.response?.data?.message || 'Unable to upload profile photo right now.';
+      setUploadMessage(message);
+      Alert.alert('Upload failed', message);
     } finally {
       setUploading(false);
     }
+  };
+
+  const handlePickPhoto = async () => {
+    choosePhotoSource(uploadSelectedPhoto);
   };
 
   const openPolicyLink = (path: string) => {
@@ -186,6 +190,8 @@ export default function ProfileScreen({ navigation }: Props) {
           interests: interestsText.split(',').map((item) => item.trim()).filter(Boolean),
           instagram: instagram.trim(),
           ageRange: ageRange.trim(),
+          gender,
+          publicGender: gender === 'prefer_not_to_say' ? false : publicGender,
         },
         token,
       );
@@ -289,6 +295,31 @@ export default function ProfileScreen({ navigation }: Props) {
         <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
         <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
         <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
+        <Text style={styles.fieldLabel}>Host gender</Text>
+        <View style={styles.genderGrid}>
+          {genderOptions.map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              style={[styles.genderChip, gender === option.value && styles.genderChipActive]}
+              onPress={() => {
+                setGender(option.value);
+                if (option.value === 'prefer_not_to_say') setPublicGender(false);
+              }}
+            >
+              <Text style={[styles.genderChipText, gender === option.value && styles.genderChipTextActive]}>{option.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={[styles.visibilityToggle, (gender === 'prefer_not_to_say') && styles.visibilityToggleDisabled]}
+          onPress={() => gender !== 'prefer_not_to_say' && setPublicGender((value) => !value)}
+          disabled={gender === 'prefer_not_to_say'}
+        >
+          <Ionicons name={publicGender && gender !== 'prefer_not_to_say' ? 'eye-outline' : 'eye-off-outline'} size={17} color={colors.primary} />
+          <Text style={styles.visibilityToggleText}>
+            {publicGender && gender !== 'prefer_not_to_say' ? 'Visible on public profile' : 'Hidden from public profile'}
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
           <Text style={styles.saveProfileText}>{savingProfile ? 'Saving...' : 'Save profile'}</Text>
         </TouchableOpacity>
@@ -582,6 +613,60 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     marginBottom: 9,
+  },
+  fieldLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  genderGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: spacing.sm,
+  },
+  genderChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  genderChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.goldWash,
+  },
+  genderChipText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  genderChipTextActive: {
+    color: colors.primary,
+  },
+  visibilityToggle: {
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surfaceSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  visibilityToggleDisabled: {
+    opacity: 0.6,
+  },
+  visibilityToggleText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginLeft: spacing.sm,
   },
   badgeGrid: {
     flexDirection: 'row',
