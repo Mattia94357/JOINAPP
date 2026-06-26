@@ -13,20 +13,20 @@ import { assertProductionEnvironment, printStartupWarnings } from './config/env'
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4000;
 
 assertProductionEnvironment();
 printStartupWarnings();
 connectDb();
 
-// Cloudflare Tunnel is the single trusted proxy in development deployments.
+// Render terminates TLS and forwards requests to this service.
 app.set('trust proxy', 1);
 
 const allowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const developmentOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+)(:\d+)?$/;
+const developmentOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/;
 
 app.disable('x-powered-by');
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -49,6 +49,7 @@ app.use('/api/activities', activityRoutes);
 app.use('/api/chats', chatRoutes);
 
 app.get('/', (req, res) => res.send({ message: 'JoinApp backend is up and running' }));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'JOIN API' }));
 
 app.use((error: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error?.type === 'entity.too.large') return res.status(413).json({ message: 'Request is too large.' });
@@ -57,6 +58,6 @@ app.use((error: any, _req: express.Request, res: express.Response, _next: expres
   return res.status(500).json({ message: 'Something went wrong. Please try again.' });
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Backend listening on port ${PORT}`);
 });

@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "set NODE_ENV=development&& ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.0",
