@@ -9,8 +9,8 @@
     "ios": {
       "infoPlist": {
         "NSCameraUsageDescription": "JOIN needs camera access so you can take a profile picture.",
-        "NSPhotoLibraryUsageDescription": "JOIN needs access to your photos so you can upload a profile picture.",
-        "NSPhotoLibraryAddUsageDescription": "JOIN needs access to your photos so you can upload a profile picture."
+        "NSPhotoLibraryUsageDescription": "JOIN needs photo library access so you can choose a profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "JOIN needs photo library access so you can choose a profile picture."
       }
     },
     "splash": {

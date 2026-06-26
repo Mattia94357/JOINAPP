@@ -13,6 +13,9 @@ const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 const maxProfileImageBytes = 5 * 1024 * 1024;
 const maxProfileImagePayloadLength = Math.ceil((maxProfileImageBytes * 4) / 3) + 128;
 const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
+const debugPhotoUpload = (event: string, details?: Record<string, unknown>) => {
+  if (process.env.NODE_ENV !== 'production') console.info(`[JOIN photo] ${event}`, details || {});
+};
 
 const getBase64ByteSize = (value: string) => {
   const base64 = value.split(',')[1] || '';
@@ -144,22 +147,38 @@ router.patch(
     .isString()
     .custom(isValidProfileImage)
     .withMessage('Use a JPEG, PNG, or WEBP image under 5MB.'),
+  body('profileThumbnailUrl')
+    .optional()
+    .isString()
+    .custom(isValidProfileImage)
+    .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
   async (req: AuthRequest, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
+    if (!errors.isEmpty()) {
+      debugPhotoUpload('backend validation failed', { message: errors.array()[0].msg });
+      return res.status(400).json({ message: errors.array()[0].msg });
+    }
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    user.profilePictureUrl = req.body.profilePictureUrl;
-    if (req.body.profileThumbnailUrl && !isValidProfileImage(req.body.profileThumbnailUrl)) {
-      return res.status(400).json({ message: 'Use a JPEG, PNG, or WEBP thumbnail under 5MB.' });
-    }
+    debugPhotoUpload('backend upload accepted', {
+      userId: req.userId,
+      profilePictureBytes: getBase64ByteSize(req.body.profilePictureUrl),
+      hasThumbnail: Boolean(req.body.profileThumbnailUrl),
+    });
 
+    user.profilePictureUrl = req.body.profilePictureUrl;
     user.profileThumbnailUrl = req.body.profileThumbnailUrl || req.body.profilePictureUrl;
     user.avatar = user.profileThumbnailUrl;
     user.profileCompleted = true;
     await user.save();
+
+    debugPhotoUpload('backend user saved', {
+      userId: req.userId,
+      hasProfilePictureUrl: Boolean(user.profilePictureUrl),
+      hasProfileThumbnailUrl: Boolean(user.profileThumbnailUrl),
+    });
 
     res.json(userPayload(user));
   },

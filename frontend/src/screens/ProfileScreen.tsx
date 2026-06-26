@@ -8,16 +8,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Linking,
   Platform,
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
-import { deleteAccountRequest, updateProfilePhotoRequest, updateProfileRequest } from '../api';
+import { updateProfilePhotoRequest, updateProfileRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
@@ -34,16 +32,8 @@ const genderOptions = [
   { label: 'Prefer not to say', value: 'prefer_not_to_say' },
 ] as const;
 
-const hosted = [
-  { title: 'Rooftop dinner circle', meta: 'Food - 10 guests' },
-  { title: 'Founders coffee walk', meta: 'Networking - 8 guests' },
-  { title: 'Reset yoga session', meta: 'Wellness - 12 guests' },
-];
-
-const joined = [
-  { title: 'Gallery opening night', meta: 'Tonight - 1.4 km' },
-  { title: 'Trail hike + brunch', meta: 'This weekend - 2.4 km' },
-];
+const hosted: Array<{ title: string; meta: string }> = [];
+const joined: Array<{ title: string; meta: string }> = [];
 
 const getMimeTypeFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
   const mimeType = (asset as ImagePicker.ImagePickerAsset & { mimeType?: string }).mimeType;
@@ -57,9 +47,12 @@ const getMimeTypeFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
 };
 
 const getBase64ByteSize = (value: string) => Math.ceil((value.length * 3) / 4);
+const debugPhotoUpload = (event: string, details?: Record<string, unknown>) => {
+  if (__DEV__) console.info(`[JOIN photo] ${event}`, details || {});
+};
 
 export default function ProfileScreen({ navigation }: Props) {
-  const { user, token, updateUser, logout } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 390;
   const [uploading, setUploading] = useState(false);
@@ -74,21 +67,21 @@ export default function ProfileScreen({ navigation }: Props) {
   const [gender, setGender] = useState(user?.gender || 'prefer_not_to_say');
   const [publicGender, setPublicGender] = useState(Boolean(user?.publicGender));
 
-  const interests = user?.interests?.length ? user.interests : ['Wellness', 'Food', 'Networking', 'Culture'];
-  const location = user?.location || 'Perth, Australia';
+  const interests = user?.interests || [];
+  const location = user?.location || 'Location not added';
   const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
   const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
   const displayHostedCount = user?.hostedCount ?? hosted.length;
   const displayJoinedCount = user?.joinedCount ?? joined.length;
-  const displayRating = user?.hostRating?.toFixed(1) || '4.8';
+  const displayRating = user?.hostRating ? user.hostRating.toFixed(1) : 'New';
 
   const badges = useMemo(
     () => [
-      { icon: 'shield-checkmark-outline', label: user?.verified ? 'Identity verified' : 'Profile reviewed' },
-      { icon: 'star-outline', label: hasProfilePhoto ? 'Photo verified' : 'Photo required' },
-      { icon: 'people-outline', label: 'Community active' },
+      { icon: 'shield-checkmark-outline', label: user?.verified ? 'Identity verified' : 'Profile basics' },
+      { icon: 'camera-outline', label: hasProfilePhoto ? 'Profile photo added' : 'Photo required' },
+      { icon: 'people-outline', label: `${displayJoinedCount} joined` },
     ],
-    [hasProfilePhoto, user?.verified],
+    [displayJoinedCount, hasProfilePhoto, user?.verified],
   );
 
   const uploadSelectedPhoto = async (source: PhotoSource) => {
@@ -97,44 +90,69 @@ export default function ProfileScreen({ navigation }: Props) {
       return;
     }
 
-    const asset = await pickProfileImage(source);
-    if (!asset) return;
-    const mimeType = getMimeTypeFromAsset(asset);
-
-    if (!supportedMimeTypes.includes(mimeType)) {
-      setUploadMessage('Use a JPEG, PNG, or WEBP profile photo.');
-      Alert.alert('Unsupported image', 'Use a JPEG, PNG, or WEBP profile photo.');
-      return;
-    }
-
-    if (asset.fileSize && asset.fileSize > maxProfileImageBytes) {
-      setUploadMessage('Profile photos must be 5MB or smaller.');
-      Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
-      return;
-    }
-
-    if (!asset.base64) {
-      setUploadMessage('Could not read this image. Please try another photo.');
-      Alert.alert('Photo unavailable', 'Could not read this image. Please try another photo.');
-      return;
-    }
-
-    if (getBase64ByteSize(asset.base64) > maxProfileImageBytes) {
-      setUploadMessage('Profile photos must be 5MB or smaller.');
-      Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
-      return;
-    }
-
     setUploading(true);
     setUploadMessage('');
 
     try {
+      const asset = await pickProfileImage(source);
+      if (!asset) {
+        debugPhotoUpload('image selection ended without asset', { source });
+        return;
+      }
+
+      const mimeType = getMimeTypeFromAsset(asset);
+      const payloadBytes = asset.base64 ? getBase64ByteSize(asset.base64) : 0;
+      debugPhotoUpload('profile screen received image', {
+        source,
+        mimeType,
+        width: asset.width,
+        height: asset.height,
+        payloadBytes,
+      });
+
+      if (!supportedMimeTypes.includes(mimeType)) {
+        setUploadMessage('Use a JPEG, PNG, or WEBP profile photo.');
+        Alert.alert('Unsupported image', 'Use a JPEG, PNG, or WEBP profile photo.');
+        return;
+      }
+
+      if (asset.fileSize && asset.fileSize > maxProfileImageBytes) {
+        setUploadMessage('Profile photos must be 5MB or smaller.');
+        Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
+        return;
+      }
+
+      if (!asset.base64) {
+        setUploadMessage('Could not read this image. Please try another photo.');
+        Alert.alert('Photo unavailable', 'Could not read this image. Please try another photo.');
+        return;
+      }
+
+      if (payloadBytes > maxProfileImageBytes) {
+        setUploadMessage('Profile photos must be 5MB or smaller.');
+        Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
+        return;
+      }
+
       const imageDataUrl = `data:${mimeType};base64,${asset.base64}`;
+      debugPhotoUpload('endpoint called', { endpoint: '/api/users/me/profile-photo', payloadBytes });
       const response = await updateProfilePhotoRequest(imageDataUrl, token, imageDataUrl);
+      debugPhotoUpload('response received', {
+        status: response.status,
+        hasProfilePictureUrl: Boolean(response.data.profilePictureUrl),
+      });
       await updateUser(response.data);
+      debugPhotoUpload('AuthContext updated', {
+        hasProfilePictureUrl: Boolean(response.data.profilePictureUrl),
+        hasProfileThumbnailUrl: Boolean(response.data.profileThumbnailUrl),
+      });
       setUploadMessage('Profile photo updated. It will now appear across JOIN.');
     } catch (error: any) {
       const message = error?.response?.data?.message || 'Unable to upload profile photo right now.';
+      debugPhotoUpload('upload response failure', {
+        status: error?.response?.status,
+        message,
+      });
       setUploadMessage(message);
       Alert.alert('Upload failed', message);
     } finally {
@@ -143,38 +161,8 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const handlePickPhoto = async () => {
+    if (uploading) return;
     choosePhotoSource(uploadSelectedPhoto);
-  };
-
-  const openPolicyLink = (path: string) => {
-    const legalBaseUrl = (Constants.expoConfig?.extra as any)?.LEGAL_BASE_URL || 'https://joinapp.app';
-    Linking.openURL(`${legalBaseUrl.replace(/\/$/, '')}/${path}`).catch(() => {
-      Alert.alert('Link unavailable', 'This link could not be opened right now.');
-    });
-  };
-
-  const handleDeleteAccount = () => {
-    if (!token) return;
-
-    Alert.alert(
-      'Delete account?',
-      'This permanently removes your JOIN account. Existing activities may still show historical attendance.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccountRequest(token);
-              await logout();
-            } catch (error: any) {
-              Alert.alert('Unable to delete account', error?.response?.data?.message || 'Please try again later.');
-            }
-          },
-        },
-      ],
-    );
   };
 
   const handleSaveProfile = async () => {
@@ -241,7 +229,7 @@ export default function ProfileScreen({ navigation }: Props) {
             <Text style={styles.location}>{location}</Text>
           </View>
           <Text style={styles.bio} numberOfLines={3}>
-            {user?.bio || 'Curates high-quality plans with thoughtful people, polished details, and good energy.'}
+            {user?.bio || 'Add a short bio so people know who they are meeting.'}
           </Text>
           <View style={[styles.completionPill, hasProfilePhoto ? styles.completionPillReady : styles.completionPillNeeded]}>
             <Ionicons
@@ -340,11 +328,11 @@ export default function ProfileScreen({ navigation }: Props) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Interests</Text>
         <View style={styles.interestTags}>
-          {interests.map((interest) => (
+          {interests.length ? interests.map((interest) => (
             <View key={interest} style={styles.interestTag}>
               <Text style={styles.interestText}>{interest}</Text>
             </View>
-          ))}
+          )) : <Text style={styles.emptyText}>Add interests to help people understand your vibe.</Text>}
         </View>
       </View>
 
@@ -390,7 +378,7 @@ export default function ProfileScreen({ navigation }: Props) {
       <View style={styles.actions}>
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('CreateActivity')}>
           <Ionicons name="add-circle-outline" size={18} color={colors.primaryText} />
-          <Text style={styles.actionButtonText}>Host an experience</Text>
+          <Text style={styles.actionButtonText}>Host a plan</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryAction} onPress={() => navigation.navigate('Notifications')}>
           <Ionicons name="notifications-outline" size={18} color={colors.primary} />
@@ -398,27 +386,11 @@ export default function ProfileScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.signOutButton} onPress={logout}>
-        <Text style={styles.signOutText}>Sign out</Text>
+      <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+        <Ionicons name="settings-outline" size={18} color={colors.text} />
+        <Text style={styles.settingsText}>Settings</Text>
+        <Ionicons name="chevron-forward-outline" size={18} color={colors.textSubtle} />
       </TouchableOpacity>
-
-      <View style={styles.legalSection}>
-        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('privacy')}>
-          <Text style={styles.legalText}>Privacy Policy</Text>
-          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('terms')}>
-          <Text style={styles.legalText}>Terms of Service</Text>
-          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.legalRow} onPress={() => openPolicyLink('community-guidelines')}>
-          <Text style={styles.legalText}>Community Guidelines</Text>
-          <Ionicons name="open-outline" size={16} color={colors.textSubtle} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
-          <Text style={styles.deleteAccountText}>Delete account</Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 }
@@ -430,7 +402,7 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 500,
     alignSelf: 'center',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
@@ -803,37 +775,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginLeft: 6,
   },
-  signOutButton: {
-    alignItems: 'center',
-    paddingVertical: 13,
-    marginTop: spacing.sm,
-  },
-  signOutText: {
-    color: colors.textSubtle,
-    fontWeight: '700',
-  },
-  legalSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  legalRow: {
-    minHeight: 44,
+  settingsButton: {
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.sm,
   },
-  legalText: {
-    color: colors.textMuted,
-    fontWeight: '800',
-  },
-  deleteAccountButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  deleteAccountText: {
-    color: colors.danger,
+  settingsText: {
+    flex: 1,
+    color: colors.text,
     fontWeight: '900',
+    marginLeft: spacing.sm,
   },
 });

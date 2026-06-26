@@ -27,7 +27,7 @@ type Props = {
   onPress: (activity: Activity) => void;
   onOpenChat?: (activity: Activity) => void;
   onViewParticipants?: (activity: Activity) => void;
-  onOpenProfile?: (participant: { id?: string; name: string; avatar?: string }) => void;
+  onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
 };
 
 export default function SwipeDeck({
@@ -156,55 +156,55 @@ export default function SwipeDeck({
     }
   };
 
+  const handleJoinPress = async () => {
+    const activity = activities[index];
+    if (!activity || isActing) return;
+
+    setIsActing(true);
+    try {
+      await onSwipeRight(activity);
+    } finally {
+      resetPosition();
+      setIsActing(false);
+    }
+  };
+
   const renderCards = () => {
     if (index >= activities.length) {
       return (
         <View style={[styles.cardStyle, styles.emptyCard]} key="empty">
           <Text style={styles.emptyText}>
-            No more activities right now. Check back soon!
+            No more real plans nearby right now.
           </Text>
         </View>
       );
     }
 
-    return activities
-      .map((activity, i) => {
-        if (i < index) return null;
+    const activity = activities[index];
 
-        const isTopCard = i === index;
-        return (
-          <Animated.View
-            key={activity.id}
-            style={[
-              styles.cardStyle,
-              isTopCard ? getCardStyle() : { top: 10 * (i - index), zIndex: -i },
-            ]}
-            {...(isTopCard ? panResponder.panHandlers : {})}
-          >
-            {isTopCard ? (
-              <>
-                <Animated.View style={[styles.feedbackBadge, styles.feedbackRight, getFeedbackStyle('right')]}>
-                  <Text style={styles.feedbackText}>Join</Text>
-                </Animated.View>
-                <Animated.View style={[styles.feedbackBadge, styles.feedbackLeft, getFeedbackStyle('left')]}>
-                  <Text style={styles.feedbackText}>Skip</Text>
-                </Animated.View>
-              </>
-            ) : null}
-            <ActivityCard
-              activity={activity}
-              onPress={() => onPress(activity)}
-              onJoin={() => handleSwipe('right')}
-              onSkip={() => handleSwipe('left')}
-              onSave={() => onSave?.(activity)}
-              onOpenChat={() => onOpenChat?.(activity)}
-              onViewParticipants={onViewParticipants}
-              onOpenProfile={onOpenProfile}
-            />
-          </Animated.View>
-        );
-      })
-      .reverse();
+    return (
+      <Animated.View
+        key={activity.id}
+        style={[styles.cardStyle, getCardStyle()]}
+        {...panResponder.panHandlers}
+      >
+        <Animated.View style={[styles.feedbackBadge, styles.feedbackRight, getFeedbackStyle('right')]}>
+          <Text style={styles.feedbackText}>Join</Text>
+        </Animated.View>
+        <Animated.View style={[styles.feedbackBadge, styles.feedbackLeft, getFeedbackStyle('left')]}>
+          <Text style={styles.feedbackText}>Skip</Text>
+        </Animated.View>
+        <ActivityCard
+          activity={activity}
+          onPress={() => onPress(activity)}
+          onJoin={handleJoinPress}
+          onSave={() => onSave?.(activity)}
+          onOpenChat={() => onOpenChat?.(activity)}
+          onViewParticipants={onViewParticipants}
+          onOpenProfile={onOpenProfile}
+        />
+      </Animated.View>
+    );
   };
 
   return <View style={styles.container}>{renderCards()}</View>;
@@ -214,13 +214,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 500,
     alignSelf: 'center',
+    justifyContent: 'center',
     touchAction: 'pan-y' as any,
   },
   cardStyle: {
-    position: 'absolute',
+    position: 'relative',
     width: '100%',
+    left: 0,
+    right: 0,
     touchAction: 'pan-y' as any,
   },
   feedbackBadge: {

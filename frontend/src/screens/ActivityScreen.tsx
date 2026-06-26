@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 520,
     alignSelf: 'center',
     height: 290,
   },
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 520,
     alignSelf: 'center',
     paddingHorizontal: 16,
     paddingTop: 14,

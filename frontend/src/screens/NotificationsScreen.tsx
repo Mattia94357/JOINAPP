@@ -35,6 +35,9 @@ export default function NotificationsScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
     backgroundColor: colors.background,
     padding: spacing.xl,
     paddingBottom: 40,

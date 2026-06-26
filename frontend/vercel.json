@@ -4,7 +4,10 @@
   "outputDirectory": "web-build",
   "routes": [
     {
-      "src": "/(.*)",
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
       "dest": "/index.html"
     }
   ]

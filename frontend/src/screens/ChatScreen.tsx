@@ -55,7 +55,7 @@ export default function ChatScreen({ route }: Props) {
               time: message.createdAt
                 ? new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
                 : 'Now',
-              reactions: index % 2 === 0 ? [{ label: 'Going', count: 1 + index }] : undefined,
+              reactions: [],
             })));
           }
         } catch (error) {
@@ -128,16 +128,12 @@ export default function ChatScreen({ route }: Props) {
     >
       <View style={styles.shell}>
       <View style={styles.chatHeader}>
-        <View style={styles.avatarStack}>
-          {['Mia', 'Ava', 'Avery'].map((name, index) => (
-            <View key={name} style={[styles.stackAvatar, { marginLeft: index === 0 ? 0 : -9 }]}>
-              <AvatarBadge name={name} size={34} />
-            </View>
-          ))}
+        <View style={styles.chatIcon}>
+          <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
         </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>Active group</Text>
-          <Text style={styles.headerMeta}>12 participants - 3 online</Text>
+          <Text style={styles.headerTitle}>Group chat</Text>
+          <Text style={styles.headerMeta}>Chat unlocks after you join the plan</Text>
         </View>
       </View>
 
@@ -185,15 +181,6 @@ export default function ChatScreen({ route }: Props) {
           );
         }}
       />
-
-      <View style={styles.typingRow}>
-        <View style={styles.typingDots}>
-          <View style={styles.dot} />
-          <View style={styles.dot} />
-          <View style={styles.dot} />
-        </View>
-        <Text style={styles.typingText}>Avery is typing</Text>
-      </View>
 
       <View style={styles.inputRow}>
         <TextInput
@@ -267,7 +254,7 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     width: '100%',
-    maxWidth: 720,
+    maxWidth: 500,
     alignSelf: 'center',
   },
   chatHeader: {
@@ -279,14 +266,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     backgroundColor: colors.surface,
   },
-  avatarStack: {
-    flexDirection: 'row',
+  chatIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.goldWash,
     alignItems: 'center',
-  },
-  stackAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    justifyContent: 'center',
   },
   headerCopy: {
     marginLeft: spacing.md,
@@ -423,28 +409,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 11,
     fontWeight: '800',
-  },
-  typingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 7,
-  },
-  typingDots: {
-    flexDirection: 'row',
-    marginRight: 7,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-    marginRight: 3,
-  },
-  typingText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
   },
   inputRow: {
     flexDirection: 'row',

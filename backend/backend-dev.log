@@ -26,3 +26,40 @@ MongoDB connected
 [INFO] 20:29:38 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\chats.ts has been modified
 Backend listening on port 4000
 MongoDB connected
+[INFO] 20:56:16 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[JOIN photo] backend upload accepted {
+  userId: '6a1b25dcdd7c09b1f350281d',
+  profilePictureBytes: 279588,
+  hasThumbnail: true
+}
+[JOIN photo] backend user saved {
+  userId: '6a1b25dcdd7c09b1f350281d',
+  hasProfilePictureUrl: true,
+  hasProfileThumbnailUrl: true
+}
+[INFO] 18:29:08 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[INFO] 18:29:13 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[INFO] 18:29:20 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\auth.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[INFO] 20:04:12 Restarting: C:\Users\freed\Desktop\JOINAPP\backend\src\routes\users.ts has been modified
+Backend listening on port 4000
+MongoDB connected
+[JOIN photo] backend upload accepted {
+  userId: '6a1b25dcdd7c09b1f350281d',
+  profilePictureBytes: 262347,
+  hasThumbnail: true
+}
+[JOIN photo] backend user saved {
+  userId: '6a1b25dcdd7c09b1f350281d',
+  hasProfilePictureUrl: true,
+  hasProfileThumbnailUrl: true
+}
+[ERROR] 07:55:01 MongoServerSelectionError: 60200000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:916:SSL alert number 80
+

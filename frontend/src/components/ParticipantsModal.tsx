@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { colors, spacing } from '../theme';
@@ -69,14 +69,15 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.62)',
-    justifyContent: 'flex-end',
+    justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
     alignItems: 'center',
   },
   sheet: {
-    width: '100%',
-    maxWidth: 760,
+    width: Platform.OS === 'web' ? '92%' : '100%',
+    maxWidth: 460,
     maxHeight: '84%',
     backgroundColor: colors.background,
+    borderRadius: Platform.OS === 'web' ? 16 : 0,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     borderWidth: 1,

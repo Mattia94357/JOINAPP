@@ -22,3 +22,23 @@
 [startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
 [startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
 [startup] Password reset emails will not be sent until SMTP env vars are set.
+[startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
+[startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+[startup] Password reset emails will not be sent until SMTP env vars are set.
+[startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
+[startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+[startup] Password reset emails will not be sent until SMTP env vars are set.
+[startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
+[startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+[startup] Password reset emails will not be sent until SMTP env vars are set.
+[startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
+[startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+[startup] Password reset emails will not be sent until SMTP env vars are set.
+[startup] Missing recommended env vars: MONGODB_URI, JWT_SECRET, FRONTEND_URL
+[startup] SMTP email is not configured. Missing: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+[startup] Password reset emails will not be sent until SMTP env vars are set.
+MongoServerSelectionError: 60200000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:916:SSL alert number 80
+
+    at Timeout._onTimeout (C:\Users\freed\Desktop\JOINAPP\node_modules\mongodb\src\sdam\topology.ts:567:30)
+    at listOnTimeout (node:internal/timers:588:17)
+    at processTimers (node:internal/timers:523:7)

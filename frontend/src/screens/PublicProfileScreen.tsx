@@ -41,9 +41,9 @@ export default function PublicProfileScreen({ route }: Props) {
   }
 
   const name = profile?.name || fallbackName || 'JOIN member';
-  const image = profile?.profilePictureUrl || profile?.profileThumbnailUrl || (profile?.profileCompleted ? profile?.avatar : undefined) || fallbackAvatar;
-  const interests = profile?.interests?.length ? profile.interests : ['Wellness', 'Food', 'Networking'];
-  const languages = profile?.languages?.length ? profile.languages : ['English'];
+  const image = profile?.profileThumbnailUrl || profile?.profilePictureUrl || (profile?.profileCompleted ? profile?.avatar : undefined) || fallbackAvatar;
+  const interests = profile?.interests || [];
+  const languages = profile?.languages || [];
   const targetUserId = profile?.id || userId;
   const recentActivities = [...(profile?.hostedActivities || []), ...(profile?.joinedActivities || [])].slice(0, 5);
   const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
@@ -81,13 +81,14 @@ export default function PublicProfileScreen({ route }: Props) {
       <AvatarBadge name={name} avatarUrl={image} size={112} />
       <Text style={styles.name}>{name}</Text>
       <Text style={styles.meta}>{profile?.location || 'Location private'}</Text>
-      <Text style={styles.bio}>{profile?.aboutMe || profile?.bio || 'JOIN member building real-world social plans.'}</Text>
+      <Text style={styles.bio}>{profile?.aboutMe || profile?.bio || 'No bio yet.'}</Text>
 
       <View style={styles.badges}>
-        <View style={styles.badge}><Ionicons name="mail-open-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>Verified Email</Text></View>
-        <View style={styles.badge}><Ionicons name="camera-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.profilePictureUrl ? 'Profile Photo Added' : 'Photo pending'}</Text></View>
+        <View style={styles.badge}><Ionicons name="camera-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.profilePictureUrl ? 'Profile photo' : 'Photo pending'}</Text></View>
         <View style={styles.badge}><Ionicons name="shield-checkmark-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.verified ? 'Verified' : 'Community Active'}</Text></View>
-        <View style={styles.badge}><Ionicons name="star-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.hostRating || 4.9} rating</Text></View>
+        {profile?.hostRating ? (
+          <View style={styles.badge}><Ionicons name="star-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile.hostRating} rating</Text></View>
+        ) : null}
       </View>
 
       {targetUserId && targetUserId !== user?.id ? (
@@ -104,19 +105,19 @@ export default function PublicProfileScreen({ route }: Props) {
       ) : null}
 
       <View style={styles.stats}>
-        <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostedCount ?? 12}</Text><Text style={styles.statLabel}>Hosted</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>{profile?.joinedCount ?? 47}</Text><Text style={styles.statLabel}>Joined</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostRating ?? 4.9}</Text><Text style={styles.statLabel}>Rating</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostedCount ?? 0}</Text><Text style={styles.statLabel}>Hosted</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{profile?.joinedCount ?? 0}</Text><Text style={styles.statLabel}>Joined</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostRating ?? 'New'}</Text><Text style={styles.statLabel}>Rating</Text></View>
       </View>
 
       <Text style={styles.sectionTitle}>Interests</Text>
       <View style={styles.tags}>
-        {interests.map((interest) => <Text key={interest} style={styles.tag}>{interest}</Text>)}
+        {interests.length ? interests.map((interest) => <Text key={interest} style={styles.tag}>{interest}</Text>) : <Text style={styles.emptyText}>No interests added yet.</Text>}
       </View>
 
       <Text style={styles.sectionTitle}>Languages</Text>
       <View style={styles.tags}>
-        {languages.map((language) => <Text key={language} style={styles.tagSecondary}>{language}</Text>)}
+        {languages.length ? languages.map((language) => <Text key={language} style={styles.tagSecondary}>{language}</Text>) : <Text style={styles.emptyText}>No languages added yet.</Text>}
       </View>
 
       {profile?.ageRange || profile?.instagram || genderLabel ? (
@@ -144,7 +145,7 @@ export default function PublicProfileScreen({ route }: Props) {
 const styles = StyleSheet.create({
   loading: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   scroll: { flex: 1, backgroundColor: colors.background },
-  container: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: spacing.lg, paddingBottom: 80 },
+  container: { width: '100%', maxWidth: 500, alignSelf: 'center', padding: spacing.lg, paddingBottom: 80 },
   name: { color: colors.text, fontSize: 30, fontWeight: '900', marginTop: spacing.md },
   meta: { color: colors.textMuted, fontSize: 14, marginTop: spacing.xs },
   bio: { color: colors.textMuted, lineHeight: 22, marginTop: spacing.md },

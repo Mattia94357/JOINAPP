@@ -96,7 +96,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
         },
         token,
       );
-      Alert.alert('Activity created', 'Your activity is now live in the feed.');
+      Alert.alert('Plan created', 'Your plan is live.');
       navigation.navigate('Home');
     } catch (error: any) {
       console.warn(error);
@@ -108,8 +108,8 @@ export default function CreateActivityScreen({ navigation }: Props) {
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.sectionTitle}>Host an experience</Text>
-      <Text style={styles.sectionDescription}>Add enough detail for people to trust the plan before they join.</Text>
+      <Text style={styles.sectionTitle}>Host a plan</Text>
+      <Text style={styles.sectionDescription}>Create a real plan nearby. Add the essentials now, then details only if they help.</Text>
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
@@ -226,7 +226,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
       ) : null}
 
       <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Posting...' : 'Publish experience'}</Text>
+        <Text style={styles.buttonText}>{loading ? 'Publishing...' : 'Publish plan'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    maxWidth: 720,
+    maxWidth: 500,
     alignSelf: 'center',
     padding: spacing.lg,
     paddingBottom: 96,

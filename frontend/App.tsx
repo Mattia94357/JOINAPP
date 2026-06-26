@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
-import { ActivityIndicator, StyleSheet, View, Text } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View, Text, useWindowDimensions } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
 import ChatScreen from './src/screens/ChatScreen';
@@ -11,6 +11,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import CreateActivityScreen from './src/screens/CreateActivityScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -21,7 +22,7 @@ import { getApiConfigStatus } from './src/api';
 
 export type RootStackParamList = {
   Onboarding: undefined;
-  Login: undefined;
+  Login: { mode?: 'login' | 'register' } | undefined;
   ForgotPassword: undefined;
   ResetPassword: { token?: string } | undefined;
   PublicProfile: { userId?: string; fallbackName?: string; fallbackAvatar?: string };
@@ -30,6 +31,7 @@ export type RootStackParamList = {
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };
   Profile: undefined;
+  Settings: undefined;
   Notifications: undefined;
 };
 
@@ -85,7 +87,7 @@ function AppNavigator() {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
-          options={{ title: 'Welcome to JoinApp', headerBackVisible: false }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="ResetPassword"
@@ -102,14 +104,28 @@ function AppNavigator() {
           component={PublicProfileScreen}
           options={{ title: 'Profile' }}
         />
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Discover Activities' }} />
+        <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
         <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
         <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.title })} />
         <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+function AppCanvas() {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 768;
+
+  return (
+    <View style={styles.appStage}>
+      <View style={[styles.appFrame, isDesktopWeb && styles.desktopAppFrame]}>
+        <AppNavigator />
+      </View>
+    </View>
   );
 }
 
@@ -128,13 +144,35 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <AppNavigator />
+      <AppCanvas />
       <StatusBar style="light" />
     </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  appStage: {
+    flex: 1,
+    backgroundColor: colors.secondaryBackground,
+    alignItems: 'center',
+  },
+  appFrame: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  desktopAppFrame: {
+    maxWidth: 520,
+    alignSelf: 'center',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+  },
   loadingContainer: {
     flex: 1,
     backgroundColor: colors.background,

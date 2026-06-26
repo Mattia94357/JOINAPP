@@ -58,6 +58,8 @@ const publicUserPayload = (user: any) => ({
   joinedActivitiesPublic: user.joinedActivitiesPublic,
 });
 
+const normalizeEmail = (email: unknown) => String(email || '').trim().toLowerCase();
+
 router.post(
   '/register',
   body('name').notEmpty(),
@@ -67,7 +69,8 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: passwordStrengthMessage });
 
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
+    const email = normalizeEmail(req.body.email);
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Email already in use' });
 
@@ -92,8 +95,8 @@ router.post(
       return res.status(400).json({ message: 'Enter a valid email address.' });
     }
 
-    const { email } = req.body;
-    const user = await User.findOne({ email: String(email).toLowerCase() });
+    const email = normalizeEmail(req.body.email);
+    const user = await User.findOne({ email });
 
     if (!user) {
       logAuthDebug('[auth:forgot-password] User not found');
@@ -190,7 +193,8 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 

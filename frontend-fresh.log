@@ -1,0 +1,38 @@
+Starting project at C:\Users\freed\Desktop\JOINAPP\frontend
+Starting Metro Bundler
+Starting Webpack on port 19006 in development mode.
+Waiting on http://localhost:19008
+Logs for your project will appear below.
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1m[31mERROR[39m[22m in [1m./App.tsx:14[39m[22m
+Module not found: Can't resolve './src/screens/SettingsScreen'
+[0m [90m 12 |[39m [36mimport[39m [33mOnboardingScreen[39m [36mfrom[39m [32m'./src/screens/OnboardingScreen'[39m[33m;[39m
+ [90m 13 |[39m [36mimport[39m [33mProfileScreen[39m [36mfrom[39m [32m'./src/screens/ProfileScreen'[39m[33m;[39m
+[31m[1m>[22m[39m[90m 14 |[39m [36mimport[39m [33mSettingsScreen[39m [36mfrom[39m [32m'./src/screens/SettingsScreen'[39m[33m;[39m
+ [90m 15 |[39m [36mimport[39m [33mNotificationsScreen[39m [36mfrom[39m [32m'./src/screens/NotificationsScreen'[39m[33m;[39m
+ [90m 16 |[39m [36mimport[39m [33mResetPasswordScreen[39m [36mfrom[39m [32m'./src/screens/ResetPasswordScreen'[39m[33m;[39m
+ [90m 17 |[39m [36mimport[39m [33mForgotPasswordScreen[39m [36mfrom[39m [32m'./src/screens/ForgotPasswordScreen'[39m[33m;[39m[0m
+
+[1mweb[39m[22m compiled with [1m[31m1 error[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m
+[1mweb[39m[22m compiled [1m[32msuccessfully[39m[22m

@@ -403,6 +403,7 @@ export const updateProfilePhotoRequest = async (profilePictureUrl: string, token
     { profilePictureUrl, profileThumbnailUrl: profileThumbnailUrl || profilePictureUrl },
     {
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 30000,
     },
   );
 

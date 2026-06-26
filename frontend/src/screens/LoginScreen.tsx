@@ -7,9 +7,9 @@ import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
-export default function LoginScreen({ navigation }: Props) {
+export default function LoginScreen({ navigation, route }: Props) {
   const { user, login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register'>(route.params?.mode || 'login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +21,12 @@ export default function LoginScreen({ navigation }: Props) {
       navigation.replace('Home');
     }
   }, [user, navigation]);
+
+  useEffect(() => {
+    if (route.params?.mode) {
+      setMode(route.params.mode);
+    }
+  }, [route.params?.mode]);
 
   const handleSubmit = async () => {
     setError('');
@@ -34,10 +40,11 @@ export default function LoginScreen({ navigation }: Props) {
 
     setLoading(true);
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       if (mode === 'login') {
-        await login(email.trim(), password);
+        await login(normalizedEmail, password);
       } else {
-        await register(name.trim(), email.trim(), password);
+        await register(name.trim(), normalizedEmail, password);
       }
       navigation.replace('Home');
     } catch (error: any) {
@@ -61,8 +68,8 @@ export default function LoginScreen({ navigation }: Props) {
         <View style={styles.logoMark}>
           <Text style={styles.logoText}>J</Text>
         </View>
-        <Text style={styles.brand}>JoinApp</Text>
-        <Text style={styles.subtitle}>Premium local plans, trusted hosts and group chat without the noise.</Text>
+        <Text style={styles.brand}>JOIN</Text>
+        <Text style={styles.subtitle}>Discover plans nearby.</Text>
       </View>
       <View style={styles.form}>
         <View style={styles.segmentedControl}>
@@ -94,6 +101,9 @@ export default function LoginScreen({ navigation }: Props) {
           placeholderTextColor={colors.textSubtle}
           keyboardType="email-address"
           autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="emailAddress"
+          returnKeyType="next"
           value={email}
           onChangeText={setEmail}
         />
@@ -102,6 +112,9 @@ export default function LoginScreen({ navigation }: Props) {
           placeholder="Password"
           placeholderTextColor={colors.textSubtle}
           secureTextEntry
+          textContentType={mode === 'login' ? 'password' : 'newPassword'}
+          returnKeyType="go"
+          onSubmitEditing={handleSubmit}
           value={password}
           onChangeText={setPassword}
         />
