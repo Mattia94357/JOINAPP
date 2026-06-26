@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
+import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -64,14 +65,15 @@ export default function LoginScreen({ navigation, route }: Props) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.shell}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoText}>J</Text>
+      <ResponsiveAppContainer maxWidth={460}>
+        <View style={styles.shell}>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoText}>J</Text>
+          </View>
+          <Text style={styles.brand}>JOIN</Text>
+          <Text style={styles.subtitle}>Discover plans nearby.</Text>
         </View>
-        <Text style={styles.brand}>JOIN</Text>
-        <Text style={styles.subtitle}>Discover plans nearby.</Text>
-      </View>
-      <View style={styles.form}>
+        <View style={styles.form}>
         <View style={styles.segmentedControl}>
           <TouchableOpacity
             style={[styles.segment, mode === 'login' && styles.segmentActive]}
@@ -135,7 +137,8 @@ export default function LoginScreen({ navigation, route }: Props) {
             {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Log in'}
           </Text>
         </TouchableOpacity>
-      </View>
+        </View>
+      </ResponsiveAppContainer>
     </KeyboardAvoidingView>
   );
 }

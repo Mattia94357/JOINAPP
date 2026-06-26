@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../../App';
 import { colors, spacing } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
+import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -14,6 +15,7 @@ export default function OnboardingScreen({ navigation }: Props) {
   return (
     <ImageBackground source={{ uri: heroImage }} style={styles.background} resizeMode="cover">
       <View style={styles.overlay} />
+      <ResponsiveAppContainer style={styles.responsiveShell}>
       <SafeAreaView style={styles.container}>
         <View style={styles.brandRow}>
           <View style={styles.logoMark}>
@@ -46,6 +48,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </ResponsiveAppContainer>
     </ImageBackground>
   );
 }
@@ -65,6 +68,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
+  },
+  responsiveShell: {
+    flex: 1,
   },
   brandRow: {
     flexDirection: 'row',

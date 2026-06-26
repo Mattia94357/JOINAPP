@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { forgotPasswordRequest } from '../api';
 import { colors, spacing } from '../theme';
+import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
@@ -60,6 +61,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ResponsiveAppContainer maxWidth={460}>
       <View style={styles.card}>
         <View style={styles.logoMark}>
           <Text style={styles.logoText}>J</Text>
@@ -88,6 +90,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           <Text style={styles.secondaryText}>Back to login</Text>
         </TouchableOpacity>
       </View>
+      </ResponsiveAppContainer>
     </KeyboardAvoidingView>
   );
 }

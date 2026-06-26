@@ -19,6 +19,7 @@ import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
 import { getApiConfigStatus } from './src/api';
+import ResponsiveAppContainer from './src/components/ResponsiveAppContainer';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -122,9 +123,9 @@ function AppCanvas() {
 
   return (
     <View style={styles.appStage}>
-      <View style={[styles.appFrame, isDesktopWeb && styles.desktopAppFrame]}>
+      <ResponsiveAppContainer style={[styles.appFrame, isDesktopWeb && styles.desktopAppFrame]}>
         <AppNavigator />
-      </View>
+      </ResponsiveAppContainer>
     </View>
   );
 }
