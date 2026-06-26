@@ -5,6 +5,8 @@ type Props = {
   children: ReactNode;
   /** Use a smaller measure for focused content such as authentication forms. */
   maxWidth?: number;
+  /** Public, cinematic screens can intentionally use the full browser width. */
+  fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -12,12 +14,12 @@ type Props = {
  * Keeps JOIN feeling like a mobile app when it is viewed in a desktop browser.
  * On phones it remains full-width; on web it becomes a centered, readable column.
  */
-export default function ResponsiveAppContainer({ children, maxWidth = 520, style }: Props) {
+export default function ResponsiveAppContainer({ children, maxWidth = 520, fullWidth = false, style }: Props) {
   return (
     <View
       style={[
         styles.container,
-        Platform.OS === 'web' && { maxWidth },
+        Platform.OS === 'web' && !fullWidth && { maxWidth },
         style,
       ]}
     >

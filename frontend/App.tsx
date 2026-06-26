@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState } from 'react';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
@@ -46,8 +46,19 @@ const getLinkingPrefixes = () => {
   return __DEV__ ? [...developmentPrefixes, ...productionPrefixes] : productionPrefixes;
 };
 
-function AppNavigator() {
+type AppNavigatorProps = {
+  onRouteChange: (routeName: keyof RootStackParamList) => void;
+};
+
+function AppNavigator({ onRouteChange }: AppNavigatorProps) {
   const { user, loading } = useAuth();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const initialRouteName = user ? 'Home' : 'Onboarding';
+
+  const reportActiveRoute = () => {
+    const routeName = navigationRef.getCurrentRoute()?.name as keyof RootStackParamList | undefined;
+    onRouteChange(routeName || initialRouteName);
+  };
 
   if (loading) {
     return (
@@ -60,6 +71,9 @@ function AppNavigator() {
 
   return (
     <NavigationContainer
+      ref={navigationRef}
+      onReady={reportActiveRoute}
+      onStateChange={reportActiveRoute}
       linking={{
         prefixes: getLinkingPrefixes(),
         config: {
@@ -72,7 +86,7 @@ function AppNavigator() {
       }}
     >
       <Stack.Navigator
-        initialRouteName={user ? 'Home' : 'Onboarding'}
+        initialRouteName={initialRouteName}
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.text,
@@ -120,11 +134,16 @@ function AppNavigator() {
 function AppCanvas() {
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= 768;
+  const [routeName, setRouteName] = useState<keyof RootStackParamList>('Onboarding');
+  const isCinematicEntry = isDesktopWeb && routeName === 'Onboarding';
 
   return (
     <View style={styles.appStage}>
-      <ResponsiveAppContainer style={[styles.appFrame, isDesktopWeb && styles.desktopAppFrame]}>
-        <AppNavigator />
+      <ResponsiveAppContainer
+        fullWidth={isCinematicEntry}
+        style={[styles.appFrame, isDesktopWeb && !isCinematicEntry && styles.desktopAppFrame]}
+      >
+        <AppNavigator onRouteChange={setRouteName} />
       </ResponsiveAppContainer>
     </View>
   );
