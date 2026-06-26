@@ -5,6 +5,8 @@ import auth, { AuthRequest } from '../middleware/auth';
 import User from '../models/User';
 import Activity from '../models/Activity';
 import UserReport from '../models/UserReport';
+import Chat from '../models/Chat';
+import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
 
@@ -13,9 +15,7 @@ const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 const maxProfileImageBytes = 5 * 1024 * 1024;
 const maxProfileImagePayloadLength = Math.ceil((maxProfileImageBytes * 4) / 3) + 128;
 const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
-const debugPhotoUpload = (event: string, details?: Record<string, unknown>) => {
-  if (process.env.NODE_ENV !== 'production') console.info(`[JOIN photo] ${event}`, details || {});
-};
+const moderationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
 
 const getBase64ByteSize = (value: string) => {
   const base64 = value.split(',')[1] || '';
@@ -43,7 +43,6 @@ const userPayload = (user: any) => ({
   avatar: user.profileThumbnailUrl || user.profilePictureUrl || user.avatar,
   profilePictureUrl: user.profilePictureUrl,
   profileThumbnailUrl: user.profileThumbnailUrl,
-  pushToken: user.pushToken,
   profileCompleted: Boolean(user.profileCompleted || user.profilePictureUrl),
   location: user.location,
   interests: user.interests || [],
@@ -60,7 +59,6 @@ const userPayload = (user: any) => ({
   reviewCount: user.reviewCount,
   hostedCount: user.hostedCount,
   joinedCount: user.joinedCount,
-  savedActivities: user.savedActivities || [],
   hasCompletedOnboardingTutorial: Boolean(user.hasCompletedOnboardingTutorial),
   locationPublic: user.locationPublic,
   hostedActivitiesPublic: user.hostedActivitiesPublic,
@@ -154,31 +152,16 @@ router.patch(
     .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
   async (req: AuthRequest, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      debugPhotoUpload('backend validation failed', { message: errors.array()[0].msg });
-      return res.status(400).json({ message: errors.array()[0].msg });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
-
-    debugPhotoUpload('backend upload accepted', {
-      userId: req.userId,
-      profilePictureBytes: getBase64ByteSize(req.body.profilePictureUrl),
-      hasThumbnail: Boolean(req.body.profileThumbnailUrl),
-    });
 
     user.profilePictureUrl = req.body.profilePictureUrl;
     user.profileThumbnailUrl = req.body.profileThumbnailUrl || req.body.profilePictureUrl;
     user.avatar = user.profileThumbnailUrl;
     user.profileCompleted = true;
     await user.save();
-
-    debugPhotoUpload('backend user saved', {
-      userId: req.userId,
-      hasProfilePictureUrl: Boolean(user.profilePictureUrl),
-      hasProfileThumbnailUrl: Boolean(user.profileThumbnailUrl),
-    });
 
     res.json(userPayload(user));
   },
@@ -203,7 +186,16 @@ router.patch(
   },
 );
 
-router.patch('/me/privacy', auth, async (req: AuthRequest, res) => {
+router.patch(
+  '/me/privacy',
+  auth,
+  body('locationPublic').optional().isBoolean(),
+  body('hostedActivitiesPublic').optional().isBoolean(),
+  body('joinedActivitiesPublic').optional().isBoolean(),
+  body('publicGender').optional().isBoolean(),
+  async (req: AuthRequest, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Privacy settings must be true or false.' });
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
 
@@ -216,12 +208,18 @@ router.patch('/me/privacy', auth, async (req: AuthRequest, res) => {
   res.json(userPayload(user));
 });
 
-// Permanently deletes the signed-in account. Existing activity references remain for backward compatibility.
+// Permanently deletes the account, cancels hosted plans, and removes private references.
 router.delete('/me', auth, async (req: AuthRequest, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
 
-  await User.deleteOne({ _id: req.userId });
+  const userId = user._id;
+  await Activity.updateMany({ host: userId, status: { $ne: 'cancelled' } }, { $set: { status: 'cancelled', cancellationReason: 'Host account deleted.' } });
+  await Activity.updateMany({}, { $pull: { participants: userId, pendingParticipants: userId, declinedParticipants: userId, waitlist: userId, invitedUsers: userId } });
+  await Chat.updateMany({}, { $pull: { members: userId, messages: { author: userId } } });
+  await User.updateMany({ blockedUsers: userId }, { $pull: { blockedUsers: userId } });
+  await UserReport.deleteMany({ $or: [{ reporter: userId }, { reportedUser: userId }] });
+  await User.deleteOne({ _id: userId });
   res.json({ message: 'Account deleted.' });
 });
 
@@ -229,6 +227,7 @@ router.delete('/me', auth, async (req: AuthRequest, res) => {
 router.post(
   '/:id/report',
   auth,
+  moderationLimiter,
   body('reason').optional().isString().isLength({ max: 500 }),
   async (req: AuthRequest, res) => {
     const errors = validationResult(req);
@@ -237,6 +236,7 @@ router.post(
     if (!Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ message: 'User not found' });
     }
+    if (req.params.id === req.userId) return res.status(400).json({ message: 'You cannot report yourself.' });
 
     const reportedUser = await User.findById(req.params.id);
     if (!reportedUser) return res.status(404).json({ message: 'User not found' });
@@ -252,7 +252,7 @@ router.post(
 );
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.
-router.post('/:id/block', auth, async (req: AuthRequest, res) => {
+router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User to block not found' });
   }

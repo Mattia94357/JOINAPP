@@ -253,6 +253,9 @@ export const loginRequest = (email: string, password: string) =>
 export const registerRequest = (name: string, email: string, password: string) =>
   api.post<{ token: string; user: ApiUser }>('/api/auth/register', { name, email, password });
 
+export const fetchCurrentUserRequest = (token: string) =>
+  api.get<ApiUser>('/api/users/me', { headers: { Authorization: `Bearer ${token}` } });
+
 export const fetchActivities = async (token?: string, filters?: { hostGender?: 'male' | 'female' | 'non_binary' }) => {
   const response = await api.get<RawActivity[]>('/api/activities', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,

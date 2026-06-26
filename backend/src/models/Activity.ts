@@ -56,5 +56,6 @@ ActivitySchema.index({ createdAt: -1 });
 ActivitySchema.index({ host: 1, createdAt: -1 });
 ActivitySchema.index({ participants: 1, createdAt: -1 });
 ActivitySchema.index({ visibility: 1, status: 1, createdAt: -1 });
+ActivitySchema.index({ category: 1, status: 1, date: 1 });
 
 export default model<IActivity>('Activity', ActivitySchema);

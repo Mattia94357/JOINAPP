@@ -20,6 +20,8 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
 import { getApiConfigStatus } from './src/api';
 import ResponsiveAppContainer from './src/components/ResponsiveAppContainer';
+import CinematicAppBackdrop from './src/components/CinematicAppBackdrop';
+import Logo from './src/components/Logo';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -63,7 +65,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Logo size={54} animate />
         <Text style={styles.loadingText}>Restoring session...</Text>
       </View>
     );
@@ -135,10 +137,11 @@ function AppCanvas() {
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= 768;
   const [routeName, setRouteName] = useState<keyof RootStackParamList>('Onboarding');
-  const isCinematicEntry = isDesktopWeb && routeName === 'Onboarding';
+  const isCinematicEntry = isDesktopWeb && (routeName === 'Onboarding' || routeName === 'Login');
 
   return (
     <View style={styles.appStage}>
+      <CinematicAppBackdrop />
       <ResponsiveAppContainer
         fullWidth={isCinematicEntry}
         style={[styles.appFrame, isDesktopWeb && !isCinematicEntry && styles.desktopAppFrame]}
@@ -173,13 +176,13 @@ export default function App() {
 const styles = StyleSheet.create({
   appStage: {
     flex: 1,
-    backgroundColor: colors.secondaryBackground,
+    backgroundColor: '#070707',
     alignItems: 'center',
   },
   appFrame: {
     flex: 1,
     width: '100%',
-    backgroundColor: colors.background,
+    backgroundColor: 'rgba(11,11,11,0.88)',
   },
   desktopAppFrame: {
     maxWidth: 520,

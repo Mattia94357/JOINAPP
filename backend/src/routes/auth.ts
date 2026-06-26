@@ -6,11 +6,14 @@ import { body, validationResult } from 'express-validator';
 import User from '../models/User';
 import { isMailConfigured, sendPasswordResetEmail } from '../config/mail';
 import { isDevelopment } from '../config/env';
+import { getJwtSecret } from '../config/security';
+import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
 const resetTokenMinutes = 30;
 const genericResetMessage = 'If an account exists, password reset instructions are on the way.';
 const passwordStrengthMessage = 'Password must be at least 8 characters and include a letter and a number.';
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
 
 const hashResetToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -62,7 +65,8 @@ const normalizeEmail = (email: unknown) => String(email || '').trim().toLowerCas
 
 router.post(
   '/register',
-  body('name').notEmpty(),
+  authLimiter,
+  body('name').isString().trim().isLength({ min: 2, max: 80 }),
   body('email').isEmail(),
   body('password').custom(isStrongPassword),
   async (req, res) => {
@@ -79,13 +83,14 @@ router.post(
     const user = new User({ name, email, password: hashed, avatar, profileCompleted: false });
     await user.save();
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: publicUserPayload(user) });
   }
 );
 
 router.post(
   '/forgot-password',
+  authLimiter,
   body('email').isEmail(),
   async (req, res) => {
     logAuthDebug('[auth:forgot-password] Request received');
@@ -109,7 +114,7 @@ router.post(
     user.passwordResetTokenHash = hashResetToken(resetToken);
     user.passwordResetExpires = new Date(Date.now() + resetTokenMinutes * 60 * 1000);
     await user.save();
-    logAuthDebug(`[auth:forgot-password] Reset token saved to MongoDB. Expires in ${resetTokenMinutes} minutes.`);
+    logAuthDebug(`[auth:forgot-password] Reset token saved. Expires in ${resetTokenMinutes} minutes.`);
 
     const frontendUrl = getFrontendUrl();
     if (!frontendUrl) {
@@ -148,6 +153,7 @@ router.post(
 
 router.post(
   '/reset-password',
+  authLimiter,
   body('token').isString().notEmpty(),
   body('password').custom(isStrongPassword),
   async (req, res) => {
@@ -187,6 +193,7 @@ router.post(
 
 router.post(
   '/login',
+  authLimiter,
   body('email').isEmail(),
   body('password').exists(),
   async (req, res) => {
@@ -201,7 +208,7 @@ router.post(
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: publicUserPayload(user) });
   }
 );

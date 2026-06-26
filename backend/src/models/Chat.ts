@@ -30,4 +30,7 @@ const ChatSchema = new Schema<IChat>({
   messages: [MessageSchema],
 }, { timestamps: true });
 
+ChatSchema.index({ activity: 1 }, { unique: true, sparse: true });
+ChatSchema.index({ members: 1, updatedAt: -1 });
+
 export default model<IChat>('Chat', ChatSchema);

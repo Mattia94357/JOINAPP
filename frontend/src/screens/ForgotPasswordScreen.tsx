@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { forgotPasswordRequest } from '../api';
 import { colors, spacing } from '../theme';
 import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
+import Logo from '../components/Logo';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 
@@ -61,11 +62,10 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
       <ResponsiveAppContainer maxWidth={460}>
       <View style={styles.card}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoText}>J</Text>
-        </View>
+        <Logo size={48} style={styles.logo} />
         <Text style={styles.title}>Reset your password</Text>
         <Text style={styles.subtitle}>Enter your JOIN email and we will send a secure reset link.</Text>
 
@@ -91,42 +91,36 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
       </ResponsiveAppContainer>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  logo: {
+    marginBottom: spacing.md,
+  },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
   },
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 18,
     padding: spacing.lg,
     elevation: 10,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.34,
     shadowRadius: 24,
-  },
-  logoMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  logoText: {
-    color: colors.primaryText,
-    fontSize: 22,
-    fontWeight: '900',
   },
   title: {
     color: colors.text,

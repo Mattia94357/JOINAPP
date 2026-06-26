@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiUser, loginRequest, registerRequest, updatePushTokenRequest } from '../api';
+import { ApiUser, fetchCurrentUserRequest, loginRequest, registerRequest, updatePushTokenRequest } from '../api';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
 
 type AuthState = {
@@ -32,11 +32,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
 
         if (storedUser && storedToken) {
-          setUser(JSON.parse(storedUser));
+          const response = await fetchCurrentUserRequest(storedToken);
+          setUser(response.data);
           setToken(storedToken);
+          await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.data));
         }
-      } catch (error) {
-        console.warn('Failed to restore auth session', error);
+      } catch {
+        await Promise.all([AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(TOKEN_KEY)]);
       } finally {
         setLoading(false);
       }

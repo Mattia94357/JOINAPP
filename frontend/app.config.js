@@ -24,7 +24,8 @@ const readLocalEnv = () => {
 
 const localEnv = readLocalEnv();
 const apiUrl = process.env.EXPO_PUBLIC_API_URL || localEnv.EXPO_PUBLIC_API_URL;
-const legalBaseUrl = process.env.LEGAL_BASE_URL || localEnv.LEGAL_BASE_URL || 'https://joinapp.app';
+const legalBaseUrl = process.env.LEGAL_BASE_URL || localEnv.LEGAL_BASE_URL;
+const legalUrl = (key, path) => process.env[key] || localEnv[key] || (legalBaseUrl ? `${legalBaseUrl.replace(/\/$/, '')}/${path}` : undefined);
 
 module.exports = ({ config }) => ({
   ...config,
@@ -39,6 +40,9 @@ module.exports = ({ config }) => ({
   },
   extra: {
     API_URL: apiUrl,
-    LEGAL_BASE_URL: legalBaseUrl,
+    PRIVACY_POLICY_URL: legalUrl('PRIVACY_POLICY_URL', 'privacy'),
+    TERMS_URL: legalUrl('TERMS_URL', 'terms'),
+    COMMUNITY_GUIDELINES_URL: legalUrl('COMMUNITY_GUIDELINES_URL', 'community-guidelines'),
+    DELETE_ACCOUNT_URL: process.env.DELETE_ACCOUNT_URL || localEnv.DELETE_ACCOUNT_URL,
   },
 });

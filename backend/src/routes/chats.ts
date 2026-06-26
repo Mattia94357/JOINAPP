@@ -5,8 +5,11 @@ import Chat from '../models/Chat';
 import Activity from '../models/Activity';
 import User from '../models/User';
 import { Types } from 'mongoose';
+import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
+const chatLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
+const cleanMessage = (value: string) => value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
 const idInList = (list: any[] | undefined, id?: string) =>
   Boolean(id && (list || []).some((item) => (item?._id?.toString?.() || item?.toString?.()) === id));
 
@@ -73,7 +76,7 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
   res.json(chat);
 });
 
-router.post('/:id/message', auth, body('message').notEmpty(), async (req: AuthRequest, res) => {
+router.post('/:id/message', auth, chatLimiter, body('message').isString().trim().isLength({ min: 1, max: 1200 }), async (req: AuthRequest, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -82,7 +85,13 @@ router.post('/:id/message', auth, body('message').notEmpty(), async (req: AuthRe
   if ('error' in result) return res.status(403).json({ message: result.error });
   const chat = result.chat;
 
-  chat.messages.push({ author: req.userId as any, message: req.body.message, sentAt: new Date() });
+  const message = cleanMessage(req.body.message);
+  if (!message) return res.status(400).json({ message: 'Message cannot be empty.' });
+  const previous = chat.messages[chat.messages.length - 1];
+  if (previous?.author?.toString() === req.userId && previous.message === message && Date.now() - new Date(previous.sentAt).getTime() < 10_000) {
+    return res.status(429).json({ message: 'Please avoid sending duplicate messages.' });
+  }
+  chat.messages.push({ author: req.userId as any, message, sentAt: new Date() });
   await chat.save();
   res.json(chat);
 });

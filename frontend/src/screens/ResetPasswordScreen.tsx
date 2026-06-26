@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { resetPasswordRequest } from '../api';
 import { colors, spacing } from '../theme';
 import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
+import Logo from '../components/Logo';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
 
@@ -68,11 +69,10 @@ export default function ResetPasswordScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
       <ResponsiveAppContainer maxWidth={460}>
       <View style={styles.card}>
-        <View style={styles.iconBubble}>
-          <Text style={styles.iconText}>J</Text>
-        </View>
+        <Logo size={48} style={styles.logo} />
         <Text style={styles.title}>Create a new password</Text>
         <Text style={styles.subtitle}>Choose a fresh password for your JOIN account.</Text>
 
@@ -109,42 +109,36 @@ export default function ResetPasswordScreen({ route, navigation }: Props) {
         {message ? <Text style={styles.errorText}>{message}</Text> : null}
       </View>
       </ResponsiveAppContainer>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  logo: {
+    marginBottom: spacing.md,
+  },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
   },
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 18,
     padding: spacing.lg,
     elevation: 10,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.34,
     shadowRadius: 24,
-  },
-  iconBubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  iconText: {
-    color: colors.primaryText,
-    fontSize: 22,
-    fontWeight: '900',
   },
   title: {
     color: colors.text,

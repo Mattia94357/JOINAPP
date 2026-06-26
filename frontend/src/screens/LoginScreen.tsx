@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
+import Logo from '../components/Logo';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -16,6 +17,8 @@ export default function LoginScreen({ navigation, route }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 768;
 
   useEffect(() => {
     if (user) {
@@ -60,17 +63,10 @@ export default function LoginScreen({ navigation, route }: Props) {
     }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ResponsiveAppContainer maxWidth={460}>
+  const authPanel = (
+      <ResponsiveAppContainer maxWidth={440}>
         <View style={styles.shell}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoText}>J</Text>
-          </View>
-          <Text style={styles.brand}>JOIN</Text>
+          <Logo size={56} withWordmark animate />
           <Text style={styles.subtitle}>Discover plans nearby.</Text>
         </View>
         <View style={styles.form}>
@@ -139,6 +135,20 @@ export default function LoginScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         </View>
       </ResponsiveAppContainer>
+  );
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      {isDesktopWeb ? (
+        <View style={styles.desktopOverlay}>{authPanel}</View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          {authPanel}
+        </ScrollView>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -146,7 +156,17 @@ export default function LoginScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    width: '100%',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+  },
+  desktopOverlay: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
@@ -155,27 +175,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
-  logoMark: {
-    width: 52,
-    height: 52,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  logoText: {
-    color: colors.primaryText,
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  brand: {
-    fontSize: 36,
-    color: colors.text,
-    fontWeight: '900',
-  },
   subtitle: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     color: colors.textMuted,
     fontSize: 16,
     textAlign: 'center',
@@ -185,15 +186,15 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
     marginTop: spacing.xxl,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(30, 30, 30, 0.98)',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 22,
     padding: spacing.lg,
     elevation: 10,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.34,
+    shadowOpacity: 0.46,
     shadowRadius: 24,
   },
   segmentedControl: {

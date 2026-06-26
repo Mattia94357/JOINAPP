@@ -68,4 +68,6 @@ const UserSchema = new Schema<IUser>({
   passwordResetExpires: { type: Date },
 }, { timestamps: true });
 
+UserSchema.index({ pushToken: 1 }, { sparse: true });
+
 export default model<IUser>('User', UserSchema);

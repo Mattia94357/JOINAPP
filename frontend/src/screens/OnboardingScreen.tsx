@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { colors, spacing } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
+import Logo from '../components/Logo';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -51,10 +52,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoMark}><Text style={styles.logoText}>J</Text></View>
-            <Text style={styles.brand}>JOIN</Text>
-          </View>
+          <Logo size={42} withWordmark />
           {isDesktop ? (
             <TouchableOpacity style={styles.topLoginButton} onPress={() => navigation.replace('Login', { mode: 'login' })}>
               <Text style={styles.topLoginText}>Log in</Text>
@@ -101,10 +99,6 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.62)' },
   safeArea: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.lg, justifyContent: 'space-between' },
   topBar: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  brandRow: { flexDirection: 'row', alignItems: 'center' },
-  logoMark: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: spacing.sm },
-  logoText: { color: colors.primaryText, fontSize: 20, fontWeight: '900' },
-  brand: { color: colors.text, fontSize: 24, fontWeight: '900', letterSpacing: -0.8 },
   topLoginButton: { minWidth: 112, height: 44, paddingHorizontal: spacing.lg, borderRadius: 999, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   topLoginText: { color: colors.primaryText, fontSize: 15, fontWeight: '900' },
   hero: { flex: 1, width: '100%', maxWidth: 620, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', paddingBottom: 12 },

@@ -5,6 +5,8 @@ import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import Activity from '../models/Activity';
 import User from '../models/User';
+import { getJwtSecret } from '../config/security';
+import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
 const allowedCategories = [
@@ -26,6 +28,10 @@ const allowedCategories = [
 const participantFields = 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const allowedHostGenderFilters = ['male', 'female', 'non_binary'];
+const activityWriteLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
+const cleanText = (value: unknown, max: number) => typeof value === 'string'
+  ? value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, max)
+  : '';
 
 const publicGenderValue = (user: any) => {
   if (!user?.publicGender || user.gender === 'prefer_not_to_say') return undefined;
@@ -37,7 +43,7 @@ const getRequesterId = (req: express.Request) => {
   const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
   if (!token) return undefined;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId?: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string };
     return decoded.userId;
   } catch {
     return undefined;
@@ -55,7 +61,7 @@ const isBlockedBetween = (first: any, second: any) => {
 
 const canAccessActivity = (activity: any, userId?: string, inviteCode?: string) => {
   if (activity.visibility !== 'private') return true;
-  if (!userId && !inviteCode) return true;
+  if (!userId && !inviteCode) return false;
   if (inviteCode && activity.inviteCode && inviteCode === activity.inviteCode) return true;
   return (
     idInList([activity.host], userId) ||
@@ -112,6 +118,10 @@ const activityPayload = (activity: any, viewerId?: string) => {
   delete safePayload.invitedUsers;
   delete safePayload.inviteCode;
 
+  if (!isHost && !idInList(participants, viewerId)) {
+    delete safePayload.exactAddress;
+  }
+
   if (isHost) {
     safePayload.pendingParticipants = pendingParticipants.map(publicPersonPayload);
     safePayload.declinedParticipants = declinedParticipants.map(publicPersonPayload);
@@ -134,7 +144,7 @@ router.get('/', async (req, res) => {
   const hostGender = typeof req.query.hostGender === 'string' ? req.query.hostGender : undefined;
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
   const page = Math.max(Number(req.query.page) || 1, 1);
-  const activities = await Activity.find()
+  const activities = await Activity.find({ visibility: 'public' })
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
@@ -149,11 +159,12 @@ router.get('/', async (req, res) => {
 router.post(
   '/',
   auth,
-  body('title').notEmpty(),
-  body('category').optional().isString(),
-  body('location').notEmpty(),
-  body('description').isLength({ min: 20 }),
-  body('date').notEmpty(),
+  activityWriteLimiter,
+  body('title').isString().trim().isLength({ min: 3, max: 120 }),
+  body('category').optional().isString().isIn(allowedCategories),
+  body('location').isString().trim().isLength({ min: 2, max: 120 }),
+  body('description').isString().trim().isLength({ min: 20, max: 3000 }),
+  body('date').isISO8601(),
   body('maxAttendees').isInt({ min: 2 }),
   body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
   body('galleryImages').optional().isArray({ max: 5 }),
@@ -192,12 +203,12 @@ router.post(
     }
 
     const activity = new Activity({
-      title,
+      title: cleanText(title, 120),
       category: allowedCategories.includes(category) ? category : 'Other',
-      location,
-      description,
+      location: cleanText(location, 120),
+      description: cleanText(description, 3000),
       date: date ? new Date(date) : new Date(),
-      vibe,
+      vibe: cleanText(vibe, 80),
       coverImage,
       galleryImages: gallery,
       maxAttendees,
@@ -205,21 +216,24 @@ router.post(
       joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
       status: 'active',
       inviteCode: Math.random().toString(36).slice(2, 12),
-      venueName,
-      exactAddress,
-      startTime,
-      endTime,
+      venueName: cleanText(venueName, 120),
+      exactAddress: cleanText(exactAddress, 240),
+      startTime: cleanText(startTime, 40),
+      endTime: cleanText(endTime, 40),
       costType: costType === 'Paid' ? 'Paid' : 'Free',
       costAmount: costType === 'Paid' ? Number(costAmount || 0) : 0,
       currency: currency || 'AUD',
-      hostNote,
-      cancellationPolicy,
+      hostNote: cleanText(hostNote, 500),
+      cancellationPolicy: cleanText(cancellationPolicy, 500),
       host: req.userId,
       participants: [req.userId],
     });
 
     await activity.save();
-    res.status(201).json(activity);
+    const populated = await Activity.findById(activity.id)
+      .populate('host', `${participantFields} gender publicGender`)
+      .populate('participants', participantFields);
+    res.status(201).json(activityPayload(populated || activity, req.userId));
   }
 );
 
@@ -242,7 +256,7 @@ router.get('/:id', async (req, res) => {
   res.json(activityPayload(activity, userId));
 });
 
-router.post('/:id/join', auth, async (req: AuthRequest, res) => {
+router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -260,6 +274,10 @@ router.post('/:id/join', auth, async (req: AuthRequest, res) => {
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   const host = await User.findById(activity.host);
   if (host && isBlockedBetween(user, host)) {
+    return res.status(403).json({ message: 'You cannot join this activity.' });
+  }
+  const currentMembers = await User.find({ _id: { $in: [activity.host, ...(activity.participants || [])] } }).select('blockedUsers');
+  if (currentMembers.some((member) => member.id !== req.userId && isBlockedBetween(user, member))) {
     return res.status(403).json({ message: 'You cannot join this activity.' });
   }
   if (activity.status === 'cancelled') {
@@ -315,7 +333,7 @@ router.post('/:id/save', auth, async (req: AuthRequest, res) => {
 });
 
 // Host-only endpoint for approving a manual join request.
-router.post('/:id/approve/:userId', auth, async (req: AuthRequest, res) => {
+router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -336,7 +354,7 @@ router.post('/:id/approve/:userId', auth, async (req: AuthRequest, res) => {
 });
 
 // Host-only endpoint for declining a manual join request.
-router.post('/:id/decline/:userId', auth, async (req: AuthRequest, res) => {
+router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }

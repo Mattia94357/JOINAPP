@@ -13,9 +13,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 export default function SettingsScreen({ navigation }: Props) {
   const { token, logout } = useAuth();
 
-  const openPolicyLink = (path: string) => {
-    const legalBaseUrl = (Constants.expoConfig?.extra as any)?.LEGAL_BASE_URL || 'https://joinapp.app';
-    Linking.openURL(`${legalBaseUrl.replace(/\/$/, '')}/${path}`).catch(() => {
+  const openPolicyLink = (key: 'PRIVACY_POLICY_URL' | 'TERMS_URL' | 'COMMUNITY_GUIDELINES_URL') => {
+    const url = (Constants.expoConfig?.extra as any)?.[key];
+    if (!url) {
+      Alert.alert('Link unavailable', 'This policy link is not configured yet. Please contact support.');
+      return;
+    }
+    Linking.openURL(url).catch(() => {
       Alert.alert('Link unavailable', 'This link could not be opened right now.');
     });
   };
@@ -63,15 +67,15 @@ export default function SettingsScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.section}>
-        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('privacy')}>
+        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('PRIVACY_POLICY_URL')}>
           <Text style={styles.rowText}>Privacy Policy</Text>
           <Ionicons name="open-outline" size={18} color={colors.textSubtle} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('terms')}>
+        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('TERMS_URL')}>
           <Text style={styles.rowText}>Terms of Service</Text>
           <Ionicons name="open-outline" size={18} color={colors.textSubtle} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('community-guidelines')}>
+        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('COMMUNITY_GUIDELINES_URL')}>
           <Text style={styles.rowText}>Community Guidelines</Text>
           <Ionicons name="open-outline" size={18} color={colors.textSubtle} />
         </TouchableOpacity>
