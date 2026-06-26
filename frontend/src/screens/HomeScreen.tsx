@@ -92,15 +92,19 @@ export default function HomeScreen({ navigation }: Props) {
     return () => clearTimeout(timeout);
   }, [toastMessage]);
 
+  const matchesCurrentUserId = (id?: string) => Boolean(user?.id && id && String(id) === String(user.id));
+
+  const hasCurrentUserJoined = (activity: ActivityResponse) =>
+    matchesCurrentUserId(activity.hostId) || activity.participants.some((participant) => matchesCurrentUserId(participant.id));
+
   const markJoinedActivities = (items: ActivityResponse[]) =>
     items.map((activity) => ({
       ...activity,
-      joined: user
-        ? activity.participants.some((participant) => participant.id === user.id || participant.name === user.name)
-        : false,
-      pending: activity.pending || (user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
-      declined: activity.declined || (user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
-      waitlisted: activity.waitlisted || (user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false),
+      // Membership is intentionally ID-only. A matching display name must never unlock chat.
+      joined: hasCurrentUserJoined(activity),
+      pending: activity.pending || Boolean(user && activity.pendingParticipants?.some((participant) => matchesCurrentUserId(participant.id))),
+      declined: activity.declined || Boolean(user && activity.declinedParticipants?.some((participant) => matchesCurrentUserId(participant.id))),
+      waitlisted: activity.waitlisted || Boolean(user && activity.waitlist?.some((participant) => matchesCurrentUserId(participant.id))),
       saved: user ? user.savedActivities?.some((id) => id === activity.id) : false,
     }));
 
@@ -118,7 +122,7 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleJoinActivity = async (activity: ActivityResponse) => {
-    if (activity.joined) {
+    if (hasCurrentUserJoined(activity)) {
       navigation.navigate('Chat', { chatId: activity.id, title: activity.title });
       return true;
     }
@@ -148,6 +152,33 @@ export default function HomeScreen({ navigation }: Props) {
         Alert.alert('Waitlist joined', 'This activity is full, so you joined the waitlist.');
       } else {
         Alert.alert('Joined', `You joined ${activity.title}.`);
+        setActivities((currentActivities) => currentActivities.map((currentActivity) => {
+          if (currentActivity.id !== activity.id || !user) return currentActivity;
+
+          const alreadyListed = currentActivity.participants.some((participant) => matchesCurrentUserId(participant.id));
+          const participants = alreadyListed
+            ? currentActivity.participants
+            : [
+              ...currentActivity.participants,
+              {
+                id: user.id,
+                name: user.name,
+                avatar: user.profileThumbnailUrl || user.profilePictureUrl,
+                profileThumbnailUrl: user.profileThumbnailUrl,
+                profilePictureUrl: user.profilePictureUrl,
+              },
+            ];
+
+          return {
+            ...currentActivity,
+            participants,
+            attendees: alreadyListed ? (currentActivity.attendees ?? currentActivity.participants.length) : (currentActivity.attendees ?? currentActivity.participants.length) + 1,
+            joined: true,
+            pending: false,
+            declined: false,
+            waitlisted: false,
+          };
+        }));
       }
       if (!user?.pushToken) {
         try {
@@ -160,8 +191,8 @@ export default function HomeScreen({ navigation }: Props) {
           console.warn('Unable to register push notifications after join', error);
         }
       }
-      await refreshActivities();
-      navigation.navigate('Activity', { activityId: activity.id });
+      // Keep the card in place so the CTA immediately transitions from JOIN to CHAT.
+      void refreshActivities();
       return false;
     } catch (error: any) {
       console.warn(error);
