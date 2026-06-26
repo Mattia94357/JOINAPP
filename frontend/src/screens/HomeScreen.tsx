@@ -268,6 +268,11 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       </View>
 
+      <View style={styles.discoveryHeading}>
+        <Text style={styles.discoveryEyebrow}>DISCOVER</Text>
+        <Text style={styles.discoveryTitle}>Find your next plan</Text>
+      </View>
+
       <View style={styles.deckContainer}>
         {loading ? (
           <View style={styles.skeletonCard}>
@@ -467,8 +472,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingTop: 6,
   },
   containerCompact: {
     paddingHorizontal: 14,
@@ -480,27 +485,27 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: 500,
-    marginBottom: 12,
-    minHeight: 60,
-    gap: 10,
+    marginBottom: 8,
+    minHeight: 48,
+    gap: 8,
   },
   leftActions: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 7,
+    gap: 6,
   },
   actionIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
   },
   iconButton: {
     justifyContent: 'center',
     alignItems: 'center',
-    width: 60,
-    height: 60,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -514,13 +519,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 60,
-    minWidth: 118,
-    borderRadius: 20,
+    height: 48,
+    minWidth: 90,
+    borderRadius: 16,
     backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     shadowColor: colors.shadow,
     shadowOpacity: 0.16,
     shadowRadius: 10,
@@ -528,27 +533,27 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   topPillCompact: {
-    minWidth: 104,
-    paddingHorizontal: 12,
-    height: 60,
+    minWidth: 86,
+    paddingHorizontal: 10,
+    height: 48,
   },
   filterButtonText: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     marginLeft: 8,
   },
   hostMiniButton: {
-    height: 58,
-    minWidth: 94,
-    borderRadius: 20,
+    height: 48,
+    minWidth: 72,
+    borderRadius: 16,
     backgroundColor: colors.surfaceSoft,
     borderWidth: 1,
     borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 15,
+    paddingHorizontal: 11,
     shadowColor: colors.shadow,
     shadowOpacity: 0.16,
     shadowRadius: 10,
@@ -556,20 +561,39 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   hostMiniButtonCompact: {
-    minWidth: 82,
-    paddingHorizontal: 11,
-    height: 58,
+    minWidth: 68,
+    paddingHorizontal: 9,
+    height: 48,
   },
   hostMiniText: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     marginLeft: 8,
   },
   iconButtonCompact: {
-    width: 58,
-    height: 58,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+  },
+  discoveryHeading: {
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  discoveryEyebrow: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  discoveryTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.4,
   },
   deckContainer: {
     flex: 1,

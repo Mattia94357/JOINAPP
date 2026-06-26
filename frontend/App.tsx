@@ -104,7 +104,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
-          options={{ headerShown: false }}
+          options={{ headerShown: false, animation: 'fade_from_bottom' }}
         />
         <Stack.Screen
           name="ResetPassword"

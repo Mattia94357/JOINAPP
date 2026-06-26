@@ -1,9 +1,8 @@
 import mongoose from 'mongoose';
 
-const uri = process.env.MONGODB_URI;
-
 const connectDb = async () => {
   try {
+    const uri = process.env.MONGODB_URI;
     if (!uri) throw new Error('MONGODB_URI must be configured.');
     await mongoose.connect(uri);
     console.log('MongoDB connected');

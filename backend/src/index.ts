@@ -19,6 +19,9 @@ assertProductionEnvironment();
 printStartupWarnings();
 connectDb();
 
+// Cloudflare Tunnel is the single trusted proxy in development deployments.
+app.set('trust proxy', 1);
+
 const allowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
   .map((origin) => origin.trim())

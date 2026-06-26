@@ -46,5 +46,5 @@ const styles = StyleSheet.create({
   lockup: { flexDirection: 'row', alignItems: 'center' },
   icon: { overflow: 'hidden', backgroundColor: '#0B0B0B', alignItems: 'center', justifyContent: 'center' },
   pathLayer: { ...StyleSheet.absoluteFillObject },
-  wordmark: { marginLeft: 10, color: colors.text, fontWeight: '900' },
+  wordmark: { marginLeft: 10, color: colors.text, fontWeight: '900', fontFamily: 'System' },
 });

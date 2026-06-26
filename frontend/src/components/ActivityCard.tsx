@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, View, Text, Image, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { getActivityCoverImage } from '../utils/activityAssets';
@@ -62,37 +62,35 @@ export default function ActivityCard({
   const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
   const attendees = activity.attendees ?? activity.participants.length;
   const spotsLeft = activity.maxAttendees ? Math.max(activity.maxAttendees - attendees, 0) : null;
-  const visibleParticipants = activity.participants.slice(0, 4);
+  const visibleParticipants = activity.participants.slice(0, 3);
+  const hiddenParticipantCount = Math.max(0, attendees - visibleParticipants.length);
+  const actionScale = useRef(new Animated.Value(1)).current;
+  const cardScale = useRef(new Animated.Value(1)).current;
+  const bookmarkScale = useRef(new Animated.Value(1)).current;
+  const entrance = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(entrance, { toValue: 1, duration: 340, useNativeDriver: true }).start();
+  }, [entrance]);
   const previewPeople = visibleParticipants.length
     ? visibleParticipants
     : [{ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar }];
   const isClosed = activity.status === 'cancelled' || activity.status === 'completed';
   const isFull = activity.status === 'full' || spotsLeft === 0;
-  const imageHeight = Math.min(620, Math.max(450, height - 220));
-  const statusBadge = activity.visibility === 'private'
-    ? 'Private'
-    : spotsLeft !== null
-      ? `${spotsLeft} spots`
-      : `${attendees} going`;
-  const primaryLabel = activity.joined
-    ? 'Open Chat'
-    : activity.declined
-      ? 'Request Declined'
-      : activity.pending
-        ? 'Request Pending'
-        : activity.waitlisted
-          ? 'On Waitlist'
-          : isClosed
-            ? 'Unavailable'
-            : isFull
-              ? 'Join Waitlist'
-              : activity.visibility === 'private' || activity.joinApproval === 'manual'
-                ? 'Ask to Join'
-                : 'Join Activity';
+  const imageHeight = Math.min(640, Math.max(470, height - 210));
+  const primaryLabel = activity.joined ? 'CHAT' : 'JOIN';
+  const categoryIcon = activity.category === 'Food' ? '🍴' : activity.category === 'Wellness' ? '✦' : activity.category === 'Adventure' ? '◈' : activity.category === 'Music' ? '♪' : activity.category === 'Nightlife' ? '✧' : '•';
+  const animateAction = (toValue: number, duration: number) => Animated.timing(actionScale, { toValue, duration, useNativeDriver: true }).start();
 
   return (
-    <View style={styles.card}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.94}>
+    <Animated.View style={[styles.card, { opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>
+      <Animated.View style={{ transform: [{ scale: cardScale }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => Animated.timing(cardScale, { toValue: 0.985, duration: 100, useNativeDriver: true }).start()}
+        onPressOut={() => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start()}
+        activeOpacity={0.96}
+      >
         <View style={[styles.imageFrame, { height: imageHeight }]}>
           <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
           <View style={styles.imageScrim} />
@@ -100,6 +98,7 @@ export default function ActivityCard({
 
           <View style={styles.topBadges}>
             <View style={styles.categoryBadge}>
+              <Text style={styles.categoryIcon}>{categoryIcon}</Text>
               <Text style={styles.categoryText} numberOfLines={1}>{activity.category}</Text>
             </View>
             {activity.availabilityTag ? (
@@ -107,9 +106,6 @@ export default function ActivityCard({
                 <Text style={styles.availabilityText} numberOfLines={1}>{activity.availabilityTag}</Text>
               </View>
             ) : null}
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText} numberOfLines={1}>{statusBadge}</Text>
-            </View>
           </View>
 
           <View style={styles.imageCopy}>
@@ -122,7 +118,7 @@ export default function ActivityCard({
             >
               <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={42} />
               <View style={styles.hostCopy}>
-                <Text style={styles.hostLabel}>Host</Text>
+                <Text style={styles.hostLabel}>HOSTED BY</Text>
                 <Text style={styles.hostText} numberOfLines={1}>{activity.host}</Text>
               </View>
               <Ionicons name="chevron-forward-outline" size={16} color={colors.textMuted} />
@@ -147,39 +143,61 @@ export default function ActivityCard({
                       <AvatarBadge name={p.name} avatarUrl={p.avatar || p.profileThumbnailUrl || p.profilePictureUrl} size={40} />
                     </TouchableOpacity>
                   ))}
+                {hiddenParticipantCount > 0 ? (
+                  <View style={[styles.morePeople, { marginLeft: previewPeople.length ? -8 : 0 }]}>
+                    <Text style={styles.morePeopleText}>+{hiddenParticipantCount}</Text>
+                  </View>
+                ) : null}
               </View>
               <View style={styles.participantCopy}>
-                <Text style={styles.participantLabel}>See who's going</Text>
+                <Text style={styles.participantLabel}>Going together</Text>
                 <Text style={styles.participantText} numberOfLines={1}>
-                  {activity.participants.length ? `${attendees} going` : 'Be first to join'}
-                  {spotsLeft !== null ? ` - ${spotsLeft} spots left` : ''}
+                  {activity.participants.length ? `${attendees} people going` : 'Be the first to join'}
+                  {spotsLeft !== null ? ` · ${spotsLeft} spots left` : ''}
                 </Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
+      </Animated.View>
 
       <View style={styles.actionBar}>
         <TouchableOpacity style={styles.detailsButton} onPress={onPress} activeOpacity={0.82}>
           <Text style={styles.detailsButtonText}>Details</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.joinButton, activity.joined && styles.joinedButton, (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton]}
-          onPress={activity.joined ? onOpenChat : onJoin}
-          disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
-          activeOpacity={0.84}
-        >
-          <Ionicons name={activity.joined ? 'chatbubbles-outline' : 'checkmark-circle-outline'} size={20} color={colors.primaryText} />
-          <Text style={styles.joinButtonText} numberOfLines={1}>{primaryLabel}</Text>
-        </TouchableOpacity>
+        <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
+          <TouchableOpacity
+            style={[styles.joinButton, activity.joined && styles.joinedButton, (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton]}
+            onPress={activity.joined ? onOpenChat : onJoin}
+            onPressIn={() => animateAction(0.96, 90)}
+            onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
+            disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
+            activeOpacity={0.92}
+          >
+            <Ionicons name={activity.joined ? 'chatbubbles-outline' : 'person-add-outline'} size={19} color={colors.primaryText} />
+            <Text style={styles.joinButtonText} numberOfLines={1}>{primaryLabel}</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
-        <TouchableOpacity style={[styles.iconActionButton, activity.saved && styles.iconActionButtonActive]} onPress={onSave} activeOpacity={0.78}>
-          <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={24} color={activity.saved ? colors.primaryText : colors.primary} />
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: bookmarkScale }] }}>
+          <TouchableOpacity
+            style={[styles.iconActionButton, activity.saved && styles.iconActionButtonActive]}
+            onPress={() => {
+              Animated.sequence([
+                Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
+              ]).start();
+              onSave?.();
+            }}
+            activeOpacity={0.78}
+          >
+            <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={23} color={activity.saved ? colors.primaryText : colors.primary} />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -236,7 +254,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     maxWidth: '38%',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
+  categoryIcon: { marginRight: 5, color: colors.primary, fontSize: 11 },
   categoryText: {
     color: colors.primary,
     fontWeight: '900',
@@ -257,21 +278,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textTransform: 'uppercase',
   },
-  statusBadge: {
-    marginLeft: 'auto',
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-  },
-  statusBadgeText: {
-    color: colors.text,
-    fontWeight: '900',
-    fontSize: 10,
-    textTransform: 'uppercase',
-  },
   imageCopy: {
     position: 'absolute',
     left: spacing.md,
@@ -280,10 +286,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 27,
+    fontSize: 29,
     fontWeight: '900',
     lineHeight: 32,
-    marginBottom: 12,
+    marginBottom: 14,
     textShadowColor: 'rgba(0,0,0,0.42)',
     textShadowRadius: 8,
     textShadowOffset: { width: 0, height: 2 },
@@ -291,7 +297,7 @@ const styles = StyleSheet.create({
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
     minHeight: 46,
   },
   hostCopy: {
@@ -299,22 +305,22 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   hostLabel: {
-    color: colors.primary,
-    fontSize: 10,
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 9,
     fontWeight: '900',
     textTransform: 'uppercase',
     marginBottom: 1,
   },
   hostText: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
   },
   metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 22,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   metaText: {
     color: colors.text,
@@ -343,13 +349,24 @@ const styles = StyleSheet.create({
     borderColor: colors.background,
     borderRadius: 999,
   },
+  morePeople: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(11,11,11,0.9)',
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  morePeopleText: { color: colors.primaryText, fontSize: 11, fontWeight: '900' },
   participantCopy: {
     flex: 1,
     marginLeft: 12,
   },
   participantLabel: {
-    color: colors.primary,
-    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
     fontWeight: '900',
     textTransform: 'uppercase',
     marginBottom: 1,
@@ -363,15 +380,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 18,
+    gap: 8,
+    marginTop: 14,
     paddingHorizontal: 2,
     paddingBottom: 2,
   },
   iconActionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
+    width: 54,
+    height: 58,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -388,11 +405,11 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   detailsButton: {
-    minWidth: 110,
-    height: 60,
+    width: 82,
+    height: 58,
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    borderRadius: 20,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(22,22,22,0.96)',
@@ -408,20 +425,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   joinButton: {
-    flex: 1,
-    height: 60,
+    width: '100%',
+    height: 58,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 20,
+    borderRadius: 999,
     paddingHorizontal: 12,
     shadowColor: colors.primary,
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
+    shadowOpacity: 0.38,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
+  joinButtonWrap: { flex: 1, shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   joinedButton: {
     backgroundColor: colors.primary,
   },
