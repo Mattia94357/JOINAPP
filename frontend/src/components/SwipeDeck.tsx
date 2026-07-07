@@ -214,9 +214,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: 500,
+    maxWidth: 430,
     alignSelf: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     touchAction: 'pan-y' as any,
   },
   cardStyle: {

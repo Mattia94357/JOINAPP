@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
@@ -38,7 +39,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
-  const compact = width < 380;
+  const compact = width < 520;
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
@@ -259,49 +260,56 @@ export default function HomeScreen({ navigation }: Props) {
     });
   };
 
+  const openLatestChat = () => {
+    const chatActivity = activities.find((activity) => activity.joined) || activities.find((activity) => matchesCurrentUserId(activity.hostId));
+    if (chatActivity) {
+      navigation.navigate('Chat', { chatId: chatActivity.id, title: chatActivity.title });
+      return;
+    }
+    Alert.alert('No active chats yet', 'Join an activity first to unlock its chat.');
+  };
+
   const activeFeed = filteredActivities.length > 0 ? filteredActivities : curatedActivities;
   const hasNoCategoryResults = !loading && selectedCategory !== 'All' && activities.length > 0 && filteredActivities.length === 0;
   const visibleFeed = hasNoCategoryResults ? [] : activeFeed;
 
   return (
     <SafeAreaView style={[styles.container, compact && styles.containerCompact]}>
-      <View style={styles.topBar}>
-        <View style={styles.leftActions}>
-          <TouchableOpacity
-            style={[styles.filterButton, compact && styles.topPillCompact]}
-            onPress={() => setCategoryModalVisible(true)}
-          >
-            <Ionicons name="options-outline" size={compact ? 19 : 21} color={colors.primary} />
-            <Text style={styles.filterButtonText}>Filters</Text>
+      <View style={[styles.topBar, compact && styles.topBarCompact]}>
+        <View style={[styles.topActions, compact && styles.topActionsCompact]}>
+          <TouchableOpacity style={[styles.topActionButton, compact && styles.topActionButtonCompact]} onPress={() => setCategoryModalVisible(true)} activeOpacity={0.82}>
+            <Ionicons name="options-outline" size={compact ? 20 : 24} color={colors.primary} />
+            <Text style={[styles.topActionText, compact && styles.topActionTextCompact]}>Filters</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.hostMiniButton, compact && styles.hostMiniButtonCompact]}
-            onPress={() => navigation.navigate('CreateActivity')}
-          >
-            <Ionicons name="add-outline" size={compact ? 19 : 21} color={colors.primary} />
-            <Text style={styles.hostMiniText}>Host</Text>
+          <TouchableOpacity style={[styles.topActionButton, compact && styles.topActionButtonCompact]} onPress={() => navigation.navigate('CreateActivity')} activeOpacity={0.82}>
+            <Ionicons name="add-outline" size={compact ? 24 : 28} color={colors.primary} />
+            <Text style={[styles.topActionText, compact && styles.topActionTextCompact]}>Host</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.topActionButton, compact && styles.topActionButtonCompact]} onPress={() => navigation.navigate('Notifications')} activeOpacity={0.82}>
+            <Ionicons name="notifications-outline" size={compact ? 22 : 26} color={colors.primary} />
+            <Text style={[styles.topActionText, compact && styles.topActionTextCompact]}>Alerts</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.topActionButton, compact && styles.topActionButtonCompact]} onPress={openLatestChat} activeOpacity={0.82}>
+            <Ionicons name="chatbubbles-outline" size={compact ? 22 : 26} color={colors.primary} />
+            <Text style={[styles.topActionText, compact && styles.topActionTextCompact]}>Chat</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.actionIcons}>
-          <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={[styles.iconButton, compact && styles.iconButtonCompact]}>
-            <Ionicons name="notifications-outline" size={compact ? 22 : 23} color={colors.text} />
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={[styles.iconButton, compact && styles.iconButtonCompact]}>
-            <AvatarBadge
-              name={user?.name || 'Guest'}
-              avatarUrl={user?.profileThumbnailUrl || user?.profilePictureUrl}
-              size={compact ? 48 : 50}
-            />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={[styles.profileButton, compact && styles.profileButtonCompact]} activeOpacity={0.85}>
+          <AvatarBadge
+            name={user?.name || 'Guest'}
+            avatarUrl={user?.profileThumbnailUrl || user?.profilePictureUrl}
+            size={compact ? 42 : 50}
+          />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.discoveryHeading}>
         <Text style={styles.discoveryEyebrow}>DISCOVER</Text>
-        <Text style={styles.discoveryTitle}>Find your next plan</Text>
+        <Text style={[styles.discoveryTitle, compact && styles.discoveryTitleCompact]}>Find your next <Text style={styles.discoveryTitleAccent}>activity</Text></Text>
       </View>
 
       <View style={styles.deckContainer}>
@@ -338,6 +346,30 @@ export default function HomeScreen({ navigation }: Props) {
           <Text style={styles.toastText}>{toastMessage}</Text>
         </View>
       ) : null}
+
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.bottomNavItem} activeOpacity={0.82}>
+          <View style={styles.bottomNavIconActive}><Ionicons name="navigate-outline" size={19} color={colors.primaryText} /></View>
+          <Text style={[styles.bottomNavText, styles.bottomNavTextActive]}>Discover</Text>
+          <View style={styles.bottomNavDot} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('CreateActivity')} activeOpacity={0.82}>
+          <Ionicons name="calendar-outline" size={22} color="rgba(245,238,224,0.72)" />
+          <Text style={styles.bottomNavText}>Activity</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavItem} onPress={openLatestChat} activeOpacity={0.82}>
+          <Ionicons name="chatbubbles-outline" size={22} color="rgba(245,238,224,0.72)" />
+          <Text style={styles.bottomNavText}>Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('Notifications')} activeOpacity={0.82}>
+          <Ionicons name="notifications-outline" size={22} color="rgba(245,238,224,0.72)" />
+          <Text style={styles.bottomNavText}>Notifications</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('Profile')} activeOpacity={0.82}>
+          <Ionicons name="person-circle-outline" size={24} color="rgba(245,238,224,0.72)" />
+          <Text style={styles.bottomNavText}>Profile</Text>
+        </TouchableOpacity>
+      </View>
 
       <ParticipantsModal
         visible={Boolean(participantsActivity)}
@@ -502,12 +534,13 @@ export default function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 16,
-    paddingTop: 6,
+    backgroundColor: '#0B0B0B',
+    paddingHorizontal: 18,
+    paddingTop: 8,
   },
   containerCompact: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
+    paddingTop: 6,
   },
   topBar: {
     flexDirection: 'row',
@@ -515,123 +548,104 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignSelf: 'center',
     width: '100%',
-    maxWidth: 500,
-    marginBottom: 8,
-    minHeight: 48,
-    gap: 8,
+    maxWidth: 430,
+    marginBottom: 14,
+    gap: 10,
   },
-  leftActions: {
+  topBarCompact: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  topActions: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 6,
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  actionIcons: {
-    flexDirection: 'row',
+  topActionsCompact: {
+    gap: 7,
+  },
+  topActionButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 19,
+    backgroundColor: 'rgba(18,18,18,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.18)',
     alignItems: 'center',
-    gap: 6,
-  },
-  iconButton: {
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 7,
+  },
+  topActionButtonCompact: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+  },
+  topActionText: {
+    color: 'rgba(245,222,174,0.92)',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  topActionTextCompact: {
+    fontSize: 10,
+    marginTop: 3,
+  },
+  profileButton: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
+    borderColor: 'rgba(246,196,69,0.64)',
+    backgroundColor: '#111111',
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileButtonCompact: {
     width: 48,
     height: 48,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    minWidth: 90,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  topPillCompact: {
-    minWidth: 86,
-    paddingHorizontal: 10,
-    height: 48,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
-  },
-  hostMiniButton: {
-    height: 48,
-    minWidth: 72,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 11,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  hostMiniButtonCompact: {
-    minWidth: 68,
-    paddingHorizontal: 9,
-    height: 48,
-  },
-  hostMiniText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
-  },
-  iconButtonCompact: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
+    borderRadius: 24,
   },
   discoveryHeading: {
     width: '100%',
-    maxWidth: 500,
+    maxWidth: 430,
     alignSelf: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   discoveryEyebrow: {
     color: colors.primary,
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 2,
+    letterSpacing: 5,
+    marginBottom: 5,
   },
   discoveryTitle: {
-    color: colors.text,
-    fontSize: 20,
+    color: '#F5EEE0',
+    fontSize: 30,
     fontWeight: '900',
-    letterSpacing: -0.4,
+    letterSpacing: -1,
+    lineHeight: 34,
+  },
+  discoveryTitleCompact: {
+    fontSize: 27,
+    lineHeight: 31,
+  },
+  discoveryTitleAccent: {
+    color: colors.primary,
   },
   deckContainer: {
     flex: 1,
     width: '100%',
+    maxWidth: 430,
     alignSelf: 'center',
     marginTop: 0,
-    paddingBottom: 18,
+    paddingBottom: 98,
   },
   skeletonCard: {
     width: '100%',
@@ -691,7 +705,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: spacing.xl,
     right: spacing.xl,
-    bottom: spacing.xl,
+    bottom: 104,
     alignSelf: 'center',
     borderRadius: 999,
     borderWidth: 1,
@@ -710,6 +724,58 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '900',
+  },
+  bottomNav: {
+    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+    height: 86,
+    maxWidth: 520,
+    alignSelf: 'center',
+    marginHorizontal: 'auto' as any,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(14,14,14,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(246,196,69,0.18)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  bottomNavItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  bottomNavIconActive: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.38,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  bottomNavText: {
+    color: 'rgba(245,238,224,0.68)',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  bottomNavTextActive: {
+    color: colors.primary,
+  },
+  bottomNavDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.primary,
+    marginTop: 3,
   },
   modalOverlay: {
     flex: 1,

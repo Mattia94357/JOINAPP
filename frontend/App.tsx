@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -18,7 +18,7 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { colors } from './src/theme';
-import { getApiConfigStatus } from './src/api';
+import { getApiConfigStatus, initializeApiConfig } from './src/api';
 import ResponsiveAppContainer from './src/components/ResponsiveAppContainer';
 import CinematicAppBackdrop from './src/components/CinematicAppBackdrop';
 import Logo from './src/components/Logo';
@@ -153,7 +153,40 @@ function AppCanvas() {
 }
 
 export default function App() {
-  const apiConfig = getApiConfigStatus();
+  const [apiConfigReady, setApiConfigReady] = useState(false);
+  const [apiConfig, setApiConfig] = useState(getApiConfigStatus());
+
+  useEffect(() => {
+    let mounted = true;
+
+    initializeApiConfig()
+      .then((status) => {
+        if (mounted) {
+          setApiConfig(status);
+          setApiConfigReady(true);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setApiConfig(getApiConfigStatus());
+          setApiConfigReady(true);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!apiConfigReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Logo size={54} animate />
+        <Text style={styles.loadingText}>Starting JOIN...</Text>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
 
   if (!apiConfig.apiUrl) {
     return (

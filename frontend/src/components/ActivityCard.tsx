@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, View, Text, Image, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import { Animated, Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { getActivityCoverImage } from '../utils/activityAssets';
-import { colors, spacing } from '../theme';
+import { colors } from '../theme';
 
 export type Activity = {
   id: string;
@@ -48,6 +48,15 @@ type Props = {
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
 };
 
+const categoryGlyph = (category: string) => {
+  if (category === 'Food') return 'restaurant-outline';
+  if (category === 'Wellness') return 'sparkles-outline';
+  if (category === 'Adventure') return 'compass-outline';
+  if (category === 'Music') return 'musical-notes-outline';
+  if (category === 'Nightlife') return 'moon-outline';
+  return 'ellipse-outline';
+};
+
 export default function ActivityCard({
   activity,
   onPress,
@@ -57,288 +66,308 @@ export default function ActivityCard({
   onViewParticipants,
   onOpenProfile,
 }: Props) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
   const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
   const attendees = activity.attendees ?? activity.participants.length;
   const spotsLeft = activity.maxAttendees ? Math.max(activity.maxAttendees - attendees, 0) : null;
   const visibleParticipants = activity.participants.slice(0, 3);
   const hiddenParticipantCount = Math.max(0, attendees - visibleParticipants.length);
-  const actionScale = useRef(new Animated.Value(1)).current;
-  const cardScale = useRef(new Animated.Value(1)).current;
-  const bookmarkScale = useRef(new Animated.Value(1)).current;
-  const entrance = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(entrance, { toValue: 1, duration: 340, useNativeDriver: true }).start();
-  }, [entrance]);
   const previewPeople = visibleParticipants.length
     ? visibleParticipants
     : [{ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar }];
   const isClosed = activity.status === 'cancelled' || activity.status === 'completed';
-  const isFull = activity.status === 'full' || spotsLeft === 0;
-  const imageHeight = Math.min(640, Math.max(470, height - 210));
-  const primaryLabel = activity.joined ? 'CHAT' : 'JOIN';
-  const categoryIcon = activity.category === 'Food' ? '🍴' : activity.category === 'Wellness' ? '✦' : activity.category === 'Adventure' ? '◈' : activity.category === 'Music' ? '♪' : activity.category === 'Nightlife' ? '✧' : '•';
-  const animateAction = (toValue: number, duration: number) => Animated.timing(actionScale, { toValue, duration, useNativeDriver: true }).start();
+  const actionScale = useRef(new Animated.Value(1)).current;
+  const cardScale = useRef(new Animated.Value(1)).current;
+  const bookmarkScale = useRef(new Animated.Value(1)).current;
+  const entrance = useRef(new Animated.Value(0)).current;
+  const compact = width < 520;
+  const heroHeight = Math.min(compact ? 360 : 430, Math.max(compact ? 300 : 350, height - (compact ? 505 : 455)));
+  const primaryLabel = 'JOIN';
+
+  useEffect(() => {
+    Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
+  }, [entrance]);
+
+  const animateAction = (toValue: number, duration: number) =>
+    Animated.timing(actionScale, { toValue, duration, useNativeDriver: true }).start();
 
   return (
-    <Animated.View style={[styles.card, { opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>
+    <Animated.View
+      style={[
+        styles.card,
+        {
+          opacity: entrance,
+          transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+        },
+      ]}
+    >
       <Animated.View style={{ transform: [{ scale: cardScale }] }}>
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={() => Animated.timing(cardScale, { toValue: 0.985, duration: 100, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start()}
-        activeOpacity={0.96}
-      >
-        <View style={[styles.imageFrame, { height: imageHeight }]}>
-          <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
-          <View style={styles.imageScrim} />
-          <View style={styles.bottomGradient} />
+        <TouchableOpacity
+          onPress={onPress}
+          onPressIn={() => Animated.timing(cardScale, { toValue: 0.988, duration: 100, useNativeDriver: true }).start()}
+          onPressOut={() => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start()}
+          activeOpacity={0.96}
+        >
+          <View style={[styles.imageFrame, { height: heroHeight }]}>
+            <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
+            <View style={styles.imageWarmth} />
+            <View style={styles.bottomScrim} />
 
-          <View style={styles.topBadges}>
             <View style={styles.categoryBadge}>
-              <Text style={styles.categoryIcon}>{categoryIcon}</Text>
-              <Text style={styles.categoryText} numberOfLines={1}>{activity.category}</Text>
-            </View>
-            {activity.availabilityTag ? (
-              <View style={styles.availabilityBadge}>
-                <Text style={styles.availabilityText} numberOfLines={1}>{activity.availabilityTag}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.imageCopy}>
-            <Text style={styles.title} numberOfLines={2}>{activity.title}</Text>
-
-            <TouchableOpacity
-              style={styles.hostRow}
-              activeOpacity={0.85}
-              onPress={() => onOpenProfile?.({ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar })}
-            >
-              <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={42} />
-              <View style={styles.hostCopy}>
-                <Text style={styles.hostLabel}>HOSTED BY</Text>
-                <Text style={styles.hostText} numberOfLines={1}>{activity.host}</Text>
-              </View>
-              <Ionicons name="chevron-forward-outline" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.metaLine}>
-              <Ionicons name="location-outline" size={14} color={colors.primary} />
-              <Text style={styles.metaText} numberOfLines={1}>{activity.location}</Text>
-              <Text style={styles.metaDot}>-</Text>
-              <Ionicons name="time-outline" size={14} color={colors.primary} />
-              <Text style={styles.metaText} numberOfLines={1}>{activity.time || 'Anytime'}</Text>
+              <Ionicons name={categoryGlyph(activity.category) as any} size={compact ? 17 : 20} color={colors.primary} />
+              <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
             </View>
 
-            <TouchableOpacity style={styles.participantsWrap} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.85}>
-              <View style={styles.avatarStack}>
-                {previewPeople.map((p, idx) => (
+            <View style={[styles.imageCopy, compact && styles.imageCopyCompact]}>
+              <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={1}>{activity.title}</Text>
+
+              <TouchableOpacity
+                style={styles.hostRow}
+                activeOpacity={0.85}
+                onPress={() => onOpenProfile?.({ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar })}
+              >
+              <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={compact ? 34 : 40} />
+                <View style={styles.hostCopy}>
+                  <Text style={styles.hostLabel}>HOSTED BY</Text>
+                  <Text style={[styles.hostText, compact && styles.hostTextCompact]} numberOfLines={1}>{activity.host}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.metaLine}>
+                <Ionicons name="location-outline" size={compact ? 17 : 20} color={colors.primary} />
+                <Text style={[styles.metaText, compact && styles.metaTextCompact]} numberOfLines={1}>{activity.location}</Text>
+                <Text style={styles.metaDot}>•</Text>
+                <Ionicons name="time-outline" size={compact ? 17 : 20} color={colors.primary} />
+                <Text style={[styles.metaText, compact && styles.metaTextCompact]} numberOfLines={1}>{activity.time || 'Anytime'}</Text>
+              </View>
+
+              <View style={styles.divider} />
+
+              <TouchableOpacity style={styles.peopleRow} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.86}>
+                <View style={styles.avatarStack}>
+                  {previewPeople.map((participant, index) => (
                     <TouchableOpacity
-                      key={`${p.name}-${idx}`}
-                      style={[styles.avatarWrapper, { marginLeft: idx === 0 ? 0 : -8 }]}
-                      onPress={() => onOpenProfile?.(p)}
+                      key={`${participant.name}-${index}`}
+                      style={[styles.avatarWrapper, { marginLeft: index === 0 ? 0 : -12 }]}
+                      onPress={() => onOpenProfile?.(participant)}
+                      activeOpacity={0.82}
                     >
-                      <AvatarBadge name={p.name} avatarUrl={p.avatar || p.profileThumbnailUrl || p.profilePictureUrl} size={40} />
+                      <AvatarBadge
+                        name={participant.name}
+                        avatarUrl={participant.avatar || participant.profileThumbnailUrl || participant.profilePictureUrl}
+                        size={compact ? 30 : 34}
+                      />
                     </TouchableOpacity>
                   ))}
-                {hiddenParticipantCount > 0 ? (
-                  <View style={[styles.morePeople, { marginLeft: previewPeople.length ? -8 : 0 }]}>
-                    <Text style={styles.morePeopleText}>+{hiddenParticipantCount}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.participantCopy}>
-                <Text style={styles.participantLabel}>Going together</Text>
-                <Text style={styles.participantText} numberOfLines={1}>
-                  {activity.participants.length ? `${attendees} people going` : 'Be the first to join'}
-                  {spotsLeft !== null ? ` · ${spotsLeft} spots left` : ''}
-                </Text>
-              </View>
-            </TouchableOpacity>
+                  {hiddenParticipantCount > 0 ? (
+                    <View style={[styles.morePeople, compact && styles.morePeopleCompact, { marginLeft: -12 }]}>
+                      <Text style={styles.morePeopleText}>+{hiddenParticipantCount}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.peopleCopy}>
+                  <Text style={styles.peopleLabel}>GOING TOGETHER</Text>
+                  <Text style={[styles.peopleText, compact && styles.peopleTextCompact]} numberOfLines={1}>
+                    {activity.participants.length ? `${attendees} people going` : 'Be the first to join'}
+                    {spotsLeft !== null ? `  •  ${spotsLeft} spots left` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward-outline" size={compact ? 22 : 26} color={colors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </TouchableOpacity>
-      </Animated.View>
-
-      <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.detailsButton} onPress={onPress} activeOpacity={0.82}>
-          <Text style={styles.detailsButtonText}>Details</Text>
         </TouchableOpacity>
 
-        <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
-          <TouchableOpacity
-            style={[styles.joinButton, activity.joined && styles.joinedButton, (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton]}
-            onPress={activity.joined ? onOpenChat : onJoin}
-            onPressIn={() => animateAction(0.96, 90)}
-            onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
-            disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
-            activeOpacity={0.92}
-          >
-            <Ionicons name={activity.joined ? 'chatbubbles-outline' : 'person-add-outline'} size={19} color={colors.primaryText} />
-            <Text style={styles.joinButtonText} numberOfLines={1}>{primaryLabel}</Text>
+        <View style={[styles.actionBar, compact && styles.actionBarCompact]}>
+          <TouchableOpacity style={[styles.detailsButton, compact && styles.detailsButtonCompact]} onPress={onPress} activeOpacity={0.82}>
+            <Ionicons name="information-circle-outline" size={compact ? 19 : 23} color={colors.text} />
+            <Text style={[styles.detailsButtonText, compact && styles.detailsButtonTextCompact]}>Details</Text>
           </TouchableOpacity>
-        </Animated.View>
 
-        <Animated.View style={{ transform: [{ scale: bookmarkScale }] }}>
-          <TouchableOpacity
-            style={[styles.iconActionButton, activity.saved && styles.iconActionButtonActive]}
-            onPress={() => {
-              Animated.sequence([
-                Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
-                Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
-              ]).start();
-              onSave?.();
-            }}
-            activeOpacity={0.78}
-          >
-            <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={23} color={activity.saved ? colors.primaryText : colors.primary} />
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
+          <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
+            <TouchableOpacity
+              style={[
+                styles.joinButton,
+                activity.joined && styles.joinedButton,
+                (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton,
+              ]}
+              onPress={activity.joined ? onOpenChat : onJoin}
+              onPressIn={() => animateAction(0.96, 90)}
+              onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
+              disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
+              activeOpacity={0.92}
+            >
+              <Text style={[styles.joinButtonText, compact && styles.joinButtonTextCompact]} numberOfLines={1}>{primaryLabel}</Text>
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.View style={{ transform: [{ scale: bookmarkScale }] }}>
+            <TouchableOpacity
+              style={[styles.bookmarkButton, compact && styles.bookmarkButtonCompact, activity.saved && styles.bookmarkButtonActive]}
+              onPress={() => {
+                Animated.sequence([
+                  Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                  Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
+                ]).start();
+                onSave?.();
+              }}
+              activeOpacity={0.78}
+            >
+              <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 24 : 30} color={activity.saved ? colors.primaryText : colors.primary} />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'transparent',
-    marginVertical: 2,
+    width: '100%',
+    backgroundColor: '#101010',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.52)',
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 14,
   },
   imageFrame: {
-    position: 'relative',
     width: '100%',
+    position: 'relative',
     backgroundColor: colors.surfaceElevated,
-    borderRadius: 26,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.38,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 12,
   },
   image: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.surfaceElevated,
     resizeMode: 'cover',
+    backgroundColor: colors.surfaceElevated,
   },
-  imageScrim: {
+  imageWarmth: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(40,28,10,0.08)',
   },
-  bottomGradient: {
+  bottomScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 255,
-    backgroundColor: 'rgba(0,0,0,0.68)',
+    height: '34%',
+    backgroundColor: 'rgba(0,0,0,0.46)',
   },
-  topBadges: {
+  categoryBadge: {
     position: 'absolute',
     top: 14,
     left: 14,
-    right: 14,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  categoryBadge: {
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    paddingHorizontal: 11,
-    paddingVertical: 7,
     borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(26,22,16,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    maxWidth: '38%',
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: 'rgba(246,196,69,0.16)',
   },
-  categoryIcon: { marginRight: 5, color: colors.primary, fontSize: 11 },
   categoryText: {
     color: colors.primary,
+    fontSize: 13,
     fontWeight: '900',
-    fontSize: 10,
+    letterSpacing: 0.9,
+    marginLeft: 9,
     textTransform: 'uppercase',
   },
-  availabilityBadge: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    marginLeft: 7,
-    maxWidth: '32%',
-  },
-  availabilityText: {
-    color: colors.primaryText,
-    fontWeight: '900',
-    fontSize: 10,
-    textTransform: 'uppercase',
+  categoryTextCompact: {
+    fontSize: 12,
   },
   imageCopy: {
     position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
+    left: 18,
+    right: 18,
+    bottom: 14,
+  },
+  imageCopyCompact: {
+    left: 18,
+    right: 18,
+    bottom: 12,
   },
   title: {
     color: colors.text,
-    fontSize: 29,
+    fontSize: 25,
+    lineHeight: 29,
     fontWeight: '900',
-    lineHeight: 32,
-    marginBottom: 14,
-    textShadowColor: 'rgba(0,0,0,0.42)',
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 2 },
+    letterSpacing: -0.8,
+    marginBottom: 8,
+    textShadowColor: 'rgba(0,0,0,0.52)',
+    textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 3 },
+  },
+  titleCompact: {
+    fontSize: 22,
+    lineHeight: 26,
+    marginBottom: 7,
   },
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 34,
     marginBottom: 8,
-    minHeight: 46,
   },
   hostCopy: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 9,
   },
   hostLabel: {
-    color: 'rgba(255,255,255,0.58)',
+    color: 'rgba(245,238,224,0.7)',
     fontSize: 9,
     fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 1,
+    letterSpacing: 1.1,
+    marginBottom: 3,
   },
   hostText: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
+  },
+  hostTextCompact: {
+    fontSize: 13,
   },
   metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 22,
-    marginBottom: 14,
+    marginBottom: 9,
   },
   metaText: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
-    marginLeft: 5,
+    marginLeft: 7,
     flexShrink: 1,
   },
+  metaTextCompact: {
+    fontSize: 13,
+  },
   metaDot: {
-    color: colors.textMuted,
+    color: 'rgba(245,238,224,0.7)',
     fontSize: 14,
     fontWeight: '900',
-    marginHorizontal: 8,
+    marginHorizontal: 9,
   },
-  participantsWrap: {
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(246,196,69,0.24)',
+    marginBottom: 9,
+  },
+  peopleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
+    minHeight: 34,
   },
   avatarStack: {
     flexDirection: 'row',
@@ -346,100 +375,110 @@ const styles = StyleSheet.create({
   },
   avatarWrapper: {
     borderWidth: 1,
-    borderColor: colors.background,
+    borderColor: '#0B0B0B',
     borderRadius: 999,
   },
   morePeople: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 2,
-    borderColor: 'rgba(11,11,11,0.9)',
+    borderColor: '#0B0B0B',
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  morePeopleText: { color: colors.primaryText, fontSize: 11, fontWeight: '900' },
-  participantCopy: {
+  morePeopleCompact: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  morePeopleText: {
+    color: colors.primaryText,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  peopleCopy: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 9,
   },
-  participantLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 9,
+  peopleLabel: {
+    color: 'rgba(245,238,224,0.66)',
+    fontSize: 8,
     fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 1,
+    letterSpacing: 1.6,
+    marginBottom: 2,
   },
-  participantText: {
+  peopleText: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
+  },
+  peopleTextCompact: {
+    fontSize: 12,
   },
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: '#101010',
+  },
+  actionBarCompact: {
     gap: 8,
-    marginTop: 14,
-    paddingHorizontal: 2,
-    paddingBottom: 2,
-  },
-  iconActionButton: {
-    width: 54,
-    height: 58,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(22,22,22,0.96)',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 5,
-  },
-  iconActionButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
   detailsButton: {
-    width: 82,
-    height: 58,
+    width: 88,
+    height: 46,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: 18,
-    justifyContent: 'center',
+    borderColor: 'rgba(246,196,69,0.28)',
+    backgroundColor: 'rgba(25,23,20,0.96)',
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(22,22,22,0.96)',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    justifyContent: 'center',
+  },
+  detailsButtonCompact: {
+    width: 78,
+    height: 42,
+    borderRadius: 14,
   },
   detailsButtonText: {
     color: colors.text,
+    fontSize: 14,
     fontWeight: '900',
-    fontSize: 15,
+    marginLeft: 8,
+  },
+  detailsButtonTextCompact: {
+    fontSize: 13,
+  },
+  joinButtonWrap: {
+    flex: 0,
+    width: 160,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 9 },
   },
   joinButton: {
-    width: '100%',
-    height: 58,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
+    height: 48,
     borderRadius: 999,
-    paddingHorizontal: 12,
+    backgroundColor: '#F6B737',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
     shadowColor: colors.primary,
-    shadowOpacity: 0.38,
+    shadowOpacity: 0.52,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  joinButtonWrap: { flex: 1, shadowColor: colors.primary, shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   joinedButton: {
     backgroundColor: colors.primary,
   },
@@ -448,9 +487,30 @@ const styles = StyleSheet.create({
   },
   joinButtonText: {
     color: colors.primaryText,
+    fontSize: 19,
     fontWeight: '900',
-    fontSize: 15,
-    marginLeft: 7,
-    flexShrink: 1,
+    letterSpacing: 1.9,
+  },
+  joinButtonTextCompact: {
+    fontSize: 17,
+  },
+  bookmarkButton: {
+    width: 58,
+    height: 46,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.28)',
+    backgroundColor: 'rgba(25,23,20,0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookmarkButtonCompact: {
+    width: 50,
+    height: 42,
+    borderRadius: 14,
+  },
+  bookmarkButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
 });

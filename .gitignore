@@ -4,3 +4,9 @@ dist
 .env
 *.log
 web-build
+scripts/.last-api-url
+scripts/.phone-preview-state.json
+frontend/public/runtime-config.local.json
+
+.vercel
+.env*

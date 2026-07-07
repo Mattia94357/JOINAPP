@@ -7,13 +7,22 @@ import { normalizeActivityCategory } from './utils/categories';
 
 type ApiConfigStatus = {
   apiUrl: string | null;
-  source: 'expo-extra' | 'public-env' | 'web-local-dev' | 'expo-host-dev' | 'platform-dev-fallback' | 'missing';
+  source:
+    | 'runtime-config'
+    | 'expo-extra'
+    | 'public-env'
+    | 'web-local-dev'
+    | 'expo-host-dev'
+    | 'platform-dev-fallback'
+    | 'missing';
   isDev: boolean;
   hasExpoExtraApiUrl: boolean;
   error?: string;
 };
 
 const cleanUrl = (value?: unknown) => (typeof value === 'string' && value.trim() ? value.trim().replace(/\/$/, '') : null);
+
+const isPlaceholderRuntimeUrl = (value: string) => value.includes('example.trycloudflare.com');
 
 const getExpoExtraApiUrl = () =>
   cleanUrl(
@@ -85,7 +94,9 @@ const resolveApiConfig = (): ApiConfigStatus => {
   };
 };
 
-const apiConfig = resolveApiConfig();
+let apiConfig = resolveApiConfig();
+let apiConfigInitialized = false;
+let apiConfigInitPromise: Promise<ApiConfigStatus> | null = null;
 
 if (apiConfig.isDev) {
   console.info('[JOIN API]', {
@@ -100,6 +111,79 @@ const api = axios.create({
   baseURL: apiConfig.apiUrl || '',
   timeout: 10000,
 });
+
+const applyApiConfig = (nextConfig: ApiConfigStatus) => {
+  apiConfig = nextConfig;
+  api.defaults.baseURL = nextConfig.apiUrl || '';
+  return apiConfig;
+};
+
+const fetchWebRuntimeConfigApiUrl = async () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof fetch !== 'function') {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`/runtime-config.json?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const runtimeConfig = await response.json();
+    const runtimeApiUrl = cleanUrl(runtimeConfig?.apiUrl);
+
+    if (!runtimeApiUrl || isPlaceholderRuntimeUrl(runtimeApiUrl)) {
+      return null;
+    }
+
+    return runtimeApiUrl;
+  } catch {
+    return null;
+  }
+};
+
+export const initializeApiConfig = async () => {
+  if (apiConfigInitialized) {
+    return apiConfig;
+  }
+
+  if (apiConfigInitPromise) {
+    return apiConfigInitPromise;
+  }
+
+  apiConfigInitPromise = (async () => {
+    const runtimeApiUrl = await fetchWebRuntimeConfigApiUrl();
+
+    if (runtimeApiUrl) {
+      applyApiConfig({
+        apiUrl: runtimeApiUrl,
+        source: 'runtime-config',
+        isDev: typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production',
+        hasExpoExtraApiUrl: Boolean(getExpoExtraApiUrl()),
+      });
+    } else {
+      applyApiConfig(resolveApiConfig());
+    }
+
+    apiConfigInitialized = true;
+
+    if (apiConfig.isDev || apiConfig.source === 'runtime-config') {
+      console.info('[JOIN API]', {
+        apiUrl: apiConfig.apiUrl,
+        source: apiConfig.source,
+        runtimeConfigChecked: Platform.OS === 'web',
+      });
+    }
+
+    return apiConfig;
+  })();
+
+  return apiConfigInitPromise;
+};
 
 api.interceptors.request.use((config) => {
   if (!apiConfig.apiUrl) {

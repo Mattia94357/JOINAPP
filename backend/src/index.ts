@@ -32,7 +32,11 @@ app.disable('x-powered-by');
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && developmentOrigin.test(origin))) {
+    if (
+      !origin ||
+      allowedOrigins.includes(origin) ||
+      (process.env.NODE_ENV !== 'production' && developmentOrigin.test(origin))
+    ) {
       return callback(null, true);
     }
     return callback(new Error('Origin is not allowed.'));
