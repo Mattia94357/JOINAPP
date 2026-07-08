@@ -1,14 +1,12 @@
 # JOIN deployment
 
-JOIN uses Vercel for the frontend and Render for the Node/Express API.
+JOIN production is deployed with Vercel for the frontend, Render for the Node/Express API, and MongoDB Atlas for the database.
 
-Production API:
+## Production architecture
 
-```text
-https://joinapp.onrender.com
-```
-
-Cloudflare tunnels are not part of the current production or phone-testing workflow.
+- Frontend: `https://frontend-self-three-86.vercel.app`
+- Backend: `https://joinapp.onrender.com`
+- Database: MongoDB Atlas
 
 ## 1. MongoDB Atlas
 
@@ -58,7 +56,11 @@ Expected response:
 
 ## 3. Frontend on Vercel
 
-Keep the existing Vercel project for the frontend.
+Production frontend:
+
+```text
+https://frontend-self-three-86.vercel.app
+```
 
 In Vercel Project Settings > Environment Variables, set:
 
@@ -106,7 +108,7 @@ If you are intentionally running the backend locally, use `http://localhost:4000
 
 ## 5. Phone testing
 
-For normal testing, use Expo or the Vercel URL with `EXPO_PUBLIC_API_URL` set to the Render URL. A physical phone can reach both Vercel and Render over public HTTPS without a tunnel.
+For normal testing, use Expo or the Vercel URL with `EXPO_PUBLIC_API_URL` set to the Render URL. A physical phone can reach both Vercel and Render over public HTTPS.
 
 ## Troubleshooting
 
