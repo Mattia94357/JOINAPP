@@ -83,7 +83,11 @@ export default function ActivityCard({
   const entrance = useRef(new Animated.Value(0)).current;
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const compact = width < 520;
-  const heroHeight = Math.min(compact ? 500 : 560, Math.max(compact ? 310 : 390, height - (compact ? 375 : 330)));
+  const shortViewport = height < 760;
+  const heroHeight = Math.min(
+    compact ? 540 : 580,
+    Math.max(compact ? (shortViewport ? 340 : 430) : 470, height - (compact ? 360 : 330)),
+  );
   const primaryLabel = 'JOIN';
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
 
@@ -100,13 +104,10 @@ export default function ActivityCard({
 
   return (
     <Animated.View
-      style={[
-        styles.card,
-        {
-          opacity: entrance,
-          transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
-        },
-      ]}
+      style={{
+        opacity: entrance,
+        transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+      }}
     >
       <Animated.View style={{ transform: [{ scale: cardScale }] }}>
         <TouchableOpacity
@@ -115,7 +116,7 @@ export default function ActivityCard({
           onPressOut={() => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start()}
           activeOpacity={0.96}
         >
-          <View style={[styles.imageFrame, { height: heroHeight }]}>
+          <View style={[styles.card, styles.imageFrame, { height: heroHeight }]}>
             <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
@@ -195,47 +196,48 @@ export default function ActivityCard({
             </View>
           </View>
         </TouchableOpacity>
-
-        <View style={[styles.actionBar, compact && styles.actionBarCompact]}>
-          <TouchableOpacity style={[styles.detailsButton, compact && styles.detailsButtonCompact]} onPress={onPress} activeOpacity={0.82}>
-            <Ionicons name="information-circle-outline" size={compact ? 19 : 23} color={colors.text} />
-            <Text style={[styles.detailsButtonText, compact && styles.detailsButtonTextCompact]}>Details</Text>
-          </TouchableOpacity>
-
-          <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
-            <TouchableOpacity
-              style={[
-                styles.joinButton,
-                activity.joined && styles.joinedButton,
-                (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton,
-              ]}
-              onPress={activity.joined ? onOpenChat : onJoin}
-              onPressIn={() => animateAction(0.96, 90)}
-              onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
-              disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
-              activeOpacity={0.92}
-            >
-              <Text style={[styles.joinButtonText, compact && styles.joinButtonTextCompact]} numberOfLines={1}>{primaryLabel}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-
-          <Animated.View style={{ transform: [{ scale: bookmarkScale }] }}>
-            <TouchableOpacity
-              style={[styles.bookmarkButton, compact && styles.bookmarkButtonCompact, activity.saved && styles.bookmarkButtonActive]}
-              onPress={() => {
-                Animated.sequence([
-                  Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
-                  Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
-                ]).start();
-                onSave?.();
-              }}
-              activeOpacity={0.78}
-            >
-              <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 24 : 30} color={activity.saved ? colors.primaryText : colors.primary} />
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
       </Animated.View>
+
+      <View style={[styles.actionBar, compact && styles.actionBarCompact]}>
+        <TouchableOpacity style={[styles.detailsButton, compact && styles.detailsButtonCompact]} onPress={onPress} activeOpacity={0.82}>
+          <Ionicons name="information-circle-outline" size={compact ? 18 : 21} color={colors.text} />
+          <Text style={[styles.detailsButtonText, compact && styles.detailsButtonTextCompact]}>Details</Text>
+        </TouchableOpacity>
+
+        <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
+          <TouchableOpacity
+            style={[
+              styles.joinButton,
+              compact && styles.joinButtonCompact,
+              activity.joined && styles.joinedButton,
+              (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton,
+            ]}
+            onPress={activity.joined ? onOpenChat : onJoin}
+            onPressIn={() => animateAction(0.96, 90)}
+            onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
+            disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
+            activeOpacity={0.92}
+          >
+            <Text style={[styles.joinButtonText, compact && styles.joinButtonTextCompact]} numberOfLines={1}>{primaryLabel}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View style={[styles.bookmarkButtonWrap, { transform: [{ scale: bookmarkScale }] }]}>
+          <TouchableOpacity
+            style={[styles.bookmarkButton, compact && styles.bookmarkButtonCompact, activity.saved && styles.bookmarkButtonActive]}
+            onPress={() => {
+              Animated.sequence([
+                Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
+              ]).start();
+              onSave?.();
+            }}
+            activeOpacity={0.78}
+          >
+            <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 24 : 28} color={activity.saved ? colors.primaryText : colors.primary} />
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
 
       <Modal
         visible={locationModalVisible}
@@ -309,8 +311,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '34%',
-    backgroundColor: 'rgba(0,0,0,0.46)',
+    height: '48%',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   categoryBadge: {
     position: 'absolute',
@@ -340,17 +342,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 14,
+    bottom: 18,
   },
   imageCopyCompact: {
-    left: 18,
-    right: 18,
-    bottom: 12,
+    left: 20,
+    right: 20,
+    bottom: 18,
   },
   title: {
     color: colors.text,
-    fontSize: 25,
-    lineHeight: 29,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: '900',
     letterSpacing: -0.8,
     marginBottom: 8,
@@ -359,9 +361,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 3 },
   },
   titleCompact: {
-    fontSize: 22,
-    lineHeight: 26,
-    marginBottom: 7,
+    fontSize: 23,
+    lineHeight: 27,
+    marginBottom: 8,
   },
   hostRow: {
     flexDirection: 'row',
@@ -500,39 +502,40 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: '#101010',
+    gap: 14,
+    marginTop: 18,
+    paddingHorizontal: 8,
+    paddingBottom: 2,
     justifyContent: 'space-between',
   },
   actionBarCompact: {
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 10,
+    gap: 12,
+    marginTop: 16,
+    paddingHorizontal: 10,
+    paddingBottom: 0,
   },
   detailsButton: {
     flex: 1,
-    maxWidth: 96,
-    height: 46,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.28)',
-    backgroundColor: 'rgba(25,23,20,0.96)',
+    borderColor: 'rgba(246,196,69,0.34)',
+    backgroundColor: 'rgba(20,18,15,0.98)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   detailsButtonCompact: {
-    maxWidth: 86,
-    height: 42,
-    borderRadius: 14,
+    height: 52,
+    borderRadius: 18,
   },
   detailsButtonText: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
     marginLeft: 8,
   },
@@ -540,16 +543,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   joinButtonWrap: {
-    flex: 1.55,
-    maxWidth: 170,
-    minWidth: 132,
+    flex: 1.58,
+    minWidth: 130,
     shadowColor: colors.primary,
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
+    shadowOpacity: 0.5,
+    shadowRadius: 28,
     shadowOffset: { width: 0, height: 9 },
   },
   joinButton: {
-    height: 48,
+    height: 62,
     borderRadius: 999,
     backgroundColor: '#F6B737',
     alignItems: 'center',
@@ -562,6 +564,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
+  joinButtonCompact: {
+    height: 54,
+  },
   joinedButton: {
     backgroundColor: colors.primary,
   },
@@ -570,27 +575,33 @@ const styles = StyleSheet.create({
   },
   joinButtonText: {
     color: colors.primaryText,
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '900',
     letterSpacing: 1.9,
   },
   joinButtonTextCompact: {
-    fontSize: 17,
+    fontSize: 20,
+  },
+  bookmarkButtonWrap: {
+    flex: 1,
   },
   bookmarkButton: {
-    width: 72,
-    height: 46,
-    borderRadius: 16,
+    width: '100%',
+    height: 58,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.28)',
-    backgroundColor: 'rgba(25,23,20,0.96)',
+    borderColor: 'rgba(246,196,69,0.34)',
+    backgroundColor: 'rgba(20,18,15,0.98)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   bookmarkButtonCompact: {
-    width: 58,
-    height: 42,
-    borderRadius: 14,
+    height: 52,
+    borderRadius: 18,
   },
   bookmarkButtonActive: {
     backgroundColor: colors.primary,
