@@ -1,16 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
-import type { ParamsDictionary, Query } from 'express-serve-static-core';
+import type { ParamsDictionary } from 'express-serve-static-core';
+import type { ParsedQs } from 'qs';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../config/security';
 import User from '../models/User';
 
 export interface AuthRequest<
-  Params = ParamsDictionary,
+  P = ParamsDictionary,
   ResBody = unknown,
   ReqBody = unknown,
-  ReqQuery = Query,
+  ReqQuery = ParsedQs,
   Locals extends Record<string, unknown> = Record<string, unknown>,
-> extends Request<Params, ResBody, ReqBody, ReqQuery, Locals> {
+> extends Request<P, ResBody, ReqBody, ReqQuery, Locals> {
+  user?: {
+    id: string;
+    email?: string;
+  };
   userId?: string;
 }
 
@@ -34,6 +39,7 @@ const auth = async (
       return;
     }
     req.userId = payload.userId;
+    req.user = { id: payload.userId };
     next();
   } catch (error) {
     res.status(401).json({ message: 'Invalid token' });
