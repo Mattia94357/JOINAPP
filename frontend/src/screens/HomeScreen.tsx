@@ -28,13 +28,11 @@ const categories = ['All', ...activityCategories];
 const quickFilterChips = [
   { label: 'All', value: 'All' },
   { label: 'Food', value: 'Food' },
-  { label: 'Drinks', value: 'Nightlife' },
+  { label: 'Drinks', value: 'Drinks' },
   { label: 'Sports', value: 'Sports' },
-  { label: 'Outdoors', value: 'Adventure' },
-  { label: 'Music', value: 'Music' },
+  { label: 'Outdoors', value: 'Outdoors' },
   { label: 'Wellness', value: 'Wellness' },
-  { label: 'Beach', value: 'Beach' },
-  { label: 'Culture', value: 'Culture' },
+  { label: 'Networking', value: 'Networking' },
 ];
 const hostGenderFilters = [
   { label: 'All hosts', value: 'all' },
@@ -548,7 +546,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: 430,
-    marginBottom: 16,
+    marginBottom: 14,
     gap: 8,
   },
   topBarCompact: {
@@ -623,7 +621,7 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     alignSelf: 'center',
     alignItems: 'center',
-    marginBottom: 13,
+    marginBottom: 12,
   },
   discoveryEyebrow: {
     color: colors.primary,
@@ -654,7 +652,7 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     alignSelf: 'center',
     marginTop: 0,
-    paddingBottom: 90,
+    paddingBottom: 78,
   },
   skeletonCard: {
     width: '100%',

@@ -1,7 +1,9 @@
 export const activityCategories = [
   'Wellness',
   'Food',
+  'Drinks',
   'Networking',
+  'Outdoors',
   'Adventure',
   'Sports',
   'Fitness',

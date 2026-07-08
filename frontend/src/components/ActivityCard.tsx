@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Image, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
+import Logo from './Logo';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { colors } from '../theme';
 
@@ -50,11 +51,38 @@ type Props = {
 
 const categoryGlyph = (category: string) => {
   if (category === 'Food') return 'restaurant-outline';
+  if (category === 'Drinks') return 'wine-outline';
+  if (category === 'Outdoors') return 'trail-sign-outline';
   if (category === 'Wellness') return 'sparkles-outline';
   if (category === 'Adventure') return 'compass-outline';
   if (category === 'Music') return 'musical-notes-outline';
   if (category === 'Nightlife') return 'moon-outline';
   return 'ellipse-outline';
+};
+
+const locationCoordinates: Record<string, { lat: number; lng: number }> = {
+  'Perth CBD': { lat: -31.9523, lng: 115.8613 },
+  Perth: { lat: -31.9523, lng: 115.8613 },
+  'Cottesloe Beach': { lat: -31.994, lng: 115.751 },
+  Northbridge: { lat: -31.9475, lng: 115.8587 },
+  Subiaco: { lat: -31.9486, lng: 115.8247 },
+  'Matilda Bay': { lat: -31.9814, lng: 115.821 },
+  Fremantle: { lat: -32.0569, lng: 115.7439 },
+  Leederville: { lat: -31.9367, lng: 115.8416 },
+  'Kings Park': { lat: -31.9609, lng: 115.8321 },
+  Scarborough: { lat: -31.8958, lng: 115.7571 },
+  'Elizabeth Quay': { lat: -31.9596, lng: 115.8575 },
+};
+
+const getMapCoordinates = (location: string) => {
+  const normalized = location.trim().toLowerCase();
+  const match = Object.entries(locationCoordinates).find(([key]) => normalized.includes(key.toLowerCase()));
+  return match?.[1] || locationCoordinates['Perth CBD'];
+};
+
+const getStaticMapUrl = (location: string) => {
+  const { lat, lng } = getMapCoordinates(location);
+  return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&maptype=mapnik&markers=${lat},${lng},lightblue1`;
 };
 
 export default function ActivityCard({
@@ -86,10 +114,10 @@ export default function ActivityCard({
   const shortViewport = height < 760;
   const heroHeight = Math.min(
     compact ? 540 : 580,
-    Math.max(compact ? (shortViewport ? 340 : 430) : 470, height - (compact ? 360 : 330)),
+    Math.max(compact ? (shortViewport ? 360 : 450) : 490, height - (compact ? 350 : 320)),
   );
-  const primaryLabel = 'JOIN';
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
+  const mapPreviewUrl = getStaticMapUrl(activity.location);
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
@@ -137,7 +165,7 @@ export default function ActivityCard({
               <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={compact ? 34 : 40} />
                 <View style={styles.hostCopy}>
                   <Text style={styles.hostLabel}>HOSTED BY</Text>
-                  <Text style={[styles.hostText, compact && styles.hostTextCompact]} numberOfLines={1}>{activity.host}</Text>
+                <Text style={[styles.hostText, compact && styles.hostTextCompact]} numberOfLines={1}>{activity.host}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -218,7 +246,7 @@ export default function ActivityCard({
             disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
             activeOpacity={0.92}
           >
-            <Text style={[styles.joinButtonText, compact && styles.joinButtonTextCompact]} numberOfLines={1}>{primaryLabel}</Text>
+            <Logo size={compact ? 30 : 34} style={styles.joinLogo} />
           </TouchableOpacity>
         </Animated.View>
 
@@ -257,13 +285,18 @@ export default function ActivityCard({
               </TouchableOpacity>
             </View>
             <View style={styles.mapPreview}>
-              <View style={styles.mapGridHorizontal} />
-              <View style={styles.mapGridVertical} />
+              <Image source={{ uri: mapPreviewUrl }} style={styles.mapPreviewImage} />
+              <View style={styles.mapPreviewTint} />
               <View style={styles.mapPin}>
                 <Ionicons name="location" size={28} color={colors.primaryText} />
               </View>
-              <Text style={styles.mapPreviewText}>Map preview</Text>
-              <Text style={styles.mapPreviewSubtext} numberOfLines={1}>{activity.location}</Text>
+              <View style={styles.mapPreviewLabel}>
+                <Text style={styles.mapPreviewText} numberOfLines={1}>{activity.location}</Text>
+              </View>
+            </View>
+            <View style={styles.addressBlock}>
+              <Ionicons name="location-outline" size={18} color={colors.primary} />
+              <Text style={styles.addressText} numberOfLines={2}>{activity.location}</Text>
             </View>
             <TouchableOpacity style={styles.openMapsButton} onPress={openMaps} activeOpacity={0.86}>
               <Ionicons name={Platform.OS === 'ios' ? 'map-outline' : 'navigate-outline'} size={18} color={colors.primaryText} />
@@ -311,8 +344,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '48%',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    height: '52%',
+    backgroundColor: 'rgba(0,0,0,0.54)',
   },
   categoryBadge: {
     position: 'absolute',
@@ -342,12 +375,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 18,
+    bottom: 22,
   },
   imageCopyCompact: {
     left: 20,
     right: 20,
-    bottom: 18,
+    bottom: 20,
   },
   title: {
     color: colors.text,
@@ -355,7 +388,7 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     fontWeight: '900',
     letterSpacing: -0.8,
-    marginBottom: 8,
+    marginBottom: 11,
     textShadowColor: 'rgba(0,0,0,0.52)',
     textShadowRadius: 10,
     textShadowOffset: { width: 0, height: 3 },
@@ -363,13 +396,13 @@ const styles = StyleSheet.create({
   titleCompact: {
     fontSize: 23,
     lineHeight: 27,
-    marginBottom: 8,
+    marginBottom: 11,
   },
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 34,
-    marginBottom: 8,
+    marginBottom: 11,
   },
   hostCopy: {
     flex: 1,
@@ -426,17 +459,17 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: 'rgba(246,196,69,0.24)',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   aboutRow: {
-    marginBottom: 9,
+    marginBottom: 13,
   },
   aboutLabel: {
     color: 'rgba(245,238,224,0.58)',
     fontSize: 8,
     fontWeight: '900',
     letterSpacing: 1.4,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   aboutText: {
     color: 'rgba(245,238,224,0.88)',
@@ -449,7 +482,7 @@ const styles = StyleSheet.create({
   peopleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 34,
+    minHeight: 38,
   },
   avatarStack: {
     flexDirection: 'row',
@@ -503,21 +536,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    marginTop: 18,
-    paddingHorizontal: 8,
+    marginTop: 13,
+    paddingHorizontal: 10,
     paddingBottom: 2,
     justifyContent: 'space-between',
   },
   actionBarCompact: {
     gap: 12,
-    marginTop: 16,
-    paddingHorizontal: 10,
+    marginTop: 11,
+    paddingHorizontal: 12,
     paddingBottom: 0,
   },
   detailsButton: {
     flex: 1,
-    height: 58,
-    borderRadius: 20,
+    height: 48,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
     backgroundColor: 'rgba(20,18,15,0.98)',
@@ -530,28 +563,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   detailsButtonCompact: {
-    height: 52,
-    borderRadius: 18,
+    height: 44,
+    borderRadius: 16,
   },
   detailsButtonText: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     marginLeft: 8,
   },
   detailsButtonTextCompact: {
-    fontSize: 13,
+    fontSize: 12,
   },
   joinButtonWrap: {
     flex: 1.58,
-    minWidth: 130,
+    minWidth: 118,
     shadowColor: colors.primary,
     shadowOpacity: 0.5,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 9 },
   },
   joinButton: {
-    height: 62,
+    height: 50,
     borderRadius: 999,
     backgroundColor: '#F6B737',
     alignItems: 'center',
@@ -565,7 +598,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   joinButtonCompact: {
-    height: 54,
+    height: 46,
   },
   joinedButton: {
     backgroundColor: colors.primary,
@@ -573,22 +606,16 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.68,
   },
-  joinButtonText: {
-    color: colors.primaryText,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 1.9,
-  },
-  joinButtonTextCompact: {
-    fontSize: 20,
+  joinLogo: {
+    transform: [{ scale: 0.92 }],
   },
   bookmarkButtonWrap: {
     flex: 1,
   },
   bookmarkButton: {
     width: '100%',
-    height: 58,
-    borderRadius: 20,
+    height: 48,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
     backgroundColor: 'rgba(20,18,15,0.98)',
@@ -600,8 +627,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   bookmarkButtonCompact: {
-    height: 52,
-    borderRadius: 18,
+    height: 44,
+    borderRadius: 16,
   },
   bookmarkButtonActive: {
     backgroundColor: colors.primary,
@@ -662,7 +689,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mapPreview: {
-    height: 210,
+    height: 220,
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#151515',
@@ -671,6 +698,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
+  },
+  mapPreviewImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  mapPreviewTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(20,14,4,0.08)',
   },
   mapGridHorizontal: {
     position: 'absolute',
@@ -689,9 +726,14 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '24deg' }],
   },
   mapPin: {
+    position: 'absolute',
+    top: '42%',
+    left: '50%',
     width: 58,
     height: 58,
     borderRadius: 29,
+    marginLeft: -29,
+    marginTop: -29,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -701,17 +743,39 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
   },
   mapPreviewText: {
-    color: colors.text,
-    fontSize: 15,
+    color: colors.primaryText,
+    fontSize: 14,
     fontWeight: '900',
-    marginTop: 14,
   },
-  mapPreviewSubtext: {
-    color: colors.textMuted,
-    fontSize: 12,
+  mapPreviewLabel: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 14,
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: 'rgba(246,196,69,0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  addressBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.18)',
+    backgroundColor: 'rgba(20,20,20,0.92)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  addressText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
     fontWeight: '800',
-    marginTop: 5,
-    maxWidth: '82%',
+    marginLeft: 8,
   },
   openMapsButton: {
     height: 48,
