@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User';
-import { isMailConfigured, sendPasswordResetEmail } from '../config/mail';
+import { isMailConfigured, sendPasswordResetEmail, smtpErrorDetails } from '../config/mail';
 import { isDevelopment } from '../config/env';
 import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
@@ -144,8 +144,7 @@ router.post(
         ...devPayload,
       });
     } catch (error) {
-      logAuthDebug('[auth:forgot-password] Reset email send failed', error);
-      if (isProduction()) console.warn('[auth:forgot-password] Reset email send failed.');
+      console.warn('[auth:forgot-password] Reset email send failed.', smtpErrorDetails(error));
       return res.status(500).json({ message: 'Unable to send reset email. Check mail server configuration.' });
     }
   }

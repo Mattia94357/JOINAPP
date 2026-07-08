@@ -6,6 +6,43 @@ export const isMailConfigured = () => requiredMailEnv.every((key) => Boolean(pro
 
 export const missingMailEnv = () => requiredMailEnv.filter((key) => !process.env[key]);
 
+export const smtpErrorDetails = (error: unknown) => {
+  const details: {
+    name?: string;
+    message?: string;
+    code?: string | number;
+    responseCode?: number;
+    command?: string;
+  } = {};
+
+  if (error instanceof Error) {
+    details.name = error.name;
+    details.message = error.message;
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const smtpError = error as {
+      code?: unknown;
+      responseCode?: unknown;
+      command?: unknown;
+    };
+
+    if (typeof smtpError.code === 'string' || typeof smtpError.code === 'number') {
+      details.code = smtpError.code;
+    }
+
+    if (typeof smtpError.responseCode === 'number') {
+      details.responseCode = smtpError.responseCode;
+    }
+
+    if (typeof smtpError.command === 'string') {
+      details.command = smtpError.command;
+    }
+  }
+
+  return details;
+};
+
 export const sendPasswordResetEmail = async (to: string, resetUrl: string) => {
   if (!isMailConfigured()) {
     return false;
