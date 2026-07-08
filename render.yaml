@@ -3,8 +3,8 @@ services:
     name: join-api
     runtime: node
     rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
