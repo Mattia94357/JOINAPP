@@ -10,12 +10,48 @@ import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
 
+type UserIdParams = { id: string };
+type ProfileBody = {
+  bio?: unknown;
+  aboutMe?: unknown;
+  location?: unknown;
+  languages?: unknown;
+  interests?: unknown;
+  instagram?: unknown;
+  ageRange?: unknown;
+  gender?: unknown;
+  publicGender?: unknown;
+  hasCompletedOnboardingTutorial?: unknown;
+};
+type ProfilePhotoBody = {
+  profilePictureUrl: string;
+  profileThumbnailUrl?: string;
+};
+type PushTokenBody = {
+  pushToken: string;
+};
+type PrivacyBody = {
+  locationPublic?: boolean;
+  hostedActivitiesPublic?: boolean;
+  joinedActivitiesPublic?: boolean;
+  publicGender?: boolean;
+};
+type ReportBody = {
+  reason?: string;
+};
+
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 const maxProfileImageBytes = 5 * 1024 * 1024;
 const maxProfileImagePayloadLength = Math.ceil((maxProfileImageBytes * 4) / 3) + 128;
-const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
+const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'] as const;
+type Gender = typeof allowedGenders[number];
 const moderationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
+
+const isAllowedGender = (value: unknown): value is Gender =>
+  typeof value === 'string' && (allowedGenders as readonly string[]).includes(value);
+
+const optionalTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : undefined);
 
 const getBase64ByteSize = (value: string) => {
   const base64 = value.split(',')[1] || '';
@@ -99,24 +135,25 @@ router.patch(
   body('gender').optional({ nullable: true, checkFalsy: true }).isIn(allowedGenders),
   body('publicGender').optional().isBoolean(),
   body('hasCompletedOnboardingTutorial').optional().isBoolean(),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<Record<string, never>, unknown, ProfileBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const assignString = (field: keyof typeof req.body) => {
-      if (typeof req.body[field] === 'string') (user as any)[field] = req.body[field].trim();
-    };
-
-    assignString('bio');
-    assignString('aboutMe');
-    assignString('location');
-    assignString('instagram');
-    assignString('ageRange');
-    if (typeof req.body.gender === 'string' && allowedGenders.includes(req.body.gender)) {
-      user.gender = req.body.gender as any;
+    const bio = optionalTrimmedString(req.body.bio);
+    if (bio !== undefined) user.bio = bio;
+    const aboutMe = optionalTrimmedString(req.body.aboutMe);
+    if (aboutMe !== undefined) user.aboutMe = aboutMe;
+    const location = optionalTrimmedString(req.body.location);
+    if (location !== undefined) user.location = location;
+    const instagram = optionalTrimmedString(req.body.instagram);
+    if (instagram !== undefined) user.instagram = instagram;
+    const ageRange = optionalTrimmedString(req.body.ageRange);
+    if (ageRange !== undefined) user.ageRange = ageRange;
+    if (isAllowedGender(req.body.gender)) {
+      user.gender = req.body.gender;
     }
     if (typeof req.body.publicGender === 'boolean') {
       user.publicGender = req.body.publicGender;
@@ -150,7 +187,7 @@ router.patch(
     .isString()
     .custom(isValidProfileImage)
     .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<Record<string, never>, unknown, ProfilePhotoBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
@@ -172,7 +209,7 @@ router.patch(
   '/me/push-token',
   auth,
   body('pushToken').isString().isLength({ min: 10, max: 512 }),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<Record<string, never>, unknown, PushTokenBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid push token.' });
 
@@ -193,7 +230,7 @@ router.patch(
   body('hostedActivitiesPublic').optional().isBoolean(),
   body('joinedActivitiesPublic').optional().isBoolean(),
   body('publicGender').optional().isBoolean(),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<Record<string, never>, unknown, PrivacyBody>, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Privacy settings must be true or false.' });
   const user = await User.findById(req.userId);
@@ -229,7 +266,7 @@ router.post(
   auth,
   moderationLimiter,
   body('reason').optional().isString().isLength({ max: 500 }),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<UserIdParams, unknown, ReportBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Report reason is too long.' });
 
@@ -252,7 +289,7 @@ router.post(
 );
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.
-router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest, res) => {
+router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User to block not found' });
   }
@@ -278,7 +315,7 @@ router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest, res)
 });
 
 // Removes a user from the signed-in user's block list.
-router.post('/:id/unblock', auth, async (req: AuthRequest, res) => {
+router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User not found' });
   }

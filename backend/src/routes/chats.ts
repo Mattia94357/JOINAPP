@@ -8,6 +8,10 @@ import { Types } from 'mongoose';
 import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
+type ChatIdParams = { id: string };
+type SendMessageBody = {
+  message: string;
+};
 const chatLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
 const cleanMessage = (value: string) => value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
 const idInList = (list: any[] | undefined, id?: string) =>
@@ -59,7 +63,7 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
   return { chat };
 };
 
-router.get('/:id', auth, async (req: AuthRequest, res) => {
+router.get('/:id', auth, async (req: AuthRequest<ChatIdParams>, res) => {
   const result = await getAuthorizedChat(req.params.id, req.userId);
   if (!result) return res.status(404).json({ message: 'Chat not found' });
   if ('error' in result) return res.status(403).json({ message: result.error });
@@ -76,7 +80,7 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
   res.json(chat);
 });
 
-router.post('/:id/message', auth, chatLimiter, body('message').isString().trim().isLength({ min: 1, max: 1200 }), async (req: AuthRequest, res) => {
+router.post('/:id/message', auth, chatLimiter, body('message').isString().trim().isLength({ min: 1, max: 1200 }), async (req: AuthRequest<ChatIdParams, unknown, SendMessageBody>, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 

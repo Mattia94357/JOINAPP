@@ -9,6 +9,33 @@ import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
 
 const router = express.Router();
+type ActivityIdParams = { id: string };
+type ActivityApprovalParams = { id: string; userId: string };
+type CreateActivityBody = {
+  title: string;
+  category?: string;
+  location: string;
+  description: string;
+  date?: string;
+  vibe?: string;
+  coverImage?: string;
+  maxAttendees: number;
+  venueName?: string;
+  exactAddress?: string;
+  startTime?: string;
+  endTime?: string;
+  costType?: string;
+  costAmount?: number | string;
+  currency?: string;
+  hostNote?: string;
+  cancellationPolicy?: string;
+  visibility?: string;
+  joinApproval?: string;
+  galleryImages?: unknown;
+};
+type CancelActivityBody = {
+  reason?: unknown;
+};
 const allowedCategories = [
   'Wellness',
   'Food',
@@ -168,7 +195,7 @@ router.post(
   body('maxAttendees').isInt({ min: 2 }),
   body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
   body('galleryImages').optional().isArray({ max: 5 }),
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest<Record<string, never>, unknown, CreateActivityBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -204,7 +231,7 @@ router.post(
 
     const activity = new Activity({
       title: cleanText(title, 120),
-      category: allowedCategories.includes(category) ? category : 'Other',
+      category: category && allowedCategories.includes(category) ? category : 'Other',
       location: cleanText(location, 120),
       description: cleanText(description, 3000),
       date: date ? new Date(date) : new Date(),
@@ -256,7 +283,7 @@ router.get('/:id', async (req, res) => {
   res.json(activityPayload(activity, userId));
 });
 
-router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
+router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -314,7 +341,7 @@ router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest, re
 });
 
 // Lets a signed-in user explicitly save an activity without joining it.
-router.post('/:id/save', auth, async (req: AuthRequest, res) => {
+router.post('/:id/save', auth, async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -333,7 +360,7 @@ router.post('/:id/save', auth, async (req: AuthRequest, res) => {
 });
 
 // Host-only endpoint for approving a manual join request.
-router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
+router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityApprovalParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -354,7 +381,7 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
 });
 
 // Host-only endpoint for declining a manual join request.
-router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: AuthRequest, res) => {
+router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityApprovalParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -372,7 +399,7 @@ router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: Auth
 });
 
 // Host-only cancellation endpoint. Cancelled activities remain readable but cannot be joined.
-router.post('/:id/cancel', auth, async (req: AuthRequest, res) => {
+router.post('/:id/cancel', auth, async (req: AuthRequest<ActivityIdParams, unknown, CancelActivityBody>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
