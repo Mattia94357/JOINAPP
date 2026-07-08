@@ -8,7 +8,6 @@ import { normalizeActivityCategory } from './utils/categories';
 type ApiConfigStatus = {
   apiUrl: string | null;
   source:
-    | 'runtime-config'
     | 'expo-extra'
     | 'public-env'
     | 'web-local-dev'
@@ -21,8 +20,6 @@ type ApiConfigStatus = {
 };
 
 const cleanUrl = (value?: unknown) => (typeof value === 'string' && value.trim() ? value.trim().replace(/\/$/, '') : null);
-
-const isPlaceholderRuntimeUrl = (value: string) => value.includes('example.trycloudflare.com');
 
 const getExpoExtraApiUrl = () =>
   cleanUrl(
@@ -118,34 +115,6 @@ const applyApiConfig = (nextConfig: ApiConfigStatus) => {
   return apiConfig;
 };
 
-const fetchWebRuntimeConfigApiUrl = async () => {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof fetch !== 'function') {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`/runtime-config.json?t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const runtimeConfig = await response.json();
-    const runtimeApiUrl = cleanUrl(runtimeConfig?.apiUrl);
-
-    if (!runtimeApiUrl || isPlaceholderRuntimeUrl(runtimeApiUrl)) {
-      return null;
-    }
-
-    return runtimeApiUrl;
-  } catch {
-    return null;
-  }
-};
-
 export const initializeApiConfig = async () => {
   if (apiConfigInitialized) {
     return apiConfig;
@@ -156,26 +125,14 @@ export const initializeApiConfig = async () => {
   }
 
   apiConfigInitPromise = (async () => {
-    const runtimeApiUrl = await fetchWebRuntimeConfigApiUrl();
-
-    if (runtimeApiUrl) {
-      applyApiConfig({
-        apiUrl: runtimeApiUrl,
-        source: 'runtime-config',
-        isDev: typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production',
-        hasExpoExtraApiUrl: Boolean(getExpoExtraApiUrl()),
-      });
-    } else {
-      applyApiConfig(resolveApiConfig());
-    }
+    applyApiConfig(resolveApiConfig());
 
     apiConfigInitialized = true;
 
-    if (apiConfig.isDev || apiConfig.source === 'runtime-config') {
+    if (apiConfig.isDev) {
       console.info('[JOIN API]', {
         apiUrl: apiConfig.apiUrl,
         source: apiConfig.source,
-        runtimeConfigChecked: Platform.OS === 'web',
       });
     }
 

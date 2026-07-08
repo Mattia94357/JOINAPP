@@ -2,17 +2,6 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "web-build",
-  "headers": [
-    {
-      "source": "/runtime-config.json",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store, max-age=0"
-        }
-      ]
-    }
-  ],
   "routes": [
     {
       "handle": "filesystem"
