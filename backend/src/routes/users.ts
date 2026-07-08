@@ -1,15 +1,18 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
-import User from '../models/User';
+import User, { IUser } from '../models/User';
 import Activity from '../models/Activity';
 import UserReport from '../models/UserReport';
 import Chat from '../models/Chat';
 import { rateLimit } from 'express-rate-limit';
+import type { ParamsDictionary } from 'express-serve-static-core';
 
 const router = express.Router();
 
+type ApiResponse = Response<unknown>;
+type NoParams = ParamsDictionary;
 type UserIdParams = { id: string };
 type ProfileBody = {
   bio?: unknown;
@@ -67,12 +70,13 @@ const isValidProfileImage = (value: string) => {
   return getBase64ByteSize(value) <= maxProfileImageBytes;
 };
 
-const publicGenderValue = (user: any) => {
-  if (!user?.publicGender || user.gender === 'prefer_not_to_say') return undefined;
-  return allowedGenders.includes(user.gender) ? user.gender : undefined;
+const publicGenderValue = (user: IUser) => {
+  const gender = user.gender;
+  if (!user.publicGender || !gender || gender === 'prefer_not_to_say') return undefined;
+  return allowedGenders.includes(gender) ? gender : undefined;
 };
 
-const userPayload = (user: any) => ({
+const userPayload = (user: IUser) => ({
   id: user.id,
   name: user.name,
   email: user.email,
@@ -101,7 +105,7 @@ const userPayload = (user: any) => ({
   joinedActivitiesPublic: user.joinedActivitiesPublic,
 });
 
-const publicUserPayload = (user: any) => ({
+const publicUserPayload = (user: IUser) => ({
   id: user.id,
   name: user.name,
   avatar: user.profileThumbnailUrl || user.profilePictureUrl || (user.profileCompleted ? user.avatar : undefined),
@@ -135,7 +139,7 @@ router.patch(
   body('gender').optional({ nullable: true, checkFalsy: true }).isIn(allowedGenders),
   body('publicGender').optional().isBoolean(),
   body('hasCompletedOnboardingTutorial').optional().isBoolean(),
-  async (req: AuthRequest<Record<string, never>, unknown, ProfileBody>, res) => {
+  async (req: AuthRequest<NoParams, unknown, ProfileBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
@@ -169,7 +173,7 @@ router.patch(
   },
 );
 
-router.get('/me', auth, async (req: AuthRequest, res) => {
+router.get('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(userPayload(user));
@@ -187,7 +191,7 @@ router.patch(
     .isString()
     .custom(isValidProfileImage)
     .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
-  async (req: AuthRequest<Record<string, never>, unknown, ProfilePhotoBody>, res) => {
+  async (req: AuthRequest<NoParams, unknown, ProfilePhotoBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
@@ -209,7 +213,7 @@ router.patch(
   '/me/push-token',
   auth,
   body('pushToken').isString().isLength({ min: 10, max: 512 }),
-  async (req: AuthRequest<Record<string, never>, unknown, PushTokenBody>, res) => {
+  async (req: AuthRequest<NoParams, unknown, PushTokenBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid push token.' });
 
@@ -230,23 +234,24 @@ router.patch(
   body('hostedActivitiesPublic').optional().isBoolean(),
   body('joinedActivitiesPublic').optional().isBoolean(),
   body('publicGender').optional().isBoolean(),
-  async (req: AuthRequest<Record<string, never>, unknown, PrivacyBody>, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ message: 'Privacy settings must be true or false.' });
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ message: 'User not found' });
+  async (req: AuthRequest<NoParams, unknown, PrivacyBody>, res: ApiResponse) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ message: 'Privacy settings must be true or false.' });
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-  user.locationPublic = req.body.locationPublic ?? user.locationPublic;
-  user.hostedActivitiesPublic = req.body.hostedActivitiesPublic ?? user.hostedActivitiesPublic;
-  user.joinedActivitiesPublic = req.body.joinedActivitiesPublic ?? user.joinedActivitiesPublic;
-  user.publicGender = req.body.publicGender ?? user.publicGender;
-  await user.save();
+    user.locationPublic = req.body.locationPublic ?? user.locationPublic;
+    user.hostedActivitiesPublic = req.body.hostedActivitiesPublic ?? user.hostedActivitiesPublic;
+    user.joinedActivitiesPublic = req.body.joinedActivitiesPublic ?? user.joinedActivitiesPublic;
+    user.publicGender = req.body.publicGender ?? user.publicGender;
+    await user.save();
 
-  res.json(userPayload(user));
-});
+    res.json(userPayload(user));
+  },
+);
 
 // Permanently deletes the account, cancels hosted plans, and removes private references.
-router.delete('/me', auth, async (req: AuthRequest, res) => {
+router.delete('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
 
@@ -266,7 +271,7 @@ router.post(
   auth,
   moderationLimiter,
   body('reason').optional().isString().isLength({ max: 500 }),
-  async (req: AuthRequest<UserIdParams, unknown, ReportBody>, res) => {
+  async (req: AuthRequest<UserIdParams, unknown, ReportBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Report reason is too long.' });
 
@@ -289,7 +294,7 @@ router.post(
 );
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.
-router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserIdParams>, res) => {
+router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User to block not found' });
   }
@@ -315,7 +320,7 @@ router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserI
 });
 
 // Removes a user from the signed-in user's block list.
-router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res) => {
+router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User not found' });
   }
@@ -329,7 +334,7 @@ router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res) =>
   res.json({ message: 'User unblocked.' });
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User not found' });
   }
