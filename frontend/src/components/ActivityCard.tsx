@@ -80,8 +80,8 @@ export default function ActivityCard({
   const compact = width < 520;
   const shortViewport = height < 760;
   const heroHeight = Math.min(
-    compact ? 590 : 700,
-    Math.max(compact ? (shortViewport ? 455 : 530) : 620, height - (compact ? 300 : 230)),
+    compact ? 620 : 740,
+    Math.max(compact ? (shortViewport ? 480 : 580) : 660, height - (compact ? 260 : 205)),
   );
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
 
@@ -288,12 +288,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 22,
+    bottom: 24,
   },
   imageCopyCompact: {
     left: 20,
     right: 20,
-    bottom: 20,
+    bottom: 22,
   },
   title: {
     color: colors.text,
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   aboutRow: {
-    marginBottom: 13,
+    marginBottom: 16,
   },
   aboutLabel: {
     color: 'rgba(245,238,224,0.58)',
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
   peopleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 38,
+    minHeight: 42,
   },
   avatarStack: {
     flexDirection: 'row',
@@ -449,20 +449,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 24,
-    marginTop: 12,
+    marginTop: 14,
     paddingHorizontal: 16,
     paddingBottom: 2,
     justifyContent: 'center',
   },
   actionBarCompact: {
     gap: 20,
-    marginTop: 10,
+    marginTop: 12,
     paddingHorizontal: 12,
     paddingBottom: 0,
   },
   detailsButton: {
     width: 128,
-    height: 48,
+    height: 46,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   detailsButtonCompact: {
     width: 126,
-    height: 48,
+    height: 46,
     borderRadius: 16,
   },
   detailsButtonText: {
@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
   },
   bookmarkButton: {
     width: 128,
-    height: 48,
+    height: 46,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   },
   bookmarkButtonCompact: {
     width: 126,
-    height: 48,
+    height: 46,
     borderRadius: 16,
   },
   bookmarkButtonActive: {
