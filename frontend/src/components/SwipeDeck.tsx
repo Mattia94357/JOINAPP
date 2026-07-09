@@ -28,6 +28,7 @@ type Props = {
   onOpenChat?: (activity: Activity) => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
+  onOpenLocation?: (activity: Activity) => void;
 };
 
 export default function SwipeDeck({
@@ -39,6 +40,7 @@ export default function SwipeDeck({
   onOpenChat,
   onViewParticipants,
   onOpenProfile,
+  onOpenLocation,
 }: Props) {
   const [index, setIndex] = useState(0);
   const [isActing, setIsActing] = useState(false);
@@ -58,10 +60,12 @@ export default function SwipeDeck({
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponder: (_, gesture) =>
           !isActing && isHorizontalGesture(gesture.dx, gesture.dy),
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
           !isActing && isHorizontalGesture(gesture.dx, gesture.dy),
+        onShouldBlockNativeResponder: () => false,
         onPanResponderTerminationRequest: () => !isActing,
         onPanResponderMove: (_, gesture) => {
           if (isHorizontalGesture(gesture.dx, gesture.dy)) {
@@ -202,6 +206,7 @@ export default function SwipeDeck({
           onOpenChat={() => onOpenChat?.(activity)}
           onViewParticipants={onViewParticipants}
           onOpenProfile={onOpenProfile}
+          onOpenLocation={onOpenLocation}
         />
       </Animated.View>
     );

@@ -47,6 +47,7 @@ type Props = {
   onOpenChat?: () => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
+  onOpenLocation?: (activity: Activity) => void;
 };
 
 const categoryGlyph = (category: string) => {
@@ -93,6 +94,7 @@ export default function ActivityCard({
   onOpenChat,
   onViewParticipants,
   onOpenProfile,
+  onOpenLocation,
 }: Props) {
   const { height, width } = useWindowDimensions();
   const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
@@ -113,8 +115,8 @@ export default function ActivityCard({
   const compact = width < 520;
   const shortViewport = height < 760;
   const heroHeight = Math.min(
-    compact ? 540 : 580,
-    Math.max(compact ? (shortViewport ? 360 : 450) : 490, height - (compact ? 350 : 320)),
+    compact ? 560 : 660,
+    Math.max(compact ? (shortViewport ? 430 : 500) : 590, height - (compact ? 330 : 260)),
   );
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
   const mapPreviewUrl = getStaticMapUrl(activity.location);
@@ -125,6 +127,14 @@ export default function ActivityCard({
 
   const animateAction = (toValue: number, duration: number) =>
     Animated.timing(actionScale, { toValue, duration, useNativeDriver: true }).start();
+
+  const openLocationModal = () => {
+    if (onOpenLocation) {
+      onOpenLocation(activity);
+      return;
+    }
+    setLocationModalVisible(true);
+  };
 
   const openMaps = () => {
     Linking.openURL(mapsUrl).catch(() => undefined);
@@ -138,13 +148,7 @@ export default function ActivityCard({
       }}
     >
       <Animated.View style={{ transform: [{ scale: cardScale }] }}>
-        <TouchableOpacity
-          onPress={onPress}
-          onPressIn={() => Animated.timing(cardScale, { toValue: 0.988, duration: 100, useNativeDriver: true }).start()}
-          onPressOut={() => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, friction: 7 }).start()}
-          activeOpacity={0.96}
-        >
-          <View style={[styles.card, styles.imageFrame, { height: heroHeight }]}>
+        <View style={[styles.card, styles.imageFrame, { height: heroHeight }]}>
             <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
@@ -169,17 +173,31 @@ export default function ActivityCard({
                 </View>
               </TouchableOpacity>
 
-              <View style={styles.metaLine}>
-                <TouchableOpacity style={styles.locationPressable} onPress={() => setLocationModalVisible(true)} activeOpacity={0.78}>
+              <TouchableOpacity
+                style={styles.metaLine}
+                onPress={openLocationModal}
+                onStartShouldSetResponder={() => true}
+                onResponderRelease={openLocationModal}
+                {...(Platform.OS === 'web' ? ({ onClick: openLocationModal } as any) : {})}
+                activeOpacity={0.78}
+              >
+                <View style={styles.locationPressable}>
                   <Ionicons name="location-outline" size={compact ? 17 : 20} color={colors.primary} />
-                  <Text style={[styles.metaText, compact && styles.metaTextCompact]} numberOfLines={1}>{activity.location}</Text>
-                </TouchableOpacity>
+                  <Text
+                    style={[styles.metaText, compact && styles.metaTextCompact]}
+                    numberOfLines={1}
+                    onPress={openLocationModal}
+                    {...(Platform.OS === 'web' ? ({ onClick: openLocationModal } as any) : {})}
+                  >
+                    {activity.location}
+                  </Text>
+                </View>
                 <Text style={styles.metaDot}>•</Text>
                 <View style={styles.timeMeta}>
                   <Ionicons name="time-outline" size={compact ? 17 : 20} color={colors.primary} />
                   <Text style={[styles.metaText, compact && styles.metaTextCompact]} numberOfLines={1}>{activity.time || 'Anytime'}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
 
               <View style={styles.divider} />
 
@@ -223,7 +241,6 @@ export default function ActivityCard({
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
       </Animated.View>
 
       <View style={[styles.actionBar, compact && styles.actionBarCompact]}>
@@ -535,21 +552,21 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginTop: 13,
+    gap: 12,
+    marginTop: 10,
     paddingHorizontal: 10,
     paddingBottom: 2,
     justifyContent: 'space-between',
   },
   actionBarCompact: {
-    gap: 12,
-    marginTop: 11,
-    paddingHorizontal: 12,
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 10,
     paddingBottom: 0,
   },
   detailsButton: {
-    flex: 1,
-    height: 48,
+    width: 110,
+    height: 52,
     borderRadius: 17,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
@@ -563,7 +580,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   detailsButtonCompact: {
-    height: 44,
+    width: 110,
+    height: 52,
     borderRadius: 16,
   },
   detailsButtonText: {
@@ -576,15 +594,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   joinButtonWrap: {
-    flex: 1.58,
-    minWidth: 118,
+    width: 86,
     shadowColor: colors.primary,
     shadowOpacity: 0.5,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 9 },
   },
   joinButton: {
-    height: 50,
+    width: 86,
+    height: 56,
     borderRadius: 999,
     backgroundColor: '#F6B737',
     alignItems: 'center',
@@ -598,7 +616,8 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   joinButtonCompact: {
-    height: 46,
+    width: 86,
+    height: 56,
   },
   joinedButton: {
     backgroundColor: colors.primary,
@@ -610,11 +629,11 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.92 }],
   },
   bookmarkButtonWrap: {
-    flex: 1,
+    width: 110,
   },
   bookmarkButton: {
-    width: '100%',
-    height: 48,
+    width: 110,
+    height: 52,
     borderRadius: 17,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
@@ -627,7 +646,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   bookmarkButtonCompact: {
-    height: 44,
+    width: 110,
+    height: 52,
     borderRadius: 16,
   },
   bookmarkButtonActive: {
