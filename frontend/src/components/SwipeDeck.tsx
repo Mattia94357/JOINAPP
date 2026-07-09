@@ -25,10 +25,8 @@ type Props = {
   onSwipeRight: (activity: Activity) => boolean | void | Promise<boolean | void>;
   onSave?: (activity: Activity) => void;
   onPress: (activity: Activity) => void;
-  onOpenChat?: (activity: Activity) => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
-  onOpenLocation?: (activity: Activity) => void;
 };
 
 export default function SwipeDeck({
@@ -37,10 +35,8 @@ export default function SwipeDeck({
   onSwipeRight,
   onSave,
   onPress,
-  onOpenChat,
   onViewParticipants,
   onOpenProfile,
-  onOpenLocation,
 }: Props) {
   const [index, setIndex] = useState(0);
   const [isActing, setIsActing] = useState(false);
@@ -160,19 +156,6 @@ export default function SwipeDeck({
     }
   };
 
-  const handleJoinPress = async () => {
-    const activity = activities[index];
-    if (!activity || isActing) return;
-
-    setIsActing(true);
-    try {
-      await onSwipeRight(activity);
-    } finally {
-      resetPosition();
-      setIsActing(false);
-    }
-  };
-
   const renderCards = () => {
     if (index >= activities.length) {
       return (
@@ -201,12 +184,9 @@ export default function SwipeDeck({
         <ActivityCard
           activity={activity}
           onPress={() => onPress(activity)}
-          onJoin={handleJoinPress}
           onSave={() => onSave?.(activity)}
-          onOpenChat={() => onOpenChat?.(activity)}
           onViewParticipants={onViewParticipants}
           onOpenProfile={onOpenProfile}
-          onOpenLocation={onOpenLocation}
         />
       </Animated.View>
     );

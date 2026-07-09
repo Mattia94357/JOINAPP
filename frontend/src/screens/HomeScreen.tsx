@@ -7,8 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Image,
-  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -46,31 +44,6 @@ type HostGenderFilter = typeof hostGenderFilters[number]['value'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-const locationCoordinates: Record<string, { lat: number; lng: number }> = {
-  'Perth CBD': { lat: -31.9523, lng: 115.8613 },
-  Perth: { lat: -31.9523, lng: 115.8613 },
-  'Cottesloe Beach': { lat: -31.994, lng: 115.751 },
-  Northbridge: { lat: -31.9475, lng: 115.8587 },
-  Subiaco: { lat: -31.9486, lng: 115.8247 },
-  'Matilda Bay': { lat: -31.9814, lng: 115.821 },
-  Fremantle: { lat: -32.0569, lng: 115.7439 },
-  Leederville: { lat: -31.9367, lng: 115.8416 },
-  'Kings Park': { lat: -31.9609, lng: 115.8321 },
-  Scarborough: { lat: -31.8958, lng: 115.7571 },
-  'Elizabeth Quay': { lat: -31.9596, lng: 115.8575 },
-};
-
-const getMapCoordinates = (location: string) => {
-  const normalized = location.trim().toLowerCase();
-  const match = Object.entries(locationCoordinates).find(([key]) => normalized.includes(key.toLowerCase()));
-  return match?.[1] || locationCoordinates['Perth CBD'];
-};
-
-const getStaticMapUrl = (location: string) => {
-  const { lat, lng } = getMapCoordinates(location);
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&maptype=mapnik&markers=${lat},${lng},lightblue1`;
-};
-
 export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
@@ -84,7 +57,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState('');
   const [participantsActivity, setParticipantsActivity] = useState<ActivityResponse | null>(null);
-  const [locationActivity, setLocationActivity] = useState<ActivityResponse | null>(null);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialDismissedForUserId, setTutorialDismissedForUserId] = useState<string | null>(null);
 
@@ -321,19 +293,7 @@ export default function HomeScreen({ navigation }: Props) {
     Alert.alert('No active chats yet', 'Join an activity first to unlock its chat.');
   };
 
-  const openMapsForActivity = () => {
-    if (!locationActivity) return;
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationActivity.location)}`;
-    Linking.openURL(mapsUrl).catch(() => undefined);
-  };
-
   const hasNoCategoryResults = !loading && selectedCategory !== 'All' && visibleFeed.length === 0;
-
-  useEffect(() => {
-    if (!loading) {
-      console.log(`Discover activities loaded: ${visibleFeed.length}`);
-    }
-  }, [loading, visibleFeed.length]);
 
   return (
     <SafeAreaView style={[styles.container, compact && styles.containerCompact]}>
@@ -365,7 +325,6 @@ export default function HomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.discoveryHeading}>
-        <Text style={styles.discoveryEyebrow}>DISCOVER</Text>
         <Text style={[styles.discoveryTitle, compact && styles.discoveryTitleCompact]}>Find your next <Text style={styles.discoveryTitleAccent}>activity</Text></Text>
       </View>
 
@@ -390,10 +349,8 @@ export default function HomeScreen({ navigation }: Props) {
             onSwipeRight={handleJoinActivity}
             onSave={handleSaveActivity}
             onPress={handlePress}
-            onOpenChat={(activity) => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}
             onViewParticipants={setParticipantsActivity}
             onOpenProfile={openPublicProfile}
-            onOpenLocation={setLocationActivity}
           />
         )}
       </View>
@@ -515,72 +472,6 @@ export default function HomeScreen({ navigation }: Props) {
       </Modal>
 
       <Modal
-        visible={Boolean(locationActivity)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLocationActivity(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.locationModal}>
-            <View style={styles.locationModalHeader}>
-              <View style={styles.locationModalTitleBlock}>
-                <Text style={styles.locationModalEyebrow}>LOCATION</Text>
-                <Text style={styles.locationModalTitle} numberOfLines={1}>
-                  {locationActivity?.location || 'Perth CBD'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.locationModalClose}
-                onPress={() => setLocationActivity(null)}
-                activeOpacity={0.82}
-              >
-                <Ionicons name="close" size={20} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.locationMapPreview}>
-              <View style={styles.locationMapFallback}>
-                <View style={[styles.locationMapRoad, styles.locationMapRoadPrimary]} />
-                <View style={[styles.locationMapRoad, styles.locationMapRoadSecondary]} />
-                <View style={[styles.locationMapRoad, styles.locationMapRoadTertiary]} />
-                <View style={styles.locationMapWater} />
-              </View>
-              <Image
-                source={{ uri: getStaticMapUrl(locationActivity?.location || 'Perth CBD') }}
-                style={styles.locationMapImage}
-                resizeMode="cover"
-              />
-              <View style={styles.locationMapTint} />
-              <View style={styles.locationMapPin}>
-                <Ionicons name="location" size={30} color={colors.primaryText} />
-              </View>
-              <View style={styles.locationMapLabel}>
-                <Text style={styles.locationMapLabelText} numberOfLines={1}>
-                  {locationActivity?.location || 'Perth CBD'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.locationAddressRow}>
-              <Ionicons name="location-outline" size={18} color={colors.primary} />
-              <Text style={styles.locationAddressText} numberOfLines={2}>
-                {locationActivity?.location || 'Perth CBD'}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.locationMapsButton}
-              onPress={openMapsForActivity}
-              activeOpacity={0.86}
-            >
-              <Text style={styles.locationMapsText}>Open in Google Maps</Text>
-              <Ionicons name="open-outline" size={18} color={colors.primaryText} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
         visible={categoryModalVisible}
         transparent
         animationType="fade"
@@ -667,12 +558,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: 430,
-    marginBottom: 14,
+    marginBottom: 20,
     gap: 8,
   },
   topBarCompact: {
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 18,
   },
   filterButton: {
     height: 42,
@@ -742,27 +633,19 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     alignSelf: 'center',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  discoveryEyebrow: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 5,
-    marginBottom: 5,
-    textAlign: 'center',
+    marginBottom: 16,
   },
   discoveryTitle: {
     color: '#F5EEE0',
-    fontSize: 30,
+    fontSize: 33,
     fontWeight: '900',
     letterSpacing: -1,
-    lineHeight: 34,
+    lineHeight: 37,
     textAlign: 'center',
   },
   discoveryTitleCompact: {
-    fontSize: 27,
-    lineHeight: 31,
+    fontSize: 30,
+    lineHeight: 34,
   },
   discoveryTitleAccent: {
     color: colors.primary,
@@ -930,190 +813,6 @@ const styles = StyleSheet.create({
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
-  },
-  locationModal: {
-    width: '100%',
-    maxWidth: 430,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(12,12,12,0.98)',
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.34)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 14,
-  },
-  locationModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  locationModalTitleBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  locationModalEyebrow: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 2.8,
-    marginBottom: 4,
-  },
-  locationModalTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
-  locationModalClose: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.18)',
-  },
-  locationMapPreview: {
-    height: 220,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#17130C',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.28)',
-    marginBottom: 14,
-  },
-  locationMapFallback: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1A1710',
-  },
-  locationMapRoad: {
-    position: 'absolute',
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(246,196,69,0.26)',
-  },
-  locationMapRoadPrimary: {
-    width: '86%',
-    left: '-8%',
-    top: 82,
-    transform: [{ rotate: '-18deg' }],
-  },
-  locationMapRoadSecondary: {
-    width: '74%',
-    right: '-10%',
-    top: 132,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    transform: [{ rotate: '22deg' }],
-  },
-  locationMapRoadTertiary: {
-    width: '58%',
-    left: 38,
-    bottom: 42,
-    backgroundColor: 'rgba(246,196,69,0.16)',
-    transform: [{ rotate: '7deg' }],
-  },
-  locationMapWater: {
-    position: 'absolute',
-    right: -30,
-    top: -18,
-    width: 130,
-    height: 260,
-    borderRadius: 70,
-    backgroundColor: 'rgba(74,114,130,0.26)',
-    transform: [{ rotate: '18deg' }],
-  },
-  locationMapImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  locationMapTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  locationMapPin: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    width: 52,
-    height: 52,
-    marginLeft: -26,
-    marginTop: -42,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: 'rgba(12,12,12,0.92)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.36,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  locationMapLabel: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(10,10,10,0.78)',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.22)',
-  },
-  locationMapLabelText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  locationAddressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 12,
-  },
-  locationAddressText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  locationMapsButton: {
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  locationMapsText: {
-    color: colors.primaryText,
-    fontSize: 14,
-    fontWeight: '900',
   },
   tutorialHero: {
     flexDirection: 'row',

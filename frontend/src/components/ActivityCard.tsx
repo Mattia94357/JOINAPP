@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Animated, Image, Linking, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
-import Logo from './Logo';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { colors } from '../theme';
 
@@ -42,12 +41,9 @@ export type Activity = {
 type Props = {
   activity: Activity;
   onPress: () => void;
-  onJoin?: () => void;
   onSave?: () => void;
-  onOpenChat?: () => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
-  onOpenLocation?: (activity: Activity) => void;
 };
 
 const categoryGlyph = (category: string) => {
@@ -61,40 +57,12 @@ const categoryGlyph = (category: string) => {
   return 'ellipse-outline';
 };
 
-const locationCoordinates: Record<string, { lat: number; lng: number }> = {
-  'Perth CBD': { lat: -31.9523, lng: 115.8613 },
-  Perth: { lat: -31.9523, lng: 115.8613 },
-  'Cottesloe Beach': { lat: -31.994, lng: 115.751 },
-  Northbridge: { lat: -31.9475, lng: 115.8587 },
-  Subiaco: { lat: -31.9486, lng: 115.8247 },
-  'Matilda Bay': { lat: -31.9814, lng: 115.821 },
-  Fremantle: { lat: -32.0569, lng: 115.7439 },
-  Leederville: { lat: -31.9367, lng: 115.8416 },
-  'Kings Park': { lat: -31.9609, lng: 115.8321 },
-  Scarborough: { lat: -31.8958, lng: 115.7571 },
-  'Elizabeth Quay': { lat: -31.9596, lng: 115.8575 },
-};
-
-const getMapCoordinates = (location: string) => {
-  const normalized = location.trim().toLowerCase();
-  const match = Object.entries(locationCoordinates).find(([key]) => normalized.includes(key.toLowerCase()));
-  return match?.[1] || locationCoordinates['Perth CBD'];
-};
-
-const getStaticMapUrl = (location: string) => {
-  const { lat, lng } = getMapCoordinates(location);
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=13&size=640x360&maptype=mapnik&markers=${lat},${lng},lightblue1`;
-};
-
 export default function ActivityCard({
   activity,
   onPress,
-  onJoin,
   onSave,
-  onOpenChat,
   onViewParticipants,
   onOpenProfile,
-  onOpenLocation,
 }: Props) {
   const { height, width } = useWindowDimensions();
   const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
@@ -106,35 +74,20 @@ export default function ActivityCard({
   const previewPeople = visibleParticipants.length
     ? visibleParticipants
     : [{ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar }];
-  const isClosed = activity.status === 'cancelled' || activity.status === 'completed';
-  const actionScale = useRef(new Animated.Value(1)).current;
   const cardScale = useRef(new Animated.Value(1)).current;
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
-  const [locationModalVisible, setLocationModalVisible] = useState(false);
   const compact = width < 520;
   const shortViewport = height < 760;
   const heroHeight = Math.min(
-    compact ? 560 : 660,
-    Math.max(compact ? (shortViewport ? 430 : 500) : 590, height - (compact ? 330 : 260)),
+    compact ? 590 : 700,
+    Math.max(compact ? (shortViewport ? 455 : 530) : 620, height - (compact ? 300 : 230)),
   );
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
-  const mapPreviewUrl = getStaticMapUrl(activity.location);
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
   }, [entrance]);
-
-  const animateAction = (toValue: number, duration: number) =>
-    Animated.timing(actionScale, { toValue, duration, useNativeDriver: true }).start();
-
-  const openLocationModal = () => {
-    if (onOpenLocation) {
-      onOpenLocation(activity);
-      return;
-    }
-    setLocationModalVisible(true);
-  };
 
   const openMaps = () => {
     Linking.openURL(mapsUrl).catch(() => undefined);
@@ -175,10 +128,10 @@ export default function ActivityCard({
 
               <TouchableOpacity
                 style={styles.metaLine}
-                onPress={openLocationModal}
+                onPress={openMaps}
                 onStartShouldSetResponder={() => true}
-                onResponderRelease={openLocationModal}
-                {...(Platform.OS === 'web' ? ({ onClick: openLocationModal } as any) : {})}
+                onResponderRelease={openMaps}
+                {...(Platform.OS === 'web' ? ({ onClick: openMaps } as any) : {})}
                 activeOpacity={0.78}
               >
                 <View style={styles.locationPressable}>
@@ -186,8 +139,8 @@ export default function ActivityCard({
                   <Text
                     style={[styles.metaText, compact && styles.metaTextCompact]}
                     numberOfLines={1}
-                    onPress={openLocationModal}
-                    {...(Platform.OS === 'web' ? ({ onClick: openLocationModal } as any) : {})}
+                    onPress={openMaps}
+                    {...(Platform.OS === 'web' ? ({ onClick: openMaps } as any) : {})}
                   >
                     {activity.location}
                   </Text>
@@ -249,24 +202,6 @@ export default function ActivityCard({
           <Text style={[styles.detailsButtonText, compact && styles.detailsButtonTextCompact]}>Details</Text>
         </TouchableOpacity>
 
-        <Animated.View style={[styles.joinButtonWrap, { transform: [{ scale: actionScale }] }]}>
-          <TouchableOpacity
-            style={[
-              styles.joinButton,
-              compact && styles.joinButtonCompact,
-              activity.joined && styles.joinedButton,
-              (activity.pending || activity.declined || activity.waitlisted || isClosed) && styles.disabledButton,
-            ]}
-            onPress={activity.joined ? onOpenChat : onJoin}
-            onPressIn={() => animateAction(0.96, 90)}
-            onPressOut={() => Animated.spring(actionScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 120 }).start()}
-            disabled={activity.pending || activity.declined || activity.waitlisted || isClosed}
-            activeOpacity={0.92}
-          >
-            <Logo size={compact ? 30 : 34} style={styles.joinLogo} />
-          </TouchableOpacity>
-        </Animated.View>
-
         <Animated.View style={[styles.bookmarkButtonWrap, { transform: [{ scale: bookmarkScale }] }]}>
           <TouchableOpacity
             style={[styles.bookmarkButton, compact && styles.bookmarkButtonCompact, activity.saved && styles.bookmarkButtonActive]}
@@ -283,45 +218,6 @@ export default function ActivityCard({
           </TouchableOpacity>
         </Animated.View>
       </View>
-
-      <Modal
-        visible={locationModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLocationModalVisible(false)}
-      >
-        <View style={styles.mapModalOverlay}>
-          <View style={styles.mapModal}>
-            <View style={styles.mapModalHeader}>
-              <View style={styles.mapModalTitleBlock}>
-                <Text style={styles.mapModalEyebrow}>LOCATION</Text>
-                <Text style={styles.mapModalTitle} numberOfLines={2}>{activity.location}</Text>
-              </View>
-              <TouchableOpacity style={styles.mapCloseButton} onPress={() => setLocationModalVisible(false)} activeOpacity={0.78}>
-                <Ionicons name="close-outline" size={22} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.mapPreview}>
-              <Image source={{ uri: mapPreviewUrl }} style={styles.mapPreviewImage} />
-              <View style={styles.mapPreviewTint} />
-              <View style={styles.mapPin}>
-                <Ionicons name="location" size={28} color={colors.primaryText} />
-              </View>
-              <View style={styles.mapPreviewLabel}>
-                <Text style={styles.mapPreviewText} numberOfLines={1}>{activity.location}</Text>
-              </View>
-            </View>
-            <View style={styles.addressBlock}>
-              <Ionicons name="location-outline" size={18} color={colors.primary} />
-              <Text style={styles.addressText} numberOfLines={2}>{activity.location}</Text>
-            </View>
-            <TouchableOpacity style={styles.openMapsButton} onPress={openMaps} activeOpacity={0.86}>
-              <Ionicons name={Platform.OS === 'ios' ? 'map-outline' : 'navigate-outline'} size={18} color={colors.primaryText} />
-              <Text style={styles.openMapsText}>Open in Maps</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </Animated.View>
   );
 }
@@ -552,22 +448,22 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 10,
-    paddingHorizontal: 10,
+    gap: 24,
+    marginTop: 12,
+    paddingHorizontal: 16,
     paddingBottom: 2,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   actionBarCompact: {
-    gap: 10,
-    marginTop: 8,
-    paddingHorizontal: 10,
+    gap: 20,
+    marginTop: 10,
+    paddingHorizontal: 12,
     paddingBottom: 0,
   },
   detailsButton: {
-    width: 110,
-    height: 52,
-    borderRadius: 17,
+    width: 128,
+    height: 48,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
     backgroundColor: 'rgba(20,18,15,0.98)',
@@ -580,8 +476,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   detailsButtonCompact: {
-    width: 110,
-    height: 52,
+    width: 126,
+    height: 48,
     borderRadius: 16,
   },
   detailsButtonText: {
@@ -593,48 +489,13 @@ const styles = StyleSheet.create({
   detailsButtonTextCompact: {
     fontSize: 12,
   },
-  joinButtonWrap: {
-    width: 86,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.5,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 9 },
-  },
-  joinButton: {
-    width: 86,
-    height: 56,
-    borderRadius: 999,
-    backgroundColor: '#F6B737',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.52,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  joinButtonCompact: {
-    width: 86,
-    height: 56,
-  },
-  joinedButton: {
-    backgroundColor: colors.primary,
-  },
-  disabledButton: {
-    opacity: 0.68,
-  },
-  joinLogo: {
-    transform: [{ scale: 0.92 }],
-  },
   bookmarkButtonWrap: {
-    width: 110,
+    width: 128,
   },
   bookmarkButton: {
-    width: 110,
-    height: 52,
-    borderRadius: 17,
+    width: 128,
+    height: 48,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.34)',
     backgroundColor: 'rgba(20,18,15,0.98)',
@@ -646,169 +507,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   bookmarkButtonCompact: {
-    width: 110,
-    height: 52,
+    width: 126,
+    height: 48,
     borderRadius: 16,
   },
   bookmarkButtonActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
-  },
-  mapModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.74)',
-    justifyContent: 'center',
-    padding: 22,
-  },
-  mapModal: {
-    width: '100%',
-    maxWidth: 430,
-    alignSelf: 'center',
-    borderRadius: 24,
-    backgroundColor: '#101010',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.42)',
-    padding: 16,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 18,
-  },
-  mapModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  mapModalTitleBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  mapModalEyebrow: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 2.6,
-    marginBottom: 5,
-  },
-  mapModalTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 26,
-  },
-  mapCloseButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.22)',
-    backgroundColor: 'rgba(22,22,22,0.96)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPreview: {
-    height: 220,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#151515',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  mapPreviewImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  mapPreviewTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20,14,4,0.08)',
-  },
-  mapGridHorizontal: {
-    position: 'absolute',
-    left: -20,
-    right: -20,
-    height: 1,
-    backgroundColor: 'rgba(246,196,69,0.08)',
-    transform: [{ rotate: '-18deg' }],
-  },
-  mapGridVertical: {
-    position: 'absolute',
-    top: -40,
-    bottom: -40,
-    width: 1,
-    backgroundColor: 'rgba(246,196,69,0.08)',
-    transform: [{ rotate: '24deg' }],
-  },
-  mapPin: {
-    position: 'absolute',
-    top: '42%',
-    left: '50%',
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    marginLeft: -29,
-    marginTop: -29,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.46,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  mapPreviewText: {
-    color: colors.primaryText,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  mapPreviewLabel: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
-    alignSelf: 'center',
-    borderRadius: 999,
-    backgroundColor: 'rgba(246,196,69,0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  addressBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.18)',
-    backgroundColor: 'rgba(20,20,20,0.92)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 14,
-  },
-  addressText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '800',
-    marginLeft: 8,
-  },
-  openMapsButton: {
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  openMapsText: {
-    color: colors.primaryText,
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
   },
 });
