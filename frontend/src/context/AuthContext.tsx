@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { ApiUser, fetchCurrentUserRequest, loginRequest, registerRequest, updatePushTokenRequest } from '../api';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
 
@@ -85,6 +86,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     await Promise.all([AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(TOKEN_KEY)]);
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.localStorage.removeItem(USER_KEY);
+      window.localStorage.removeItem(TOKEN_KEY);
+      window.localStorage.removeItem(`ReactNativeAsyncStorage_${USER_KEY}`);
+      window.localStorage.removeItem(`ReactNativeAsyncStorage_${TOKEN_KEY}`);
+    }
   };
 
   const updateUser = async (updatedUser: ApiUser) => {

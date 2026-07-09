@@ -9,7 +9,10 @@ import {
   Alert,
   Image,
   ImageBackground,
+  Linking,
   Modal,
+  Platform,
+  Share,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -188,6 +191,57 @@ export default function ActivityScreen({ route, navigation }: Props) {
                 ? 'Ask to Join'
               : 'Join activity';
 
+  const getShareMessage = (prefix: string) => {
+    const timeText = activity.time || activity.date || 'Anytime';
+    const activityUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
+    return [
+      prefix,
+      `${activity.title}`,
+      `${activity.location} · ${timeText}`,
+      activity.description,
+      activityUrl,
+    ].filter(Boolean).join('\n\n');
+  };
+
+  const shareActivity = async (mode: 'share' | 'invite') => {
+    const title = mode === 'invite' ? `Join me at ${activity.title}` : activity.title;
+    const message = getShareMessage(
+      mode === 'invite'
+        ? 'I found this plan on JOIN — want to come?'
+        : 'Check out this plan on JOIN.',
+    );
+
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+        if (typeof navigator.share === 'function') {
+          await navigator.share({ title, text: message });
+          return;
+        }
+
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(message);
+          Alert.alert('Link copied', mode === 'invite' ? 'Invite copied. Send it to your friend.' : 'Plan details copied.');
+          return;
+        }
+      }
+
+      await Share.share({ title, message });
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      Alert.alert(
+        mode === 'invite' ? 'Could not invite friend' : 'Could not share plan',
+        'Please try again in a moment.',
+      );
+    }
+  };
+
+  const openActivityLocation = () => {
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
+    Linking.openURL(mapsUrl).catch(() => {
+      Alert.alert('Could not open maps', 'Please try again in a moment.');
+    });
+  };
+
   const refreshActivity = async () => {
     const result = await fetchActivity(activityId, token || undefined);
     setActivity(result);
@@ -260,11 +314,15 @@ export default function ActivityScreen({ route, navigation }: Props) {
             <Text style={styles.metadataLabel}>Time</Text>
             <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
           </View>
-          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
+          <TouchableOpacity
+            style={[styles.metadataCard, compact && styles.metadataCardCompact]}
+            onPress={openActivityLocation}
+            activeOpacity={0.78}
+          >
             <Ionicons name="location-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Place</Text>
             <Text style={styles.metadataValue} numberOfLines={1}>{activity.location}</Text>
-          </View>
+          </TouchableOpacity>
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="navigate-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Distance</Text>
@@ -379,11 +437,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View> : null}
 
         <View style={styles.shareActions}>
-          <TouchableOpacity style={styles.shareButton}>
+          <TouchableOpacity style={styles.shareButton} onPress={() => shareActivity('share')} activeOpacity={0.82}>
             <Ionicons name="share-outline" size={16} color="#f5c12d" />
             <Text style={styles.shareButtonText}>Share plan</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.shareButton}>
+          <TouchableOpacity style={styles.shareButton} onPress={() => shareActivity('invite')} activeOpacity={0.82}>
             <Ionicons name="person-add-outline" size={16} color="#f5c12d" />
             <Text style={styles.shareButtonText}>Invite a friend</Text>
           </TouchableOpacity>
