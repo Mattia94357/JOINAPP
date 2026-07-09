@@ -34,7 +34,6 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [coverImage, setCoverImage] = useState('');
   const [galleryImagesText, setGalleryImagesText] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
-  const [joinApproval, setJoinApproval] = useState<'auto' | 'manual'>('auto');
   const [hostNote, setHostNote] = useState('');
   const [cancellationPolicy, setCancellationPolicy] = useState('');
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
@@ -91,7 +90,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
           cancellationPolicy: cancellationPolicy.trim(),
           vibe,
           visibility,
-          joinApproval,
+          joinApproval: visibility === 'private' ? 'manual' : 'auto',
           galleryImages,
         },
         token,
@@ -153,6 +152,18 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <Text style={styles.label}>Description * <Text style={styles.labelHint}>min 20 chars</Text></Text>
       <TextInput value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this event special" placeholderTextColor={colors.textSubtle} multiline />
 
+      <Text style={styles.label}>Who can join?</Text>
+      <View style={styles.optionCards}>
+        <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
+          <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
+          <Text style={styles.optionDescription}>Anyone nearby can discover and join immediately.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
+          <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
+          <Text style={styles.optionDescription}>People send a request first. You approve or decline before chat unlocks.</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity style={styles.moreDetailsButton} onPress={() => setMoreDetailsOpen((value) => !value)}>
         <Text style={styles.moreDetailsText}>More details</Text>
         <Ionicons name={moreDetailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={18} color={colors.primary} />
@@ -179,30 +190,6 @@ export default function CreateActivityScreen({ navigation }: Props) {
                 <Text style={[styles.choiceLabel, vibe === option && styles.choiceLabelActive]}>{option}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-
-          <Text style={styles.label}>Visibility</Text>
-          <View style={styles.optionCards}>
-            <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
-              <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
-              <Text style={styles.optionDescription}>Anyone nearby can discover and join.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
-              <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
-              <Text style={styles.optionDescription}>Invite-only plans with an exclusive feel.</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.label}>Join approval</Text>
-          <View style={styles.optionCards}>
-            <TouchableOpacity style={[styles.optionCard, joinApproval === 'auto' && styles.optionCardActive]} onPress={() => setJoinApproval('auto')}>
-              <Text style={[styles.optionTitle, joinApproval === 'auto' && styles.optionTitleActive]}>Auto approve joins</Text>
-              <Text style={styles.optionDescription}>People join instantly and chat unlocks.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.optionCard, joinApproval === 'manual' && styles.optionCardActive]} onPress={() => setJoinApproval('manual')}>
-              <Text style={[styles.optionTitle, joinApproval === 'manual' && styles.optionTitleActive]}>Ask to Join</Text>
-              <Text style={styles.optionDescription}>Review requests before chat unlocks.</Text>
-            </TouchableOpacity>
           </View>
 
           <Text style={styles.label}>Cost</Text>
