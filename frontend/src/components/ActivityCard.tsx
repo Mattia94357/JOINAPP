@@ -82,7 +82,7 @@ export default function ActivityCard({
   const heroHeight = Math.min(
     compact ? 620 : 740,
     Math.max(compact ? (shortViewport ? 480 : 580) : 660, height - (compact ? 260 : 205)),
-  );
+  ) * 1.2;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
 
   useEffect(() => {
@@ -106,9 +106,40 @@ export default function ActivityCard({
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
 
-            <View style={styles.categoryBadge}>
-              <Ionicons name={categoryGlyph(activity.category) as any} size={compact ? 17 : 20} color={colors.primary} />
-              <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
+            <View style={styles.cardHeader}>
+              <View style={styles.categoryBadge}>
+                <Ionicons name={categoryGlyph(activity.category) as any} size={compact ? 17 : 20} color={colors.primary} />
+                <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
+              </View>
+
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.headerActionButton}
+                  onPress={onPress}
+                  activeOpacity={0.78}
+                  accessibilityRole="button"
+                  accessibilityLabel="Activity details"
+                >
+                  <Ionicons name="information-circle-outline" size={compact ? 23 : 25} color={colors.text} />
+                </TouchableOpacity>
+                <Animated.View style={[styles.headerActionButtonWrap, { transform: [{ scale: bookmarkScale }] }]}>
+                  <TouchableOpacity
+                    style={[styles.headerActionButton, activity.saved && styles.headerActionButtonActive]}
+                    onPress={() => {
+                      Animated.sequence([
+                        Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                        Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
+                      ]).start();
+                      onSave?.();
+                    }}
+                    activeOpacity={0.78}
+                    accessibilityRole="button"
+                    accessibilityLabel={activity.saved ? 'Remove bookmark' : 'Bookmark activity'}
+                  >
+                    <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 23 : 25} color={activity.saved ? colors.primaryText : colors.primary} />
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
             </View>
 
             <View style={[styles.imageCopy, compact && styles.imageCopyCompact]}>
@@ -196,28 +227,6 @@ export default function ActivityCard({
           </View>
       </Animated.View>
 
-      <View style={[styles.actionBar, compact && styles.actionBarCompact]}>
-        <TouchableOpacity style={[styles.detailsButton, compact && styles.detailsButtonCompact]} onPress={onPress} activeOpacity={0.82}>
-          <Ionicons name="information-circle-outline" size={compact ? 18 : 21} color={colors.text} />
-          <Text style={[styles.detailsButtonText, compact && styles.detailsButtonTextCompact]}>Details</Text>
-        </TouchableOpacity>
-
-        <Animated.View style={[styles.bookmarkButtonWrap, { transform: [{ scale: bookmarkScale }] }]}>
-          <TouchableOpacity
-            style={[styles.bookmarkButton, compact && styles.bookmarkButtonCompact, activity.saved && styles.bookmarkButtonActive]}
-            onPress={() => {
-              Animated.sequence([
-                Animated.timing(bookmarkScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
-                Animated.spring(bookmarkScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
-              ]).start();
-              onSave?.();
-            }}
-            activeOpacity={0.78}
-          >
-            <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 24 : 28} color={activity.saved ? colors.primaryText : colors.primary} />
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
     </Animated.View>
   );
 }
@@ -260,10 +269,16 @@ const styles = StyleSheet.create({
     height: '52%',
     backgroundColor: 'rgba(0,0,0,0.54)',
   },
-  categoryBadge: {
+  cardHeader: {
     position: 'absolute',
     top: 14,
     left: 14,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 999,
@@ -272,6 +287,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(26,22,16,0.78)',
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.16)',
+  },
+  headerActions: {
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.28)',
+    backgroundColor: 'rgba(20,18,15,0.9)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  headerActionButtonWrap: {
+    width: 48,
+    height: 48,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(246,196,69,0.2)',
+  },
+  headerActionButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActionButtonActive: {
+    backgroundColor: colors.primary,
   },
   categoryText: {
     color: colors.primary,
@@ -444,75 +484,5 @@ const styles = StyleSheet.create({
   },
   peopleTextCompact: {
     fontSize: 12,
-  },
-  actionBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-    marginTop: 14,
-    paddingHorizontal: 16,
-    paddingBottom: 2,
-    justifyContent: 'center',
-  },
-  actionBarCompact: {
-    gap: 20,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingBottom: 0,
-  },
-  detailsButton: {
-    width: 128,
-    height: 46,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.34)',
-    backgroundColor: 'rgba(20,18,15,0.98)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  detailsButtonCompact: {
-    width: 126,
-    height: 46,
-    borderRadius: 16,
-  },
-  detailsButtonText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
-  },
-  detailsButtonTextCompact: {
-    fontSize: 12,
-  },
-  bookmarkButtonWrap: {
-    width: 128,
-  },
-  bookmarkButton: {
-    width: 128,
-    height: 46,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.34)',
-    backgroundColor: 'rgba(20,18,15,0.98)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  bookmarkButtonCompact: {
-    width: 126,
-    height: 46,
-    borderRadius: 16,
-  },
-  bookmarkButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
 });
