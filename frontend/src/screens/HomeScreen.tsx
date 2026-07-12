@@ -324,10 +324,6 @@ export default function HomeScreen({ navigation }: Props) {
         </ScrollView>
       </View>
 
-      <View style={styles.discoveryHeading}>
-        <Text style={[styles.discoveryTitle, compact && styles.discoveryTitleCompact]}>Find your next <Text style={styles.discoveryTitleAccent}>activity</Text></Text>
-      </View>
-
       <View style={styles.deckContainer}>
         {loading ? (
           <View style={styles.skeletonCard}>
@@ -634,29 +630,6 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: colors.primaryText,
-  },
-  discoveryHeading: {
-    flexShrink: 0,
-    width: '100%',
-    maxWidth: 430,
-    alignSelf: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  discoveryTitle: {
-    color: '#F5EEE0',
-    fontSize: 33,
-    fontWeight: '900',
-    letterSpacing: -1,
-    lineHeight: 37,
-    textAlign: 'center',
-  },
-  discoveryTitleCompact: {
-    fontSize: 30,
-    lineHeight: 34,
-  },
-  discoveryTitleAccent: {
-    color: colors.primary,
   },
   deckContainer: {
     flex: 1,
