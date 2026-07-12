@@ -296,7 +296,7 @@ export default function HomeScreen({ navigation }: Props) {
   const hasNoCategoryResults = !loading && selectedCategory !== 'All' && visibleFeed.length === 0;
 
   return (
-    <SafeAreaView style={[styles.container, compact && styles.containerCompact]}>
+    <SafeAreaView style={[styles.container, Platform.OS === 'web' && styles.containerWeb, compact && styles.containerCompact]}>
       <View style={[styles.topBar, compact && styles.topBarCompact]}>
         <TouchableOpacity style={[styles.filterButton, compact && styles.filterButtonCompact]} onPress={() => setCategoryModalVisible(true)} activeOpacity={0.82}>
             <Ionicons name="options-outline" size={compact ? 20 : 24} color={colors.primary} />
@@ -544,15 +544,22 @@ export default function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: '#0B0B0B',
     paddingHorizontal: 18,
     paddingTop: 8,
+  },
+  containerWeb: {
+    height: '100dvh' as any,
+    maxHeight: '100dvh' as any,
+    paddingTop: 'calc(8px + env(safe-area-inset-top))' as any,
   },
   containerCompact: {
     paddingHorizontal: 18,
     paddingTop: 6,
   },
   topBar: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
@@ -629,6 +636,7 @@ const styles = StyleSheet.create({
     color: colors.primaryText,
   },
   discoveryHeading: {
+    flexShrink: 0,
     width: '100%',
     maxWidth: 430,
     alignSelf: 'center',
@@ -652,13 +660,18 @@ const styles = StyleSheet.create({
   },
   deckContainer: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 430,
     alignSelf: 'center',
     marginTop: 0,
-    paddingBottom: 69,
+    paddingBottom: Platform.OS === 'web'
+      ? ('calc(63px + env(safe-area-inset-bottom))' as any)
+      : 63,
   },
   skeletonCard: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
@@ -674,7 +687,8 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   skeletonImage: {
-    height: 390,
+    flex: 1,
+    minHeight: 0,
     borderRadius: 16,
     backgroundColor: colors.surfaceElevated,
     marginBottom: spacing.md,
@@ -742,12 +756,16 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 50,
-    height: 53,
+    height: Platform.OS === 'web'
+      ? ('calc(53px + env(safe-area-inset-bottom))' as any)
+      : 53,
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,
     paddingTop: 3,
-    paddingBottom: 2,
+    paddingBottom: Platform.OS === 'web'
+      ? ('calc(2px + env(safe-area-inset-bottom))' as any)
+      : 2,
     paddingHorizontal: 16,
     backgroundColor: 'rgba(10,10,10,0.97)',
     borderTopWidth: 1,

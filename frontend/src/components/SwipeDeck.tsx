@@ -198,18 +198,21 @@ export default function SwipeDeck({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 430,
     alignSelf: 'center',
-    justifyContent: 'flex-start',
     touchAction: 'pan-y' as any,
   },
   cardStyle: {
+    flex: 1,
+    minHeight: 0,
+    height: '100%',
     position: 'relative',
     width: '100%',
     left: 0,
     right: 0,
-    touchAction: 'pan-y' as any,
+    ...({ touchAction: 'pan-y' } as any),
   },
   feedbackBadge: {
     position: 'absolute',

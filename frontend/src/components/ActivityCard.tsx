@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Linking, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Animated, Image, LayoutChangeEvent, Linking, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { getActivityCoverImage } from '../utils/activityAssets';
@@ -64,9 +64,10 @@ export default function ActivityCard({
   onViewParticipants,
   onOpenProfile,
 }: Props) {
-  const { height, width } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
   const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
+  const [cardHeight, setCardHeight] = useState(0);
   const attendees = activity.attendees ?? activity.participants.length;
   const spotsLeft = activity.maxAttendees ? Math.max(activity.maxAttendees - attendees, 0) : null;
   const visibleParticipants = activity.participants.slice(0, 3);
@@ -78,11 +79,8 @@ export default function ActivityCard({
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
   const compact = width < 520;
-  const shortViewport = height < 760;
-  const heroHeight = Math.min(
-    compact ? 620 : 740,
-    Math.max(compact ? (shortViewport ? 480 : 580) : 660, height - (compact ? 260 : 205)),
-  ) * 1.2;
+  const dense = cardHeight > 0 && cardHeight < 540;
+  const veryDense = cardHeight > 0 && cardHeight < 440;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
 
   useEffect(() => {
@@ -93,15 +91,20 @@ export default function ActivityCard({
     Linking.openURL(mapsUrl).catch(() => undefined);
   };
 
+  const handleCardLayout = (event: LayoutChangeEvent) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    if (nextHeight !== cardHeight) setCardHeight(nextHeight);
+  };
+
   return (
     <Animated.View
-      style={{
-        opacity: entrance,
-        transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
-      }}
+      style={[styles.fill, {
+          opacity: entrance,
+          transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+        }]}
     >
-      <Animated.View style={{ transform: [{ scale: cardScale }] }}>
-        <View style={[styles.card, styles.imageFrame, { height: heroHeight }]}>
+      <Animated.View style={[styles.fill, { transform: [{ scale: cardScale }] }]}>
+        <View style={[styles.card, styles.imageFrame]} onLayout={handleCardLayout}>
             <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
@@ -142,11 +145,11 @@ export default function ActivityCard({
               </View>
             </View>
 
-            <View style={[styles.imageCopy, compact && styles.imageCopyCompact]}>
-              <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={1}>{activity.title}</Text>
+            <View style={[styles.imageCopy, compact && styles.imageCopyCompact, dense && styles.imageCopyDense, veryDense && styles.imageCopyVeryDense]}>
+              <Text style={[styles.title, compact && styles.titleCompact, dense && styles.titleDense]} numberOfLines={1}>{activity.title}</Text>
 
               <TouchableOpacity
-                style={styles.hostRow}
+                style={[styles.hostRow, dense && styles.hostRowDense]}
                 activeOpacity={0.85}
                 onPress={() => onOpenProfile?.({ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar })}
               >
@@ -158,7 +161,7 @@ export default function ActivityCard({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.metaLine}
+                style={[styles.metaLine, dense && styles.metaLineDense]}
                 onPress={openMaps}
                 onStartShouldSetResponder={() => true}
                 onResponderRelease={openMaps}
@@ -183,16 +186,16 @@ export default function ActivityCard({
                 </View>
               </TouchableOpacity>
 
-              <View style={styles.divider} />
+              <View style={[styles.divider, dense && styles.dividerDense]} />
 
-              <View style={styles.aboutRow}>
+              <View style={[styles.aboutRow, dense && styles.aboutRowDense]}>
                 <Text style={styles.aboutLabel}>ABOUT THIS ACTIVITY</Text>
                 <Text style={[styles.aboutText, compact && styles.aboutTextCompact]} numberOfLines={1} ellipsizeMode="tail">
                   {activity.description}
                 </Text>
               </View>
 
-              <TouchableOpacity style={styles.peopleRow} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.86}>
+              <TouchableOpacity style={[styles.peopleRow, dense && styles.peopleRowDense]} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.86}>
                 <View style={styles.avatarStack}>
                   {previewPeople.map((participant, index) => (
                     <TouchableOpacity
@@ -232,7 +235,14 @@ export default function ActivityCard({
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+  },
   card: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
     backgroundColor: '#101010',
     borderRadius: 24,
@@ -335,6 +345,14 @@ const styles = StyleSheet.create({
     right: 20,
     bottom: 22,
   },
+  imageCopyDense: {
+    left: 14,
+    right: 14,
+    bottom: 12,
+  },
+  imageCopyVeryDense: {
+    bottom: 8,
+  },
   title: {
     color: colors.text,
     fontSize: 26,
@@ -351,11 +369,19 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     marginBottom: 11,
   },
+  titleDense: {
+    fontSize: 21,
+    lineHeight: 24,
+    marginBottom: 6,
+  },
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 34,
     marginBottom: 11,
+  },
+  hostRowDense: {
+    marginBottom: 5,
   },
   hostCopy: {
     flex: 1,
@@ -381,6 +407,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 22,
     marginBottom: 8,
+  },
+  metaLineDense: {
+    marginBottom: 4,
   },
   locationPressable: {
     flex: 1,
@@ -414,8 +443,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(246,196,69,0.24)',
     marginBottom: 12,
   },
+  dividerDense: {
+    marginBottom: 6,
+  },
   aboutRow: {
     marginBottom: 16,
+  },
+  aboutRowDense: {
+    marginBottom: 6,
   },
   aboutLabel: {
     color: 'rgba(245,238,224,0.58)',
@@ -436,6 +471,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 42,
+  },
+  peopleRowDense: {
+    minHeight: 34,
   },
   avatarStack: {
     flexDirection: 'row',
