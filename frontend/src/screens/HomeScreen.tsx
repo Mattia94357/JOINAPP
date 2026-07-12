@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     alignSelf: 'center',
     marginTop: 0,
-    paddingBottom: 46,
+    paddingBottom: 69,
   },
   skeletonCard: {
     width: '100%',
