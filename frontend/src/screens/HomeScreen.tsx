@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import SwipeDeck from '../components/SwipeDeck';
 import ParticipantsModal from '../components/ParticipantsModal';
@@ -48,7 +47,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const compact = width < 520;
 
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -330,7 +328,7 @@ export default function HomeScreen({ navigation }: Props) {
         <Text style={[styles.discoveryTitle, compact && styles.discoveryTitleCompact]}>Find your next <Text style={styles.discoveryTitleAccent}>activity</Text></Text>
       </View>
 
-      <View style={[styles.deckContainer, { paddingBottom: 53 + Math.max(insets.bottom, 16) }]}>
+      <View style={styles.deckContainer}>
         {loading ? (
           <View style={styles.skeletonCard}>
             <View style={styles.skeletonImage} />
@@ -658,6 +656,7 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     alignSelf: 'center',
     marginTop: 0,
+    paddingBottom: 69,
   },
   skeletonCard: {
     width: '100%',
