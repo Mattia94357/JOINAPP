@@ -3,6 +3,7 @@ import {
   SafeAreaView,
   View,
   Text,
+  Pressable,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -48,6 +49,7 @@ export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 520;
+  const veryNarrow = width < 360;
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
@@ -359,22 +361,38 @@ export default function HomeScreen({ navigation }: Props) {
       ) : null}
 
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('CreateActivity')} activeOpacity={0.82}>
-          <Ionicons name="add-circle-outline" size={22} color="rgba(245,238,224,0.72)" />
-          <Text style={styles.bottomNavText}>HOST</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('Notifications')} activeOpacity={0.82}>
-          <Ionicons name="notifications-outline" size={22} color="rgba(245,238,224,0.72)" />
-          <Text style={styles.bottomNavText}>NOTIFICATIONS</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavItem} onPress={openLatestChat} activeOpacity={0.82}>
-          <Ionicons name="chatbubbles-outline" size={22} color="rgba(245,238,224,0.72)" />
-          <Text style={styles.bottomNavText}>MESSAGES</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => navigation.navigate('Profile')} activeOpacity={0.82}>
-          <Ionicons name="person-circle-outline" size={24} color="rgba(245,238,224,0.72)" />
-          <Text style={styles.bottomNavText}>PROFILE</Text>
-        </TouchableOpacity>
+        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('CreateActivity')}>
+          {({ pressed }) => (
+            <>
+              <Ionicons name="add-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
+              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>HOST</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Notifications')}>
+          {({ pressed }) => (
+            <>
+              <Ionicons name="notifications-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
+              <Text style={[styles.bottomNavText, styles.bottomNavTextLong, veryNarrow && styles.bottomNavTextLongNarrow, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>NOTIFICATIONS</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={openLatestChat}>
+          {({ pressed }) => (
+            <>
+              <Ionicons name="chatbubbles-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
+              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>MESSAGES</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Profile')}>
+          {({ pressed }) => (
+            <>
+              <Ionicons name="person-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
+              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>PROFILE</Text>
+            </>
+          )}
+        </Pressable>
       </View>
 
       <ParticipantsModal
@@ -639,8 +657,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 0,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(63px + env(safe-area-inset-bottom))' as any)
-      : 63,
+      ? ('calc(72px + env(safe-area-inset-bottom))' as any)
+      : 72,
   },
   skeletonCard: {
     flex: 1,
@@ -730,33 +748,73 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 50,
     height: Platform.OS === 'web'
-      ? ('calc(53px + env(safe-area-inset-bottom))' as any)
-      : 53,
+      ? ('calc(58px + env(safe-area-inset-bottom))' as any)
+      : 58,
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,
-    paddingTop: 3,
+    paddingTop: 4,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(2px + env(safe-area-inset-bottom))' as any)
-      : 2,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(10,10,10,0.97)',
+      ? ('calc(4px + env(safe-area-inset-bottom))' as any)
+      : 4,
+    paddingHorizontal: 10,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.88)' : 'rgba(8,8,8,0.96)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(246,196,69,0.18)',
+    borderTopColor: colors.goldBorder,
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 16,
+    ...(Platform.OS === 'web' ? ({
+      backdropFilter: 'blur(14px)',
+      WebkitBackdropFilter: 'blur(14px)',
+      boxShadow: '0 -8px 24px rgba(0,0,0,0.48), 0 0 14px rgba(245,190,60,0.12)',
+    } as any) : {}),
   },
   bottomNavItem: {
     flex: 1,
+    minWidth: 0,
+    marginHorizontal: 2,
+    paddingHorizontal: 2,
+    paddingVertical: 3,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bottomNavItemActive: {
+    backgroundColor: colors.goldWash,
+    borderColor: colors.goldBorder,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+  },
   bottomNavText: {
-    color: 'rgba(245,238,224,0.68)',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    marginTop: 1,
+    maxWidth: '100%',
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  bottomNavTextActive: {
+    color: colors.primary,
+  },
+  bottomNavTextLong: {
+    fontSize: 10,
+    letterSpacing: 0,
+  },
+  bottomNavTextLongNarrow: {
+    fontSize: 8.5,
   },
   modalOverlay: {
     flex: 1,
