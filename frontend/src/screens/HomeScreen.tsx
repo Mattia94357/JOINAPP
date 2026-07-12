@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 50,
-    height: 48,
+    height: 53,
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,
