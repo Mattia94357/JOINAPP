@@ -49,7 +49,6 @@ export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 520;
-  const veryNarrow = width < 360;
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
@@ -362,36 +361,16 @@ export default function HomeScreen({ navigation }: Props) {
 
       <View style={styles.bottomNav}>
         <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('CreateActivity')}>
-          {({ pressed }) => (
-            <>
-              <Ionicons name="add-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>HOST</Text>
-            </>
-          )}
+          {({ pressed }) => <Ionicons name="add-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
         </Pressable>
         <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Notifications')}>
-          {({ pressed }) => (
-            <>
-              <Ionicons name="notifications-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomNavText, styles.bottomNavTextLong, veryNarrow && styles.bottomNavTextLongNarrow, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>NOTIFICATIONS</Text>
-            </>
-          )}
+          {({ pressed }) => <Ionicons name="notifications-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
         </Pressable>
         <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={openLatestChat}>
-          {({ pressed }) => (
-            <>
-              <Ionicons name="chatbubbles-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>MESSAGES</Text>
-            </>
-          )}
+          {({ pressed }) => <Ionicons name="chatbubbles-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
         </Pressable>
         <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Profile')}>
-          {({ pressed }) => (
-            <>
-              <Ionicons name="person-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomNavText, pressed && styles.bottomNavTextActive]} numberOfLines={1} adjustsFontSizeToFit>PROFILE</Text>
-            </>
-          )}
+          {({ pressed }) => <Ionicons name="person-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
         </Pressable>
       </View>
 
@@ -748,15 +727,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 50,
     height: Platform.OS === 'web'
-      ? ('calc(58px + env(safe-area-inset-bottom))' as any)
-      : 58,
+      ? ('calc(54px + env(safe-area-inset-bottom))' as any)
+      : 54,
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,
-    paddingTop: 4,
+    paddingTop: 2,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(4px + env(safe-area-inset-bottom))' as any)
-      : 4,
+      ? ('calc(2px + env(safe-area-inset-bottom))' as any)
+      : 2,
     paddingHorizontal: 10,
     backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.88)' : 'rgba(8,8,8,0.96)',
     borderTopLeftRadius: 24,
@@ -781,7 +760,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     marginHorizontal: 2,
     paddingHorizontal: 2,
-    paddingVertical: 3,
+    paddingVertical: 0,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -795,26 +774,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 0 },
-  },
-  bottomNavText: {
-    maxWidth: '100%',
-    color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  bottomNavTextActive: {
-    color: colors.primary,
-  },
-  bottomNavTextLong: {
-    fontSize: 10,
-    letterSpacing: 0,
-  },
-  bottomNavTextLongNarrow: {
-    fontSize: 8.5,
   },
   modalOverlay: {
     flex: 1,
