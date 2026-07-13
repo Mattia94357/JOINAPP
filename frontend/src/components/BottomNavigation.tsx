@@ -8,6 +8,11 @@ import { colors } from '../theme';
 
 type BottomNavTab = 'discover' | 'host' | 'notifications' | 'messages' | 'profile';
 
+export const BOTTOM_NAV_HEIGHT = 54;
+export const BOTTOM_NAV_CONTENT_GAP = 14;
+export const getBottomNavigationClearance = (bottomInset: number) =>
+  BOTTOM_NAV_HEIGHT + bottomInset + BOTTOM_NAV_CONTENT_GAP;
+
 type BottomNavigationProps = {
   onMessagesPress?: () => void;
 };
@@ -100,8 +105,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 50,
     height: Platform.OS === 'web'
-      ? ('calc(54px + env(safe-area-inset-bottom))' as any)
-      : 54,
+      ? (`calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` as any)
+      : BOTTOM_NAV_HEIGHT,
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,

@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { fetchChatRequest, sendChatMessageRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
-import BottomNavigation from '../components/BottomNavigation';
+import BottomNavigation, { getBottomNavigationClearance } from '../components/BottomNavigation';
 import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
@@ -35,6 +36,8 @@ type ChatMessage = {
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
   const { token, user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const bottomNavigationClearance = getBottomNavigationClearance(insets.bottom);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
@@ -133,7 +136,7 @@ export default function ChatScreen({ route }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={100}
     >
-      <View style={styles.shell}>
+      <View style={[styles.shell, { paddingBottom: bottomNavigationClearance }]}>
       <View style={styles.chatHeader}>
         <View style={styles.chatIcon}>
           <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />

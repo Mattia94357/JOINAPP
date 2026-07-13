@@ -8,11 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { updateProfilePhotoRequest, updateProfileRequest } from '../api';
@@ -20,7 +20,7 @@ import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import { choosePhotoSource, pickProfileImage, PhotoSource } from '../utils/mediaPermissions';
-import BottomNavigation from '../components/BottomNavigation';
+import BottomNavigation, { getBottomNavigationClearance } from '../components/BottomNavigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -55,6 +55,7 @@ const debugPhotoUpload = (event: string, details?: Record<string, unknown>) => {
 export default function ProfileScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compact = width < 390;
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
@@ -195,7 +196,13 @@ export default function ProfileScreen({ navigation }: Props) {
 
   return (
     <View style={styles.screen}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: getBottomNavigationClearance(insets.bottom) },
+        ]}
+      >
       <View style={[styles.header, compact && styles.headerCompact]}>
         <View style={[styles.photoColumn, compact && styles.photoColumnCompact]}>
           <View style={styles.profileImageFrame}>
@@ -414,7 +421,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    paddingBottom: Platform.OS === 'ios' ? 48 : spacing.xxl,
   },
   header: {
     flexDirection: 'row',
