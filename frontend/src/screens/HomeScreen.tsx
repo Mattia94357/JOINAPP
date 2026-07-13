@@ -46,12 +46,13 @@ type HostGenderFilter = typeof hostGenderFilters[number]['value'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type BottomNavIconProps = {
+  active?: boolean;
   accessibilityLabel: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   onPress: () => void;
 };
 
-function BottomNavIcon({ accessibilityLabel, icon, onPress }: BottomNavIconProps) {
+function BottomNavIcon({ active = false, accessibilityLabel, icon, onPress }: BottomNavIconProps) {
   const pressProgress = useRef(new Animated.Value(0)).current;
 
   const animatePress = (toValue: number) => {
@@ -70,19 +71,20 @@ function BottomNavIcon({ accessibilityLabel, icon, onPress }: BottomNavIconProps
       onPressOut={() => animatePress(0)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active }}
     >
       {({ pressed }) => (
         <Animated.View
           style={[
             styles.bottomNavIcon,
-            pressed && styles.bottomNavIconActive,
+            (active || pressed) && styles.bottomNavIconActive,
             {
               opacity: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }),
               transform: [{ scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
             },
           ]}
         >
-          <Ionicons name={icon} size={25} color={pressed ? colors.primary : colors.textMuted} />
+          <Ionicons name={icon} size={25} color={active || pressed ? colors.primary : colors.textMuted} />
         </Animated.View>
       )}
     </Pressable>
@@ -405,6 +407,7 @@ export default function HomeScreen({ navigation }: Props) {
 
       <View style={styles.bottomNav}>
         <View style={styles.bottomNavDivider} pointerEvents="none" />
+        <BottomNavIcon active accessibilityLabel="Discover" icon="compass-outline" onPress={() => navigation.navigate('Home')} />
         <BottomNavIcon accessibilityLabel="Host" icon="add-circle-outline" onPress={() => navigation.navigate('CreateActivity')} />
         <BottomNavIcon accessibilityLabel="Notifications" icon="notifications-outline" onPress={() => navigation.navigate('Notifications')} />
         <BottomNavIcon accessibilityLabel="Messages" icon="chatbubbles-outline" onPress={openLatestChat} />
