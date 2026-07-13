@@ -108,7 +108,7 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
             ]}
           />
           <Animated.View style={[styles.bottomNavGlyphLayer, { opacity: pressed ? 0 : activeProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
-            <Ionicons name={icon} size={26} color={colors.textMuted} style={styles.bottomNavGlyph} />
+            <Ionicons name={icon} size={27} color={colors.textMuted} style={styles.bottomNavGlyph} />
           </Animated.View>
           <Animated.View
             style={[
@@ -119,7 +119,7 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
               },
             ]}
           >
-            <Ionicons name={icon} size={26} color={colors.primary} style={styles.bottomNavGlyph} />
+            <Ionicons name={icon} size={27.5} color={colors.primary} style={styles.bottomNavGlyph} />
           </Animated.View>
         </Animated.View>
       )}
@@ -221,17 +221,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   bottomNavGlyph: {
-    width: 27,
-    height: 27,
-    lineHeight: 27,
+    width: 28,
+    height: 28,
+    lineHeight: 28,
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
   bottomNavGlyphLayer: {
     position: 'absolute',
-    width: 27,
-    height: 27,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
