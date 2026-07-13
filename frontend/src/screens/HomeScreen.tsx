@@ -818,13 +818,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bottomNavIconActive: {
-    backgroundColor: 'rgba(20,18,15,0.78)',
+    backgroundColor: 'rgba(8,8,8,0.76)',
     borderColor: colors.goldBorder,
     shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 2,
+    elevation: 1,
   },
   modalOverlay: {
     flex: 1,
