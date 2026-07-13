@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -32,6 +33,26 @@ const activeTabByRoute: Partial<Record<keyof RootStackParamList, BottomNavTab>> 
 
 function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavIconProps) {
   const pressProgress = useRef(new Animated.Value(0)).current;
+  const activeProgress = useRef(new Animated.Value(0)).current;
+  const activeIconScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const progressAnimation = Animated.timing(activeProgress, {
+      toValue: active ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    });
+    const scaleAnimation = active
+      ? Animated.sequence([
+        Animated.timing(activeIconScale, { toValue: 1.05, duration: 110, useNativeDriver: true }),
+        Animated.timing(activeIconScale, { toValue: 1, duration: 90, useNativeDriver: true }),
+      ])
+      : Animated.timing(activeIconScale, { toValue: 1, duration: 180, useNativeDriver: true });
+    const animation = Animated.parallel([progressAnimation, scaleAnimation]);
+
+    animation.start();
+    return () => animation.stop();
+  }, [active, activeIconScale, activeProgress]);
 
   const animatePress = (toValue: number) => {
     Animated.timing(pressProgress, {
@@ -44,7 +65,12 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
   return (
     <Pressable
       style={styles.bottomNavItem}
-      onPress={onPress}
+      onPress={() => {
+        if (!active && Platform.OS !== 'web') {
+          void Haptics.selectionAsync().catch(() => undefined);
+        }
+        onPress();
+      }}
       onPressIn={() => animatePress(1)}
       onPressOut={() => animatePress(0)}
       accessibilityRole="button"
@@ -56,19 +82,45 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
           pointerEvents="none"
           style={[
             styles.bottomNavIcon,
-            (active || pressed) && styles.bottomNavIconActive,
             {
               opacity: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }),
               transform: [{ scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
             },
           ]}
         >
-          <Ionicons
-            name={icon}
-            size={25}
-            color={active || pressed ? colors.primary : colors.textMuted}
-            style={styles.bottomNavGlyph}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.bottomNavRing,
+              active && styles.bottomNavIconActive,
+              pressed && !active && styles.bottomNavIconPressed,
+              {
+                backgroundColor: activeProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['rgba(8,8,8,0)', 'rgba(8,8,8,0.78)'],
+                }),
+                borderColor: activeProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['rgba(244,197,66,0)', colors.goldBorder],
+                }),
+                transform: [{ scale: activeProgress.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+              },
+            ]}
           />
+          <Animated.View style={[styles.bottomNavGlyphLayer, { opacity: pressed ? 0 : activeProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
+            <Ionicons name={icon} size={26} color={colors.textMuted} style={styles.bottomNavGlyph} />
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.bottomNavGlyphLayer,
+              {
+                opacity: pressed ? 1 : activeProgress,
+                transform: [{ scale: activeIconScale }],
+              },
+            ]}
+          >
+            <Ionicons name={icon} size={26} color={colors.primary} style={styles.bottomNavGlyph} />
+          </Animated.View>
         </Animated.View>
       )}
     </Pressable>
@@ -96,7 +148,7 @@ export default function BottomNavigation() {
       <BottomNavIcon active={activeTab === 'host'} accessibilityLabel="Host" icon="add-circle-outline" onPress={() => navigation.navigate('CreateActivity')} />
       <BottomNavIcon active={activeTab === 'notifications'} accessibilityLabel="Notifications" icon="notifications-outline" onPress={() => navigation.navigate('Notifications')} />
       <BottomNavIcon active={activeTab === 'messages'} accessibilityLabel="Messages" icon="chatbubbles-outline" onPress={openMessages} />
-      <BottomNavIcon active={activeTab === 'profile'} accessibilityLabel="Profile" icon="person-circle-outline" onPress={() => navigation.navigate('Profile')} />
+      <BottomNavIcon active={activeTab === 'profile'} accessibilityLabel="Profile" icon="person-outline" onPress={() => navigation.navigate('Profile')} />
     </View>
   );
 }
@@ -119,20 +171,21 @@ const styles = StyleSheet.create({
       ? ('calc(2px + env(safe-area-inset-bottom))' as any)
       : 2,
     paddingHorizontal: 10,
-    backgroundColor: '#080808',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.94)' : 'rgba(8,8,8,0.97)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 16,
+    shadowColor: '#000000',
+    shadowOpacity: 0.34,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -7 },
+    elevation: 14,
     ...(Platform.OS === 'web' ? ({
-      backdropFilter: 'blur(14px)',
-      WebkitBackdropFilter: 'blur(14px)',
-      boxShadow: '0 -8px 24px rgba(0,0,0,0.48), 0 0 14px rgba(245,190,60,0.12)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      backgroundImage: 'linear-gradient(180deg, rgba(20,18,12,0.96) 0%, rgba(8,8,8,0.94) 42%, rgba(5,5,5,0.96) 100%)',
+      boxShadow: '0 -10px 24px rgba(0,0,0,0.42), inset 0 1px 0 rgba(246,196,69,0.08)',
     } as any) : {}),
   },
   bottomNavDivider: {
@@ -141,7 +194,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 1,
-    backgroundColor: 'rgba(246,196,69,0.16)',
+    backgroundColor: 'rgba(246,196,69,0.12)',
   },
   bottomNavItem: {
     flex: 1,
@@ -157,27 +210,39 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     flexShrink: 0,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bottomNavRing: {
+    position: 'absolute',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+  },
   bottomNavGlyph: {
-    width: 26,
-    height: 26,
-    lineHeight: 26,
+    width: 27,
+    height: 27,
+    lineHeight: 27,
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
+  bottomNavGlyphLayer: {
+    position: 'absolute',
+    width: 27,
+    height: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bottomNavIconActive: {
-    backgroundColor: 'rgba(8,8,8,0.76)',
-    borderColor: colors.goldBorder,
     shadowColor: colors.primary,
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 0 },
     elevation: 1,
+  },
+  bottomNavIconPressed: {
+    borderColor: 'rgba(244,197,66,0.18)',
   },
 });
