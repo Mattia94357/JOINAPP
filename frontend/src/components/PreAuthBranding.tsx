@@ -14,12 +14,16 @@ export default function PreAuthBranding({ compact = false, desktop = false }: Pr
         JOIN
       </Text>
       <View style={styles.headline}>
-        <Text style={[styles.headlineLine, compact && styles.headlineLineCompact, desktop && styles.headlineLineDesktop]}>
+        <Text style={[styles.headlineLine, styles.headlineLead, compact && styles.headlineLeadCompact, desktop && styles.headlineLeadDesktop]}>
           Don’t get bored.
         </Text>
-        <Text style={[styles.headlineLine, compact && styles.headlineLineCompact, desktop && styles.headlineLineDesktop]}>
-          <Text style={[styles.headlineJoin, compact && styles.headlineJoinCompact, desktop && styles.headlineJoinDesktop]}>JOIN</Text>
-          {' activities.'}
+        <Text
+          adjustsFontSizeToFit
+          minimumFontScale={0.86}
+          numberOfLines={1}
+          style={[styles.headlineLine, styles.headlineMain, compact && styles.headlineMainCompact, desktop && styles.headlineMainDesktop]}
+        >
+          Find your next activity.
         </Text>
       </View>
     </View>
@@ -60,34 +64,36 @@ const styles = StyleSheet.create({
   headlineLine: {
     color: colors.text,
     fontFamily: 'System',
-    fontSize: 38,
-    lineHeight: 43,
     fontWeight: '800',
-    letterSpacing: -1,
     textAlign: 'center',
   },
-  headlineLineCompact: {
+  headlineLead: {
     fontSize: 28,
-    lineHeight: 33,
+    lineHeight: 34,
     letterSpacing: -0.6,
   },
-  headlineLineDesktop: {
-    fontSize: 56,
-    lineHeight: 62,
-    letterSpacing: -1.8,
+  headlineLeadCompact: {
+    fontSize: 24,
+    lineHeight: 29,
   },
-  headlineJoin: {
-    color: colors.primary,
-    fontSize: 43,
-    lineHeight: 43,
-    fontWeight: '900',
+  headlineLeadDesktop: {
+    fontSize: 42,
+    lineHeight: 48,
+    letterSpacing: -1.2,
   },
-  headlineJoinCompact: {
-    fontSize: 32,
-    lineHeight: 33,
+  headlineMain: {
+    fontSize: 31,
+    lineHeight: 38,
+    letterSpacing: -1,
   },
-  headlineJoinDesktop: {
-    fontSize: 64,
-    lineHeight: 62,
+  headlineMainCompact: {
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.8,
+  },
+  headlineMainDesktop: {
+    fontSize: 48,
+    lineHeight: 54,
+    letterSpacing: -1.5,
   },
 });
