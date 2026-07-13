@@ -5,7 +5,7 @@ import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
-import Logo from '../components/Logo';
+import PreAuthBranding from '../components/PreAuthBranding';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -66,8 +66,7 @@ export default function LoginScreen({ navigation, route }: Props) {
   const authPanel = (
       <ResponsiveAppContainer maxWidth={440}>
         <View style={styles.shell}>
-          <Logo size={56} withWordmark animate />
-          <Text style={styles.subtitle}>Discover plans nearby.</Text>
+          <PreAuthBranding compact />
         </View>
         <View style={styles.form}>
         <View style={styles.segmentedControl}>
@@ -174,14 +173,6 @@ const styles = StyleSheet.create({
   shell: {
     width: '100%',
     alignItems: 'center',
-  },
-  subtitle: {
-    marginTop: spacing.lg,
-    color: colors.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
-    maxWidth: 360,
   },
   form: {
     width: '100%',
