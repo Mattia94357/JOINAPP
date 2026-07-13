@@ -63,7 +63,12 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
             },
           ]}
         >
-          <Ionicons name={icon} size={25} color={active || pressed ? colors.primary : colors.textMuted} />
+          <Ionicons
+            name={icon}
+            size={25}
+            color={active || pressed ? colors.primary : colors.textMuted}
+            style={styles.bottomNavGlyph}
+          />
         </Animated.View>
       )}
     </Pressable>
@@ -114,7 +119,7 @@ const styles = StyleSheet.create({
       ? ('calc(2px + env(safe-area-inset-bottom))' as any)
       : 2,
     paddingHorizontal: 10,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.88)' : 'rgba(8,8,8,0.96)',
+    backgroundColor: '#080808',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     flexDirection: 'row',
@@ -140,7 +145,7 @@ const styles = StyleSheet.create({
   },
   bottomNavItem: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 44,
     minHeight: 44,
     marginHorizontal: 2,
     paddingHorizontal: 2,
@@ -151,18 +156,27 @@ const styles = StyleSheet.create({
   bottomNavIcon: {
     width: 42,
     height: 42,
+    flexShrink: 0,
     borderRadius: 21,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bottomNavGlyph: {
+    width: 26,
+    height: 26,
+    lineHeight: 26,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  },
   bottomNavIconActive: {
     backgroundColor: 'rgba(8,8,8,0.76)',
     borderColor: colors.goldBorder,
     shadowColor: colors.primary,
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },
     elevation: 1,
   },
