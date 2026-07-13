@@ -20,6 +20,7 @@ import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import { choosePhotoSource, pickProfileImage, PhotoSource } from '../utils/mediaPermissions';
+import BottomNavigation from '../components/BottomNavigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -193,7 +194,8 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
+    <View style={styles.screen}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <View style={[styles.header, compact && styles.headerCompact]}>
         <View style={[styles.photoColumn, compact && styles.photoColumnCompact]}>
           <View style={styles.profileImageFrame}>
@@ -391,11 +393,17 @@ export default function ProfileScreen({ navigation }: Props) {
         <Text style={styles.settingsText}>Settings</Text>
         <Ionicons name="chevron-forward-outline" size={18} color={colors.textSubtle} />
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+      <BottomNavigation />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   scroll: {
     flex: 1,
     backgroundColor: colors.background,

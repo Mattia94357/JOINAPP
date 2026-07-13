@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { colors, spacing } from '../theme';
+import BottomNavigation from '../components/BottomNavigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Notifications'>;
 
@@ -10,30 +11,37 @@ const notifications: Array<{ title: string; body: string }> = [];
 
 export default function NotificationsScreen({ navigation }: Props) {
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Notifications</Text>
-      <Text style={styles.subtitle}>Real-time updates for your upcoming experiences.</Text>
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Notifications</Text>
+        <Text style={styles.subtitle}>Real-time updates for your upcoming experiences.</Text>
 
-      {notifications.length ? notifications.map((notification, index) => (
-        <View key={index} style={styles.notificationCard}>
-          <Text style={styles.notificationTitle}>{notification.title}</Text>
-          <Text style={styles.notificationBody}>{notification.body}</Text>
-        </View>
-      )) : (
-        <View style={styles.notificationCard}>
-          <Text style={styles.notificationTitle}>No notifications yet</Text>
-          <Text style={styles.notificationBody}>Updates about joined activities, chat messages, and requests will appear here.</Text>
-        </View>
-      )}
+        {notifications.length ? notifications.map((notification, index) => (
+          <View key={index} style={styles.notificationCard}>
+            <Text style={styles.notificationTitle}>{notification.title}</Text>
+            <Text style={styles.notificationBody}>{notification.body}</Text>
+          </View>
+        )) : (
+          <View style={styles.notificationCard}>
+            <Text style={styles.notificationTitle}>No notifications yet</Text>
+            <Text style={styles.notificationBody}>Updates about joined activities, chat messages, and requests will appear here.</Text>
+          </View>
+        )}
 
-      <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Home')}>
-        <Text style={styles.actionText}>Return to feed</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Home')}>
+          <Text style={styles.actionText}>Return to feed</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      <BottomNavigation />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     width: '100%',
     maxWidth: 500,

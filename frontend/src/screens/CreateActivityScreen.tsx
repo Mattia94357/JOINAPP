@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
+import BottomNavigation from '../components/BottomNavigation';
 import { createActivityRequest } from '../api';
 import { colors, spacing } from '../theme';
 import { activityCategories } from '../utils/categories';
@@ -106,7 +107,8 @@ export default function CreateActivityScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <View style={styles.screen}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text style={styles.sectionTitle}>Host a plan</Text>
       <Text style={styles.sectionDescription}>Create a real plan nearby. Add the essentials now, then details only if they help.</Text>
 
@@ -215,11 +217,17 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
         <Text style={styles.buttonText}>{loading ? 'Publishing...' : 'Publish plan'}</Text>
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+      <BottomNavigation />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   scroll: {
     flex: 1,
     backgroundColor: colors.background,

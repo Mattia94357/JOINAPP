@@ -17,6 +17,7 @@ import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { fetchChatRequest, sendChatMessageRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
+import BottomNavigation from '../components/BottomNavigation';
 import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
@@ -100,22 +101,28 @@ export default function ChatScreen({ route }: Props) {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <View style={styles.chatSkeletonHeader} />
-        {[0, 1, 2].map((item) => (
-          <View key={item} style={[styles.chatSkeletonBubble, item === 1 && styles.chatSkeletonBubbleRight]} />
-        ))}
-        <ActivityIndicator color={colors.primary} size="small" />
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <View style={styles.chatSkeletonHeader} />
+          {[0, 1, 2].map((item) => (
+            <View key={item} style={[styles.chatSkeletonBubble, item === 1 && styles.chatSkeletonBubbleRight]} />
+          ))}
+          <ActivityIndicator color={colors.primary} size="small" />
+        </View>
+        <BottomNavigation />
       </View>
     );
   }
 
   if (lockedMessage) {
     return (
-      <View style={styles.lockedContainer}>
-        <Ionicons name="lock-closed-outline" size={34} color={colors.primary} />
-        <Text style={styles.lockedTitle}>Chat locked</Text>
-        <Text style={styles.lockedText}>{lockedMessage}</Text>
+      <View style={styles.container}>
+        <View style={styles.lockedContainer}>
+          <Ionicons name="lock-closed-outline" size={34} color={colors.primary} />
+          <Text style={styles.lockedTitle}>Chat locked</Text>
+          <Text style={styles.lockedText}>{lockedMessage}</Text>
+        </View>
+        <BottomNavigation />
       </View>
     );
   }
@@ -195,6 +202,7 @@ export default function ChatScreen({ route }: Props) {
         </TouchableOpacity>
       </View>
       </View>
+      <BottomNavigation />
     </KeyboardAvoidingView>
   );
 }
