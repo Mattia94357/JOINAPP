@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   SafeAreaView,
   View,
   Text,
@@ -44,6 +45,49 @@ const hostGenderFilters = [
 type HostGenderFilter = typeof hostGenderFilters[number]['value'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+type BottomNavIconProps = {
+  accessibilityLabel: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  onPress: () => void;
+};
+
+function BottomNavIcon({ accessibilityLabel, icon, onPress }: BottomNavIconProps) {
+  const pressProgress = useRef(new Animated.Value(0)).current;
+
+  const animatePress = (toValue: number) => {
+    Animated.timing(pressProgress, {
+      toValue,
+      duration: toValue ? 90 : 110,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      style={styles.bottomNavItem}
+      onPress={onPress}
+      onPressIn={() => animatePress(1)}
+      onPressOut={() => animatePress(0)}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.bottomNavIcon,
+            pressed && styles.bottomNavIconActive,
+            {
+              opacity: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }),
+              transform: [{ scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
+            },
+          ]}
+        >
+          <Ionicons name={icon} size={25} color={pressed ? colors.primary : colors.textMuted} />
+        </Animated.View>
+      )}
+    </Pressable>
+  );
+}
 
 export default function HomeScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
@@ -360,18 +404,11 @@ export default function HomeScreen({ navigation }: Props) {
       ) : null}
 
       <View style={styles.bottomNav}>
-        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('CreateActivity')}>
-          {({ pressed }) => <Ionicons name="add-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Notifications')}>
-          {({ pressed }) => <Ionicons name="notifications-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={openLatestChat}>
-          {({ pressed }) => <Ionicons name="chatbubbles-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.bottomNavItem, pressed && styles.bottomNavItemActive]} onPress={() => navigation.navigate('Profile')}>
-          {({ pressed }) => <Ionicons name="person-circle-outline" size={25} color={pressed ? colors.primary : colors.textMuted} />}
-        </Pressable>
+        <View style={styles.bottomNavDivider} pointerEvents="none" />
+        <BottomNavIcon accessibilityLabel="Host" icon="add-circle-outline" onPress={() => navigation.navigate('CreateActivity')} />
+        <BottomNavIcon accessibilityLabel="Notifications" icon="notifications-outline" onPress={() => navigation.navigate('Notifications')} />
+        <BottomNavIcon accessibilityLabel="Messages" icon="chatbubbles-outline" onPress={openLatestChat} />
+        <BottomNavIcon accessibilityLabel="Profile" icon="person-circle-outline" onPress={() => navigation.navigate('Profile')} />
       </View>
 
       <ParticipantsModal
@@ -738,10 +775,8 @@ const styles = StyleSheet.create({
       : 2,
     paddingHorizontal: 10,
     backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.88)' : 'rgba(8,8,8,0.96)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.goldBorder,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     flexDirection: 'row',
     justifyContent: 'space-between',
     shadowColor: colors.primary,
@@ -755,25 +790,41 @@ const styles = StyleSheet.create({
       boxShadow: '0 -8px 24px rgba(0,0,0,0.48), 0 0 14px rgba(245,190,60,0.12)',
     } as any) : {}),
   },
+  bottomNavDivider: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    height: 1,
+    backgroundColor: 'rgba(246,196,69,0.16)',
+  },
   bottomNavItem: {
     flex: 1,
     minWidth: 0,
+    minHeight: 44,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     paddingVertical: 0,
-    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomNavIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bottomNavItemActive: {
-    backgroundColor: colors.goldWash,
+  bottomNavIconActive: {
+    backgroundColor: 'rgba(20,18,15,0.78)',
     borderColor: colors.goldBorder,
     shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 2,
   },
   modalOverlay: {
     flex: 1,
