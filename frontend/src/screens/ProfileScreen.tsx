@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { updateProfilePhotoRequest, updateProfileRequest } from '../api';
@@ -20,7 +21,10 @@ import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import { choosePhotoSource, pickProfileImage, PhotoSource } from '../utils/mediaPermissions';
-import BottomNavigation, { getBottomNavigationClearance } from '../components/BottomNavigation';
+import BottomNavigation, {
+  BOTTOM_NAV_WEB_CONTENT_CLEARANCE,
+  getBottomNavigationClearance,
+} from '../components/BottomNavigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -55,7 +59,10 @@ const debugPhotoUpload = (event: string, details?: Record<string, unknown>) => {
 export default function ProfileScreen({ navigation }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const safeAreaInsets = useContext(SafeAreaInsetsContext);
+  const bottomNavigationClearance = Platform.OS === 'web'
+    ? BOTTOM_NAV_WEB_CONTENT_CLEARANCE
+    : getBottomNavigationClearance(safeAreaInsets?.bottom ?? 0);
   const compact = width < 390;
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
@@ -200,7 +207,7 @@ export default function ProfileScreen({ navigation }: Props) {
         style={styles.scroll}
         contentContainerStyle={[
           styles.container,
-          { paddingBottom: getBottomNavigationClearance(insets.bottom) },
+          { paddingBottom: bottomNavigationClearance },
         ]}
       >
       <View style={[styles.header, compact && styles.headerCompact]}>

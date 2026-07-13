@@ -285,15 +285,6 @@ export default function HomeScreen({ navigation }: Props) {
     });
   };
 
-  const openLatestChat = () => {
-    const chatActivity = activities.find((activity) => activity.joined) || activities.find((activity) => matchesCurrentUserId(activity.hostId));
-    if (chatActivity) {
-      navigation.navigate('Chat', { chatId: chatActivity.id, title: chatActivity.title });
-      return;
-    }
-    Alert.alert('No active chats yet', 'Join an activity first to unlock its chat.');
-  };
-
   const hasNoCategoryResults = !loading && selectedCategory !== 'All' && visibleFeed.length === 0;
 
   return (
@@ -359,7 +350,7 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       ) : null}
 
-      <BottomNavigation onMessagesPress={openLatestChat} />
+      <BottomNavigation />
 
       <ParticipantsModal
         visible={Boolean(participantsActivity)}

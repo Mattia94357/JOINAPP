@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { fetchChatRequest, sendChatMessageRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
-import BottomNavigation, { getBottomNavigationClearance } from '../components/BottomNavigation';
+import BottomNavigation, {
+  BOTTOM_NAV_WEB_CONTENT_CLEARANCE,
+  getBottomNavigationClearance,
+} from '../components/BottomNavigation';
 import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
@@ -36,8 +39,10 @@ type ChatMessage = {
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
   const { token, user } = useAuth();
-  const insets = useSafeAreaInsets();
-  const bottomNavigationClearance = getBottomNavigationClearance(insets.bottom);
+  const safeAreaInsets = useContext(SafeAreaInsetsContext);
+  const bottomNavigationClearance = Platform.OS === 'web'
+    ? BOTTOM_NAV_WEB_CONTENT_CLEARANCE
+    : getBottomNavigationClearance(safeAreaInsets?.bottom ?? 0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
@@ -151,7 +156,10 @@ export default function ChatScreen({ route }: Props) {
         data={messages}
         keyExtractor={(item) => item.id}
         style={styles.messageList}
-        contentContainerStyle={styles.messageContent}
+        contentContainerStyle={[
+          styles.messageContent,
+          { paddingBottom: bottomNavigationClearance },
+        ]}
         ListEmptyComponent={
           <View style={styles.emptyChat}>
             <Text style={styles.emptyChatTitle}>No messages yet.</Text>

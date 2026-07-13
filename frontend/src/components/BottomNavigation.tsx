@@ -9,13 +9,11 @@ import { colors } from '../theme';
 type BottomNavTab = 'discover' | 'host' | 'notifications' | 'messages' | 'profile';
 
 export const BOTTOM_NAV_HEIGHT = 54;
-export const BOTTOM_NAV_CONTENT_GAP = 14;
+export const BOTTOM_NAV_CONTENT_GAP = 16;
 export const getBottomNavigationClearance = (bottomInset: number) =>
   BOTTOM_NAV_HEIGHT + bottomInset + BOTTOM_NAV_CONTENT_GAP;
-
-type BottomNavigationProps = {
-  onMessagesPress?: () => void;
-};
+export const BOTTOM_NAV_WEB_CONTENT_CLEARANCE =
+  `calc(${BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP}px + env(safe-area-inset-bottom))` as any;
 
 type BottomNavIconProps = {
   active: boolean;
@@ -55,6 +53,7 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
     >
       {({ pressed }) => (
         <Animated.View
+          pointerEvents="none"
           style={[
             styles.bottomNavIcon,
             (active || pressed) && styles.bottomNavIconActive,
@@ -71,17 +70,17 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
   );
 }
 
-export default function BottomNavigation({ onMessagesPress }: BottomNavigationProps) {
+export default function BottomNavigation() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const activeTab = activeTabByRoute[route.name];
 
-  const openMessages = onMessagesPress || (() => {
+  const openMessages = () => {
     if (route.name !== 'Chat') {
       navigation.navigate('Chat', { chatId: 'general', title: 'Messages' });
     }
-  });
+  };
 
   if (!isFocused) return null;
 
