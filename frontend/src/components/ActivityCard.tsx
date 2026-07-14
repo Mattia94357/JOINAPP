@@ -43,11 +43,19 @@ export type Activity = {
   waitlisted?: boolean;
   saved?: boolean;
   chatId?: string;
+  startTime?: string;
+  endTime?: string;
+  costType?: 'Free' | 'Paid';
+  costAmount?: number;
+  currency?: string;
 };
 
 type Props = {
   activity: Activity;
   onPress: () => void;
+  onPass?: () => void;
+  onJoin?: () => void;
+  actionsDisabled?: boolean;
   onSave?: () => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
@@ -56,6 +64,9 @@ type Props = {
 export default function ActivityCard({
   activity,
   onPress,
+  onPass,
+  onJoin,
+  actionsDisabled,
   onSave,
   onViewParticipants,
   onOpenProfile,
@@ -65,6 +76,7 @@ export default function ActivityCard({
   const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
   const [cardHeight, setCardHeight] = useState(0);
   const [locationPreviewVisible, setLocationPreviewVisible] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const attendees = activity.attendees ?? activity.participants.length;
   const spotsLeft = activity.maxAttendees ? Math.max(activity.maxAttendees - attendees, 0) : null;
   const visibleParticipants = activity.participants.slice(0, 3);
@@ -76,6 +88,9 @@ export default function ActivityCard({
   const imagePressOpacity = useRef(new Animated.Value(1)).current;
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
+  const detailsProgress = useRef(new Animated.Value(0)).current;
+  const passScale = useRef(new Animated.Value(1)).current;
+  const joinScale = useRef(new Animated.Value(1)).current;
   const compact = width < 520;
   const dense = cardHeight > 0 && cardHeight < 540;
   const veryDense = cardHeight > 0 && cardHeight < 440;
@@ -103,6 +118,35 @@ export default function ActivityCard({
       }),
     ]).start();
   };
+
+  const toggleDetails = () => {
+    const nextExpanded = !detailsExpanded;
+    setDetailsExpanded(nextExpanded);
+    Animated.timing(detailsProgress, {
+      toValue: nextExpanded ? 1 : 0,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const animateDecisionPress = (scale: Animated.Value, pressed: boolean) => {
+    Animated.spring(scale, {
+      toValue: pressed ? 0.92 : 1,
+      speed: 28,
+      bounciness: 4,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const groupSize = activity.maxAttendees
+    ? `${attendees} / ${activity.maxAttendees} people`
+    : `${attendees} ${attendees === 1 ? 'person' : 'people'}`;
+  const duration = activity.startTime && activity.endTime
+    ? `${activity.startTime} – ${activity.endTime}`
+    : activity.time || 'Flexible';
+  const cost = activity.costType === 'Paid'
+    ? `${activity.currency || '$'}${activity.costAmount || 0}`
+    : activity.costType || 'Not specified';
 
   return (
     <Animated.View
@@ -155,6 +199,53 @@ export default function ActivityCard({
             </View>
 
             <View style={[styles.imageCopy, compact && styles.imageCopyCompact, dense && styles.imageCopyDense, veryDense && styles.imageCopyVeryDense]}>
+              <View style={styles.decisionControls}>
+                <Animated.View style={{ transform: [{ scale: passScale }] }}>
+                  <TouchableOpacity
+                    style={styles.decisionTouchTarget}
+                    onPress={onPass}
+                    onPressIn={() => animateDecisionPress(passScale, true)}
+                    onPressOut={() => animateDecisionPress(passScale, false)}
+                    disabled={!onPass || actionsDisabled}
+                    activeOpacity={0.76}
+                    accessibilityRole="button"
+                    accessibilityLabel="Pass on activity"
+                  >
+                    <View style={styles.decisionButton}>
+                      <Ionicons name="close" size={24} color={colors.primary} />
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
+
+                <TouchableOpacity
+                  style={styles.detailsToggle}
+                  onPress={toggleDetails}
+                  activeOpacity={0.76}
+                  accessibilityRole="button"
+                  accessibilityLabel={detailsExpanded ? 'Collapse activity details' : 'Expand activity details'}
+                  accessibilityState={{ expanded: detailsExpanded }}
+                >
+                  <Ionicons name={detailsExpanded ? 'chevron-down' : 'chevron-up'} size={22} color={colors.primary} />
+                </TouchableOpacity>
+
+                <Animated.View style={{ transform: [{ scale: joinScale }] }}>
+                  <TouchableOpacity
+                    style={styles.decisionTouchTarget}
+                    onPress={onJoin}
+                    onPressIn={() => animateDecisionPress(joinScale, true)}
+                    onPressOut={() => animateDecisionPress(joinScale, false)}
+                    disabled={!onJoin || actionsDisabled}
+                    activeOpacity={0.76}
+                    accessibilityRole="button"
+                    accessibilityLabel="Join activity"
+                  >
+                    <View style={styles.decisionButton}>
+                      <Ionicons name="checkmark" size={24} color={colors.primary} />
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+
               <Text style={[styles.title, compact && styles.titleCompact, dense && styles.titleDense]} numberOfLines={1}>{activity.title}</Text>
 
               <TouchableOpacity
@@ -201,6 +292,24 @@ export default function ActivityCard({
                 </Text>
               </View>
 
+              <Animated.View
+                pointerEvents={detailsExpanded ? 'auto' : 'none'}
+                style={[
+                  styles.detailsSection,
+                  {
+                    maxHeight: detailsProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 132] }),
+                    opacity: detailsProgress,
+                    transform: [{ translateY: detailsProgress.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+                  },
+                ]}
+              >
+                <Text style={styles.detailsLabel}>DETAILS</Text>
+                <DetailRow icon="people-outline" label="Group Size" value={groupSize} />
+                <DetailRow icon="time-outline" label="Duration" value={duration} />
+                <DetailRow icon="cash-outline" label="Cost" value={cost} />
+                <DetailRow icon="chatbubble-ellipses-outline" label="Vibe" value={activity.vibe || 'Social'} />
+              </Animated.View>
+
               <TouchableOpacity style={[styles.peopleRow, dense && styles.peopleRowDense]} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.86}>
                 <View style={styles.avatarStack}>
                   {previewPeople.map((participant, index) => (
@@ -243,6 +352,16 @@ export default function ActivityCard({
       />
 
     </Animated.View>
+  );
+}
+
+function DetailRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Ionicons name={icon} size={15} color={colors.primary} />
+      <Text style={styles.detailName}>{label}</Text>
+      <Text style={styles.detailValue} numberOfLines={1}>{value}</Text>
+    </View>
   );
 }
 
@@ -350,22 +469,81 @@ const styles = StyleSheet.create({
   },
   imageCopy: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 24,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    zIndex: 2,
+    paddingHorizontal: 16,
+    paddingTop: 26,
+    paddingBottom: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.3)',
+    backgroundColor: 'rgba(14,13,12,0.88)',
   },
   imageCopyCompact: {
-    left: 20,
-    right: 20,
-    bottom: 22,
+    left: 9,
+    right: 9,
+    bottom: 9,
   },
   imageCopyDense: {
-    left: 14,
-    right: 14,
-    bottom: 12,
+    left: 7,
+    right: 7,
+    bottom: 7,
+    paddingHorizontal: 12,
+    paddingTop: 23,
+    paddingBottom: 9,
   },
   imageCopyVeryDense: {
-    bottom: 8,
+    bottom: 6,
+  },
+  decisionControls: {
+    minHeight: 42,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  decisionTouchTarget: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  decisionButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.48)',
+    backgroundColor: 'rgba(15,14,12,0.94)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  detailsToggle: {
+    position: 'absolute',
+    top: -46,
+    left: '50%',
+    width: 40,
+    height: 40,
+    marginLeft: -20,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.48)',
+    backgroundColor: 'rgba(15,14,12,0.96)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
   title: {
     color: colors.text,
@@ -480,6 +658,40 @@ const styles = StyleSheet.create({
   },
   aboutTextCompact: {
     fontSize: 11,
+  },
+  detailsSection: {
+    overflow: 'hidden',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(246,196,69,0.14)',
+  },
+  detailsLabel: {
+    color: 'rgba(245,238,224,0.58)',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    marginTop: 7,
+    marginBottom: 3,
+  },
+  detailRow: {
+    minHeight: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+  },
+  detailName: {
+    color: 'rgba(245,238,224,0.8)',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 7,
+  },
+  detailValue: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'right',
+    marginLeft: 10,
   },
   peopleRow: {
     flexDirection: 'row',

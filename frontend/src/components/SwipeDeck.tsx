@@ -184,6 +184,9 @@ export default function SwipeDeck({
         <ActivityCard
           activity={activity}
           onPress={() => onPress(activity)}
+          onPass={() => handleSwipe('left')}
+          onJoin={() => handleSwipe('right')}
+          actionsDisabled={isActing}
           onSave={() => onSave?.(activity)}
           onViewParticipants={onViewParticipants}
           onOpenProfile={onOpenProfile}
