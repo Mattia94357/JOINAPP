@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, LayoutChangeEvent, Linking, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Animated, LayoutChangeEvent, Linking, Platform, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { getActivityCoverImage } from '../utils/activityAssets';
@@ -46,17 +46,6 @@ type Props = {
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
 };
 
-const categoryGlyph = (category: string) => {
-  if (category === 'Food') return 'restaurant-outline';
-  if (category === 'Drinks') return 'wine-outline';
-  if (category === 'Outdoors') return 'trail-sign-outline';
-  if (category === 'Wellness') return 'sparkles-outline';
-  if (category === 'Adventure') return 'compass-outline';
-  if (category === 'Music') return 'musical-notes-outline';
-  if (category === 'Nightlife') return 'moon-outline';
-  return 'ellipse-outline';
-};
-
 export default function ActivityCard({
   activity,
   onPress,
@@ -75,7 +64,8 @@ export default function ActivityCard({
   const previewPeople = visibleParticipants.length
     ? visibleParticipants
     : [{ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar }];
-  const cardScale = useRef(new Animated.Value(1)).current;
+  const imagePressScale = useRef(new Animated.Value(1)).current;
+  const imagePressOpacity = useRef(new Animated.Value(1)).current;
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
   const compact = width < 520;
@@ -96,6 +86,21 @@ export default function ActivityCard({
     if (nextHeight !== cardHeight) setCardHeight(nextHeight);
   };
 
+  const animateImagePress = (pressed: boolean) => {
+    Animated.parallel([
+      Animated.timing(imagePressScale, {
+        toValue: pressed ? 0.99 : 1,
+        duration: pressed ? 90 : 130,
+        useNativeDriver: true,
+      }),
+      Animated.timing(imagePressOpacity, {
+        toValue: pressed ? 0.96 : 1,
+        duration: pressed ? 90 : 130,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   return (
     <Animated.View
       style={[styles.fill, {
@@ -103,29 +108,31 @@ export default function ActivityCard({
           transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
         }]}
     >
-      <Animated.View style={[styles.fill, { transform: [{ scale: cardScale }] }]}>
+      <View style={styles.fill}>
         <View style={[styles.card, styles.imageFrame]} onLayout={handleCardLayout}>
-            <Image source={{ uri: coverImage }} style={styles.image} onError={() => setCoverImage(fallbackCoverImage)} />
+            <Animated.Image
+              source={{ uri: coverImage }}
+              style={[styles.image, { opacity: imagePressOpacity, transform: [{ scale: imagePressScale }] }]}
+              onError={() => setCoverImage(fallbackCoverImage)}
+            />
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
 
-            <View style={styles.cardHeader}>
-              <View style={styles.categoryBadge}>
-                <Ionicons name={categoryGlyph(activity.category) as any} size={compact ? 17 : 20} color={colors.primary} />
+            <Pressable
+              style={styles.imagePressTarget}
+              onPress={onPress}
+              onPressIn={() => animateImagePress(true)}
+              onPressOut={() => animateImagePress(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Open activity details"
+            />
+
+            <View style={styles.cardHeader} pointerEvents="box-none">
+              <View style={styles.categoryBadge} pointerEvents="none">
                 <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
               </View>
 
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  style={styles.headerActionButton}
-                  onPress={onPress}
-                  activeOpacity={0.78}
-                  accessibilityRole="button"
-                  accessibilityLabel="Activity details"
-                >
-                  <Ionicons name="information-circle-outline" size={compact ? 23 : 25} color={colors.text} />
-                </TouchableOpacity>
-                <Animated.View style={[styles.headerActionButtonWrap, { transform: [{ scale: bookmarkScale }] }]}>
+              <Animated.View style={[styles.headerActions, { transform: [{ scale: bookmarkScale }] }]}>
                   <TouchableOpacity
                     style={[styles.headerActionButton, activity.saved && styles.headerActionButtonActive]}
                     onPress={() => {
@@ -141,8 +148,7 @@ export default function ActivityCard({
                   >
                     <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 23 : 25} color={activity.saved ? colors.primaryText : colors.primary} />
                   </TouchableOpacity>
-                </Animated.View>
-              </View>
+              </Animated.View>
             </View>
 
             <View style={[styles.imageCopy, compact && styles.imageCopyCompact, dense && styles.imageCopyDense, veryDense && styles.imageCopyVeryDense]}>
@@ -228,7 +234,7 @@ export default function ActivityCard({
               </TouchableOpacity>
             </View>
           </View>
-      </Animated.View>
+      </View>
 
     </Animated.View>
   );
@@ -279,6 +285,14 @@ const styles = StyleSheet.create({
     height: '52%',
     backgroundColor: 'rgba(0,0,0,0.54)',
   },
+  imagePressTarget: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: '52%',
+    zIndex: 1,
+  },
   cardHeader: {
     position: 'absolute',
     top: 14,
@@ -287,6 +301,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 2,
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -308,12 +323,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  headerActionButtonWrap: {
-    width: 48,
-    height: 48,
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(246,196,69,0.2)',
-  },
   headerActionButton: {
     width: 48,
     height: 48,
@@ -328,7 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.9,
-    marginLeft: 9,
     textTransform: 'uppercase',
   },
   categoryTextCompact: {
