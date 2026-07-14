@@ -305,6 +305,17 @@ export default function ActivityScreen({ route, navigation }: Props) {
             </View>
           </View>
         </View>
+        <TouchableOpacity
+          style={styles.heroReturnButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.72}
+          accessibilityRole="button"
+          accessibilityLabel="Back to activity feed"
+        >
+          <View style={styles.heroReturnButtonVisual}>
+            <Ionicons name="chevron-down" size={22} color="#f5c12d" />
+          </View>
+        </TouchableOpacity>
       </ImageBackground>
 
       <View style={styles.content}>
@@ -573,6 +584,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     padding: 16,
+  },
+  heroReturnButton: {
+    position: 'absolute',
+    left: '50%',
+    bottom: -22,
+    width: 44,
+    height: 44,
+    marginLeft: -22,
+    zIndex: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroReturnButtonVisual: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,14,12,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.48)',
+    shadowColor: '#f5c12d',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
   heroBadges: {
     flexDirection: 'row',
