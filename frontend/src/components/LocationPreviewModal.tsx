@@ -217,7 +217,9 @@ export default function LocationPreviewModal({ visible, activity, onClose }: Pro
               accessibilityRole="button"
               accessibilityLabel="Close map preview"
             >
-              <Ionicons name="close" size={22} color={colors.text} />
+              <View style={styles.closeButtonVisual}>
+                <Ionicons name="close" size={20} color={colors.text} />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -285,7 +287,7 @@ const styles = StyleSheet.create({
     elevation: 24,
   },
   dragArea: {
-    height: 30,
+    height: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -298,7 +300,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 15,
+    marginBottom: 10,
   },
   headerCopy: {
     flex: 1,
@@ -329,14 +331,21 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  closeButtonVisual: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,18,15,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
+    borderColor: 'rgba(246,196,69,0.28)',
   },
   mapPreview: {
-    height: 210,
+    height: 252,
     overflow: 'hidden',
-    borderRadius: 18,
+    borderRadius: 21,
     backgroundColor: '#1B1B18',
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.16)',
@@ -394,7 +403,7 @@ const styles = StyleSheet.create({
   },
   mapsButton: {
     minHeight: 50,
-    marginTop: 15,
+    marginTop: 10,
     borderRadius: 15,
     flexDirection: 'row',
     alignItems: 'center',
