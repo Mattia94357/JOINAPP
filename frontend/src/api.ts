@@ -208,6 +208,13 @@ export type RawActivity = {
   title: string;
   category: string;
   location: string;
+  locationName?: string;
+  venueName?: string;
+  exactAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  isApproximateLocation?: boolean;
+  locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   date?: string;
   coverImage?: string;
@@ -234,6 +241,11 @@ export type ActivityResponse = {
   title: string;
   category: string;
   location: string;
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
+  isApproximateLocation?: boolean;
+  locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   date?: string;
   time?: string;
@@ -307,6 +319,13 @@ export const fetchActivities = async (token?: string, filters?: { hostGender?: '
     title: activity.title,
     category: normalizeActivityCategory(activity.category),
     location: activity.location,
+    locationName: activity.locationName || activity.venueName,
+    venueName: activity.venueName,
+    exactAddress: activity.exactAddress,
+    latitude: activity.latitude,
+    longitude: activity.longitude,
+    isApproximateLocation: activity.isApproximateLocation,
+    locationPrivacy: activity.locationPrivacy,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
@@ -352,6 +371,13 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     title: activity.title,
     category: normalizeActivityCategory(activity.category),
     location: activity.location,
+    locationName: activity.locationName || activity.venueName,
+    venueName: activity.venueName,
+    exactAddress: activity.exactAddress,
+    latitude: activity.latitude,
+    longitude: activity.longitude,
+    isApproximateLocation: activity.isApproximateLocation,
+    locationPrivacy: activity.locationPrivacy,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',

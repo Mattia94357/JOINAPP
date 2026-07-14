@@ -1,15 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, Linking, Platform, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { colors } from '../theme';
+import LocationPreviewModal from './LocationPreviewModal';
 
 export type Activity = {
   id: string;
   title: string;
   category: string;
   location: string;
+  locationName?: string;
+  exactAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  isApproximateLocation?: boolean;
+  locationPrivacy?: 'public' | 'approximate' | 'private';
   host: string;
   hostId: string;
   hostAvatar?: string;
@@ -57,6 +64,7 @@ export default function ActivityCard({
   const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
   const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
   const [cardHeight, setCardHeight] = useState(0);
+  const [locationPreviewVisible, setLocationPreviewVisible] = useState(false);
   const attendees = activity.attendees ?? activity.participants.length;
   const spotsLeft = activity.maxAttendees ? Math.max(activity.maxAttendees - attendees, 0) : null;
   const visibleParticipants = activity.participants.slice(0, 3);
@@ -71,15 +79,10 @@ export default function ActivityCard({
   const compact = width < 520;
   const dense = cardHeight > 0 && cardHeight < 540;
   const veryDense = cardHeight > 0 && cardHeight < 440;
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
   }, [entrance]);
-
-  const openMaps = () => {
-    Linking.openURL(mapsUrl).catch(() => undefined);
-  };
 
   const handleCardLayout = (event: LayoutChangeEvent) => {
     const nextHeight = Math.round(event.nativeEvent.layout.height);
@@ -168,21 +171,18 @@ export default function ActivityCard({
 
               <TouchableOpacity
                 style={[styles.metaLine, dense && styles.metaLineDense]}
-                onPress={openMaps}
-                onStartShouldSetResponder={() => true}
-                onResponderRelease={openMaps}
-                {...(Platform.OS === 'web' ? ({ onClick: openMaps } as any) : {})}
+                onPress={() => setLocationPreviewVisible(true)}
                 activeOpacity={0.78}
+                accessibilityRole="button"
+                accessibilityLabel={`Preview map for ${activity.locationName || activity.location}`}
               >
                 <View style={styles.locationPressable}>
                   <Ionicons name="location-outline" size={compact ? 17 : 20} color={colors.primary} />
                   <Text
                     style={[styles.metaText, compact && styles.metaTextCompact]}
                     numberOfLines={1}
-                    onPress={openMaps}
-                    {...(Platform.OS === 'web' ? ({ onClick: openMaps } as any) : {})}
                   >
-                    {activity.location}
+                    {activity.locationName || activity.location}
                   </Text>
                 </View>
                 <Text style={styles.metaDot}>•</Text>
@@ -235,6 +235,12 @@ export default function ActivityCard({
             </View>
           </View>
       </View>
+
+      <LocationPreviewModal
+        visible={locationPreviewVisible}
+        activity={activity}
+        onClose={() => setLocationPreviewVisible(false)}
+      />
 
     </Animated.View>
   );
