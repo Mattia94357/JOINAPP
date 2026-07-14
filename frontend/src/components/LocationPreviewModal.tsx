@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  ActivityIndicator,
   Linking,
   Modal,
   PanResponder,
@@ -14,6 +15,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { colors } from '../theme';
+import InteractiveLocationMap from './InteractiveLocationMap';
+
+type MapCoordinate = { latitude: number; longitude: number };
 
 export type LocationPreviewActivity = {
   location: string;
@@ -37,6 +41,8 @@ export default function LocationPreviewModal({ visible, activity, onClose }: Pro
   const safeAreaInsets = useContext(SafeAreaInsetsContext);
   const translateY = useRef(new Animated.Value(0)).current;
   const [mapsError, setMapsError] = useState(false);
+  const [mapCoordinate, setMapCoordinate] = useState<MapCoordinate | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
   const locationName = activity.locationName || activity.location;
   const isApproximate = Boolean(
     activity.isApproximateLocation
@@ -48,12 +54,55 @@ export default function LocationPreviewModal({ visible, activity, onClose }: Pro
     && Number.isFinite(activity.latitude)
     && Number.isFinite(activity.longitude);
 
+  const protectCoordinate = (coordinate: MapCoordinate): MapCoordinate => (
+    isApproximate
+      ? {
+          latitude: Math.round(coordinate.latitude * 100) / 100,
+          longitude: Math.round(coordinate.longitude * 100) / 100,
+        }
+      : coordinate
+  );
+
   useEffect(() => {
     if (visible) {
       translateY.setValue(0);
       setMapsError(false);
     }
   }, [translateY, visible]);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+
+    if (Number.isFinite(activity.latitude) && Number.isFinite(activity.longitude)) {
+      setMapCoordinate(protectCoordinate({
+        latitude: activity.latitude as number,
+        longitude: activity.longitude as number,
+      }));
+      setMapLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setMapCoordinate(null);
+    setMapLoading(true);
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(locationName)}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    })
+      .then((response) => response.ok ? response.json() : [])
+      .then((results) => {
+        const first = results?.[0];
+        const latitude = Number(first?.lat);
+        const longitude = Number(first?.lon);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          setMapCoordinate(protectCoordinate({ latitude, longitude }));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setMapLoading(false));
+
+    return () => controller.abort();
+  }, [activity.latitude, activity.longitude, isApproximate, locationName, visible]);
 
   const dismiss = () => {
     Animated.timing(translateY, {
@@ -85,7 +134,11 @@ export default function LocationPreviewModal({ visible, activity, onClose }: Pro
 
   const openExternalMaps = async () => {
     setMapsError(false);
-    const coordinates = hasCoordinates ? `${activity.latitude},${activity.longitude}` : undefined;
+    const coordinates = hasCoordinates
+      ? `${activity.latitude},${activity.longitude}`
+      : isApproximate && mapCoordinate
+        ? `${mapCoordinate.latitude},${mapCoordinate.longitude}`
+        : undefined;
     const query = coordinates || locationName;
     const encodedQuery = encodeURIComponent(query);
     const encodedLabel = encodeURIComponent(locationName);
@@ -168,17 +221,15 @@ export default function LocationPreviewModal({ visible, activity, onClose }: Pro
             </TouchableOpacity>
           </View>
 
-          <View style={styles.mapPreview} accessibilityLabel={`Map preview of ${locationName}`}>
-            <View style={[styles.mapBlock, styles.mapBlockOne]} />
-            <View style={[styles.mapBlock, styles.mapBlockTwo]} />
-            <View style={[styles.mapBlock, styles.mapBlockThree]} />
-            <View style={[styles.road, styles.roadOne]} />
-            <View style={[styles.road, styles.roadTwo]} />
-            <View style={[styles.road, styles.roadThree]} />
-            <View style={styles.areaHalo} />
-            <View style={styles.pinCircle}>
-              <Ionicons name="location" size={28} color={colors.primary} />
-            </View>
+          <View style={styles.mapPreview} accessibilityLabel={`Interactive map of ${locationName}`}>
+            {mapCoordinate ? (
+              <InteractiveLocationMap coordinate={mapCoordinate} approximate={isApproximate} />
+            ) : (
+              <View style={styles.mapFallback}>
+                {mapLoading ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="map-outline" size={30} color={colors.primary} />}
+                <Text style={styles.mapFallbackText}>{mapLoading ? 'Finding activity area…' : 'Map preview unavailable'}</Text>
+              </View>
+            )}
             <View style={styles.mapLabel}>
               <Text style={styles.mapLabelText} numberOfLines={1}>
                 {isApproximate ? 'Approximate activity area' : locationName}
@@ -290,50 +341,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.16)',
   },
-  mapBlock: {
-    position: 'absolute',
-    borderRadius: 8,
-    backgroundColor: '#282720',
-  },
-  mapBlockOne: { width: 118, height: 66, left: 18, top: 18, transform: [{ rotate: '-5deg' }] },
-  mapBlockTwo: { width: 150, height: 72, right: 12, top: 28, transform: [{ rotate: '8deg' }] },
-  mapBlockThree: { width: 190, height: 64, left: 54, bottom: 14, transform: [{ rotate: '-3deg' }] },
-  road: {
-    position: 'absolute',
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: '#39372E',
-  },
-  roadOne: { width: '120%', left: '-10%', top: 100, transform: [{ rotate: '-12deg' }] },
-  roadTwo: { width: '90%', left: '8%', top: 62, transform: [{ rotate: '34deg' }] },
-  roadThree: { width: '84%', left: '24%', top: 151, transform: [{ rotate: '-29deg' }] },
-  areaHalo: {
-    position: 'absolute',
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    left: '50%',
-    top: '50%',
-    marginLeft: -39,
-    marginTop: -39,
-    backgroundColor: 'rgba(246,196,69,0.09)',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.18)',
-  },
-  pinCircle: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    width: 44,
-    height: 44,
-    marginLeft: -22,
-    marginTop: -27,
-    borderRadius: 22,
+  mapFallback: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10,10,9,0.92)',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
+    backgroundColor: '#1B1B18',
+  },
+  mapFallbackText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
   },
   mapLabel: {
     position: 'absolute',
