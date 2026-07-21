@@ -171,51 +171,15 @@ export default function ActivityCard({
               </Animated.View>
             </View>
 
-            <View style={styles.decisionControls} pointerEvents="box-none">
-              <Animated.View style={{ transform: [{ scale: passScale }] }}>
-                <TouchableOpacity
-                  style={styles.decisionTouchTarget}
-                  onPress={onPass}
-                  onPressIn={() => animateDecisionPress(passScale, true)}
-                  onPressOut={() => animateDecisionPress(passScale, false)}
-                  disabled={!onPass || actionsDisabled}
-                  activeOpacity={0.76}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pass on activity"
-                >
-                  <View style={styles.decisionButton}>
-                    <Ionicons name="close" size={25} color={colors.primary} />
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-
-              <TouchableOpacity
-                style={styles.detailsNavigationButton}
-                onPress={onPress}
-                activeOpacity={0.76}
-                accessibilityRole="button"
-                accessibilityLabel="Open activity details"
-              >
-                <Ionicons name="chevron-up" size={22} color={colors.primary} />
-              </TouchableOpacity>
-
-              <Animated.View style={{ transform: [{ scale: joinScale }] }}>
-                <TouchableOpacity
-                  style={styles.decisionTouchTarget}
-                  onPress={onJoin}
-                  onPressIn={() => animateDecisionPress(joinScale, true)}
-                  onPressOut={() => animateDecisionPress(joinScale, false)}
-                  disabled={!onJoin || actionsDisabled}
-                  activeOpacity={0.76}
-                  accessibilityRole="button"
-                  accessibilityLabel="Join activity"
-                >
-                  <View style={styles.decisionButton}>
-                    <Ionicons name="checkmark" size={26} color={colors.primary} />
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-            </View>
+            <TouchableOpacity
+              style={styles.detailsNavigationButton}
+              onPress={onPress}
+              activeOpacity={0.76}
+              accessibilityRole="button"
+              accessibilityLabel="Open activity details"
+            >
+              <Ionicons name="chevron-up" size={22} color={colors.primary} />
+            </TouchableOpacity>
 
             <View style={[styles.imageCopy, compact && styles.imageCopyCompact, dense && styles.imageCopyDense, veryDense && styles.imageCopyVeryDense]}>
               <Text style={[styles.title, compact && styles.titleCompact, dense && styles.titleDense]} numberOfLines={1}>{activity.title}</Text>
@@ -225,7 +189,7 @@ export default function ActivityCard({
                 activeOpacity={0.85}
                 onPress={() => onOpenProfile?.({ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar })}
               >
-              <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={compact ? 34 : 40} />
+              <AvatarBadge name={activity.host} avatarUrl={activity.hostAvatar} size={72} />
                 <View style={styles.hostCopy}>
                   <Text style={styles.hostLabel}>HOSTED BY</Text>
                 <Text style={[styles.hostText, compact && styles.hostTextCompact]} numberOfLines={1}>{activity.host}</Text>
@@ -296,6 +260,42 @@ export default function ActivityCard({
                 <Ionicons name="chevron-forward-outline" size={compact ? 22 : 26} color={colors.text} />
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={styles.decisionControls} pointerEvents="box-none">
+            <Animated.View style={{ transform: [{ scale: passScale }] }}>
+              <TouchableOpacity
+                style={styles.decisionTouchTarget}
+                onPress={onPass}
+                onPressIn={() => animateDecisionPress(passScale, true)}
+                onPressOut={() => animateDecisionPress(passScale, false)}
+                disabled={!onPass || actionsDisabled}
+                activeOpacity={0.76}
+                accessibilityRole="button"
+                accessibilityLabel="Pass on activity"
+              >
+                <View style={styles.decisionButton}>
+                  <Ionicons name="close" size={25} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+
+            <Animated.View style={{ transform: [{ scale: joinScale }] }}>
+              <TouchableOpacity
+                style={styles.decisionTouchTarget}
+                onPress={onJoin}
+                onPressIn={() => animateDecisionPress(joinScale, true)}
+                onPressOut={() => animateDecisionPress(joinScale, false)}
+                disabled={!onJoin || actionsDisabled}
+                activeOpacity={0.76}
+                accessibilityRole="button"
+                accessibilityLabel="Join activity"
+              >
+                <View style={styles.decisionButton}>
+                  <Ionicons name="checkmark" size={26} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
           </View>
       </View>
 
@@ -432,13 +432,13 @@ const styles = StyleSheet.create({
   },
   decisionControls: {
     position: 'absolute',
-    top: '48%',
+    bottom: -22,
     left: 14,
     right: 14,
-    height: 52,
-    zIndex: 3,
+    height: 44,
+    zIndex: 5,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
   decisionTouchTarget: {
@@ -465,11 +465,12 @@ const styles = StyleSheet.create({
   },
   detailsNavigationButton: {
     position: 'absolute',
-    top: -20,
+    top: '48%',
     left: '50%',
     width: 40,
     height: 40,
     marginLeft: -20,
+    marginTop: -20,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
