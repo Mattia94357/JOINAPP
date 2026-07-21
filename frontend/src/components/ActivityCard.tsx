@@ -128,7 +128,7 @@ export default function ActivityCard({
           transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
         }]}
     >
-      <View style={styles.fill}>
+      <View style={styles.cardStage}>
         <View style={[styles.card, styles.imageFrame]} onLayout={handleCardLayout}>
             <Animated.Image
               source={{ uri: coverImage }}
@@ -263,7 +263,7 @@ export default function ActivityCard({
           </View>
 
           <View style={styles.decisionControls} pointerEvents="box-none">
-            <Animated.View style={{ transform: [{ scale: passScale }] }}>
+            <Animated.View style={[styles.passDecisionControl, { transform: [{ scale: passScale }] }]}>
               <TouchableOpacity
                 style={styles.decisionTouchTarget}
                 onPress={onPass}
@@ -275,12 +275,12 @@ export default function ActivityCard({
                 accessibilityLabel="Pass on activity"
               >
                 <View style={styles.decisionButton}>
-                  <Ionicons name="close" size={25} color={colors.primary} />
+                  <Ionicons name="close" size={30} color={colors.primary} />
                 </View>
               </TouchableOpacity>
             </Animated.View>
 
-            <Animated.View style={{ transform: [{ scale: joinScale }] }}>
+            <Animated.View style={[styles.joinDecisionControl, { transform: [{ scale: joinScale }] }]}>
               <TouchableOpacity
                 style={styles.decisionTouchTarget}
                 onPress={onJoin}
@@ -292,7 +292,7 @@ export default function ActivityCard({
                 accessibilityLabel="Join activity"
               >
                 <View style={styles.decisionButton}>
-                  <Ionicons name="checkmark" size={26} color={colors.primary} />
+                  <Ionicons name="checkmark" size={31} color={colors.primary} />
                 </View>
               </TouchableOpacity>
             </Animated.View>
@@ -314,6 +314,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     width: '100%',
+  },
+  cardStage: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    paddingBottom: 38,
   },
   card: {
     flex: 1,
@@ -433,25 +439,32 @@ const styles = StyleSheet.create({
   decisionControls: {
     position: 'absolute',
     bottom: -18,
-    left: 48,
-    right: 48,
-    height: 44,
+    left: 0,
+    right: 0,
+    height: 56,
     zIndex: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  },
+  passDecisionControl: {
+    position: 'absolute',
+    left: '20%',
+    marginLeft: -28,
+  },
+  joinDecisionControl: {
+    position: 'absolute',
+    right: '20%',
+    marginRight: -28,
   },
   decisionTouchTarget: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   decisionButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
