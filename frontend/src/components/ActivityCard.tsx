@@ -432,9 +432,9 @@ const styles = StyleSheet.create({
   },
   decisionControls: {
     position: 'absolute',
-    bottom: -22,
-    left: 14,
-    right: 14,
+    bottom: -18,
+    left: 48,
+    right: 48,
     height: 44,
     zIndex: 5,
     flexDirection: 'row',
