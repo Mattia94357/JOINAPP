@@ -275,7 +275,7 @@ export default function ActivityCard({
                 accessibilityLabel="Pass on activity"
               >
                 <View style={styles.decisionButton}>
-                  <Ionicons name="close" size={30} color={colors.primary} />
+                  <Ionicons name="close" size={34} color={colors.primary} />
                 </View>
               </TouchableOpacity>
             </Animated.View>
@@ -292,7 +292,7 @@ export default function ActivityCard({
                 accessibilityLabel="Join activity"
               >
                 <View style={styles.decisionButton}>
-                  <Ionicons name="checkmark" size={31} color={colors.primary} />
+                  <Ionicons name="checkmark" size={35} color={colors.primary} />
                 </View>
               </TouchableOpacity>
             </Animated.View>
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     width: '100%',
-    paddingBottom: 38,
+    paddingBottom: 22,
   },
   card: {
     flex: 1,
@@ -438,20 +438,20 @@ const styles = StyleSheet.create({
   },
   decisionControls: {
     position: 'absolute',
-    bottom: -18,
+    bottom: -6,
     left: 0,
     right: 0,
     height: 56,
-    zIndex: 5,
+    zIndex: 20,
   },
   passDecisionControl: {
     position: 'absolute',
-    left: '20%',
+    left: '25%',
     marginLeft: -28,
   },
   joinDecisionControl: {
     position: 'absolute',
-    right: '20%',
+    right: '25%',
     marginRight: -28,
   },
   decisionTouchTarget: {
@@ -462,19 +462,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   decisionButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(246,196,69,0.48)',
     backgroundColor: 'rgba(15,14,12,0.94)',
     shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 10,
   },
   detailsNavigationButton: {
     position: 'absolute',
