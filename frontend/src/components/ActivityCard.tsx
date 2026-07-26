@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     position: 'absolute',
-    top: 64,
+    top: 100,
     left: 14,
     right: 14,
     flexDirection: 'row',
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   cardHeaderCompact: {
-    top: 58,
+    top: 94,
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   },
   decisionControls: {
     position: 'absolute',
-    bottom: -11,
+    bottom: -6,
     left: 0,
     right: 0,
     height: 56,

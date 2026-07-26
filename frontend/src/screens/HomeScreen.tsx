@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   },
   topBar: {
     position: 'absolute',
-    top: 8,
+    top: 22,
     left: 0,
     right: 0,
     zIndex: 30,
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   topBarCompact: {
-    top: 6,
+    top: 20,
     gap: 8,
   },
   filterBackdrop: {
