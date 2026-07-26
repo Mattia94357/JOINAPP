@@ -150,7 +150,7 @@ export default function ActivityCard({
               accessibilityLabel="Open activity details"
             />
 
-            <View style={styles.cardHeader} pointerEvents="box-none">
+            <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]} pointerEvents="box-none">
               <View style={styles.categoryBadge} pointerEvents="none">
                 <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
               </View>
@@ -325,6 +325,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     width: '100%',
     paddingBottom: 22,
+    backgroundColor: '#090909',
   },
   card: {
     flex: 1,
@@ -372,7 +373,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '30%',
+    height: '36%',
     backgroundColor: 'rgba(0,0,0,0.32)',
   },
   imagePressTarget: {
@@ -385,13 +386,16 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     position: 'absolute',
-    top: 14,
+    top: 64,
     left: 14,
     right: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 2,
+  },
+  cardHeaderCompact: {
+    top: 58,
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -453,7 +457,7 @@ const styles = StyleSheet.create({
   },
   decisionControls: {
     position: 'absolute',
-    bottom: -3,
+    bottom: -11,
     left: 0,
     right: 0,
     height: 56,
@@ -608,10 +612,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   aboutRow: {
-    marginBottom: 16,
+    marginBottom: 26,
   },
   aboutRowDense: {
-    marginBottom: 6,
+    marginBottom: 26,
   },
   aboutLabel: {
     color: 'rgba(245,238,224,0.58)',
@@ -632,7 +636,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 42,
-    transform: [{ translateY: -6 }],
+    transform: [{ translateY: -18 }],
   },
   peopleRowDense: {
     minHeight: 34,

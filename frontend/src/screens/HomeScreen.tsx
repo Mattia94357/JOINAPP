@@ -292,6 +292,12 @@ export default function HomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, Platform.OS === 'web' && styles.containerWeb, compact && styles.containerCompact]}>
+      <View
+        pointerEvents="none"
+        style={[styles.filterBackdrop, compact && styles.filterBackdropCompact]}
+      >
+        <View style={styles.filterBackdropFade} />
+      </View>
       <View style={[styles.topBar, compact && styles.topBarCompact]}>
         <TouchableOpacity style={[styles.filterButton, compact && styles.filterButtonCompact]} onPress={() => setCategoryModalVisible(true)} activeOpacity={0.82}>
             <Ionicons name="options-outline" size={compact ? 20 : 24} color={colors.primary} />
@@ -533,19 +539,47 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   topBar: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    zIndex: 30,
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
     width: '100%',
     maxWidth: 466,
+    marginHorizontal: 'auto' as any,
     paddingHorizontal: 18,
-    marginBottom: 20,
     gap: 8,
   },
   topBarCompact: {
+    top: 6,
     gap: 8,
-    marginBottom: 18,
+  },
+  filterBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 86,
+    zIndex: 20,
+    backgroundColor: 'rgba(0,0,0,0.26)',
+    ...(Platform.OS === 'web' ? ({
+      backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.24) 62%, rgba(0,0,0,0) 100%)',
+    } as any) : {}),
+  },
+  filterBackdropCompact: {
+    height: 80,
+  },
+  filterBackdropFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -20,
+    height: 40,
+    backgroundColor: Platform.OS === 'web' ? 'transparent' : 'rgba(0,0,0,0.1)',
   },
   filterButton: {
     height: 42,
@@ -617,7 +651,7 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
     marginTop: 0,
-    paddingHorizontal: 2,
+    paddingHorizontal: 0,
     paddingBottom: Platform.OS === 'web'
       ? (`calc(${BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP}px + env(safe-area-inset-bottom))` as any)
       : BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP,
