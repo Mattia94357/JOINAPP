@@ -263,39 +263,41 @@ export default function ActivityCard({
           </View>
 
           <View style={styles.decisionControls} pointerEvents="box-none">
-            <Animated.View style={[styles.passDecisionControl, { transform: [{ scale: passScale }] }]}>
-              <TouchableOpacity
-                style={styles.decisionTouchTarget}
-                onPress={onPass}
-                onPressIn={() => animateDecisionPress(passScale, true)}
-                onPressOut={() => animateDecisionPress(passScale, false)}
-                disabled={!onPass || actionsDisabled}
-                activeOpacity={0.76}
-                accessibilityRole="button"
-                accessibilityLabel="Pass on activity"
-              >
-                <View style={styles.decisionButton}>
-                  <Ionicons name="close" size={34} color={colors.primary} />
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
+            <View style={styles.decisionPair} pointerEvents="box-none">
+              <Animated.View style={[styles.passDecisionControl, { transform: [{ scale: passScale }] }]}>
+                <TouchableOpacity
+                  style={styles.decisionTouchTarget}
+                  onPress={onPass}
+                  onPressIn={() => animateDecisionPress(passScale, true)}
+                  onPressOut={() => animateDecisionPress(passScale, false)}
+                  disabled={!onPass || actionsDisabled}
+                  activeOpacity={0.76}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pass on activity"
+                >
+                  <View style={styles.decisionButton}>
+                    <Ionicons name="close" size={34} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
 
-            <Animated.View style={[styles.joinDecisionControl, { transform: [{ scale: joinScale }] }]}>
-              <TouchableOpacity
-                style={styles.decisionTouchTarget}
-                onPress={onJoin}
-                onPressIn={() => animateDecisionPress(joinScale, true)}
-                onPressOut={() => animateDecisionPress(joinScale, false)}
-                disabled={!onJoin || actionsDisabled}
-                activeOpacity={0.76}
-                accessibilityRole="button"
-                accessibilityLabel="Join activity"
-              >
-                <View style={styles.decisionButton}>
-                  <Ionicons name="checkmark" size={35} color={colors.primary} />
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
+              <Animated.View style={[styles.joinDecisionControl, { transform: [{ scale: joinScale }] }]}>
+                <TouchableOpacity
+                  style={styles.decisionTouchTarget}
+                  onPress={onJoin}
+                  onPressIn={() => animateDecisionPress(joinScale, true)}
+                  onPressOut={() => animateDecisionPress(joinScale, false)}
+                  disabled={!onJoin || actionsDisabled}
+                  activeOpacity={0.76}
+                  accessibilityRole="button"
+                  accessibilityLabel="Join activity"
+                >
+                  <View style={styles.decisionButton}>
+                    <Ionicons name="checkmark" size={35} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
           </View>
       </View>
 
@@ -443,16 +445,20 @@ const styles = StyleSheet.create({
     right: 0,
     height: 56,
     zIndex: 20,
+    alignItems: 'center',
+  },
+  decisionPair: {
+    position: 'relative',
+    width: '25%',
+    height: 56,
   },
   passDecisionControl: {
     position: 'absolute',
-    left: '25%',
-    marginLeft: -28,
+    left: -28,
   },
   joinDecisionControl: {
     position: 'absolute',
-    right: '25%',
-    marginRight: -28,
+    right: -28,
   },
   decisionTouchTarget: {
     width: 56,
@@ -462,9 +468,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   decisionButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 57.2,
+    height: 57.2,
+    borderRadius: 28.6,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
