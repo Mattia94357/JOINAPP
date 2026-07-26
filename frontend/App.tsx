@@ -16,7 +16,9 @@ import NotificationsScreen from './src/screens/NotificationsScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
+import MessagesScreen, { MessageRequestsScreen } from './src/screens/MessagesScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { MessagingProvider } from './src/context/MessagingContext';
 import { colors } from './src/theme';
 import { getApiConfigStatus, initializeApiConfig } from './src/api';
 import ResponsiveAppContainer from './src/components/ResponsiveAppContainer';
@@ -33,6 +35,8 @@ export type RootStackParamList = {
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };
+  Messages: undefined;
+  MessageRequests: undefined;
   Profile: undefined;
   Settings: undefined;
   Notifications: undefined;
@@ -102,6 +106,8 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
             <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
+            <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
+            <Stack.Screen name="MessageRequests" component={MessageRequestsScreen} options={{ title: 'Message Requests' }} />
             <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.title })} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
@@ -213,7 +219,9 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <AppCanvas />
+      <MessagingProvider>
+        <AppCanvas />
+      </MessagingProvider>
       <StatusBar style="light" />
     </AuthProvider>
   );

@@ -17,7 +17,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import SwipeDeck from '../components/SwipeDeck';
 import ParticipantsModal from '../components/ParticipantsModal';
-import BottomNavigation from '../components/BottomNavigation';
+import BottomNavigation, {
+  BOTTOM_NAV_CONTENT_GAP,
+  BOTTOM_NAV_HEIGHT,
+} from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest, updatePushTokenRequest } from '../api';
 import { curatedActivities } from '../utils/curatedActivities';
@@ -517,7 +520,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     backgroundColor: '#0B0B0B',
-    paddingHorizontal: 18,
+    paddingHorizontal: 0,
     paddingTop: 8,
   },
   containerWeb: {
@@ -526,7 +529,7 @@ const styles = StyleSheet.create({
     paddingTop: 'calc(8px + env(safe-area-inset-top))' as any,
   },
   containerCompact: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 0,
     paddingTop: 6,
   },
   topBar: {
@@ -535,7 +538,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'center',
     width: '100%',
-    maxWidth: 430,
+    maxWidth: 466,
+    paddingHorizontal: 18,
     marginBottom: 20,
     gap: 8,
   },
@@ -610,12 +614,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     width: '100%',
-    maxWidth: 430,
+    maxWidth: 520,
     alignSelf: 'center',
     marginTop: 0,
+    paddingHorizontal: 2,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(72px + env(safe-area-inset-bottom))' as any)
-      : 72,
+      ? (`calc(${BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP}px + env(safe-area-inset-bottom))` as any)
+      : BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP,
   },
   skeletonCard: {
     flex: 1,
@@ -624,15 +629,9 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
+    borderRadius: 2,
+    borderWidth: 0,
     padding: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
   },
   skeletonImage: {
     flex: 1,

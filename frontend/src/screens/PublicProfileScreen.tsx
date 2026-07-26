@@ -3,18 +3,25 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacit
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
-import { blockUserRequest, fetchPublicUserRequest, reportUserRequest, ApiUser } from '../api';
+import {
+  blockUserRequest,
+  fetchPublicUserRequest,
+  openDirectConversationRequest,
+  reportUserRequest,
+  ApiUser,
+} from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PublicProfile'>;
 
-export default function PublicProfileScreen({ route }: Props) {
+export default function PublicProfileScreen({ route, navigation }: Props) {
   const { userId, fallbackName, fallbackAvatar } = route.params;
   const { token, user } = useAuth();
   const [profile, setProfile] = useState<(ApiUser & { hostedActivities?: any[]; joinedActivities?: any[] }) | null>(null);
   const [loading, setLoading] = useState(Boolean(userId));
+  const [openingMessage, setOpeningMessage] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -76,6 +83,26 @@ export default function PublicProfileScreen({ route }: Props) {
     }
   };
 
+  const handleSendMessage = async () => {
+    if (!token || !targetUserId || openingMessage) {
+      if (!token) Alert.alert('Sign in required', 'Please log in to send a message.');
+      return;
+    }
+
+    setOpeningMessage(true);
+    try {
+      const response = await openDirectConversationRequest(targetUserId, token);
+      navigation.navigate('Chat', {
+        chatId: response.data.chatId,
+        title: response.data.title || name,
+      });
+    } catch (error: any) {
+      Alert.alert('Unable to open messages', error?.response?.data?.message || 'Please try again later.');
+    } finally {
+      setOpeningMessage(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <AvatarBadge name={name} avatarUrl={image} size={112} />
@@ -90,6 +117,21 @@ export default function PublicProfileScreen({ route }: Props) {
           <View style={styles.badge}><Ionicons name="star-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile.hostRating} rating</Text></View>
         ) : null}
       </View>
+
+      {targetUserId && targetUserId !== user?.id ? (
+        <TouchableOpacity
+          style={styles.messageButton}
+          onPress={handleSendMessage}
+          disabled={openingMessage}
+          accessibilityRole="button"
+          accessibilityLabel={`Send message to ${name}`}
+        >
+          {openingMessage
+            ? <ActivityIndicator color={colors.primaryText} size="small" />
+            : <Ionicons name="chatbubble-outline" size={18} color={colors.primaryText} />}
+          <Text style={styles.messageButtonText}>{openingMessage ? 'Opening...' : 'Send Message'}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {targetUserId && targetUserId !== user?.id ? (
         <View style={styles.safetyActions}>
@@ -152,6 +194,21 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   badgeText: { color: colors.text, fontWeight: '800', marginLeft: spacing.xs, fontSize: 12 },
+  messageButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    marginTop: spacing.md,
+  },
+  messageButtonText: {
+    color: colors.primaryText,
+    fontSize: 14,
+    fontWeight: '900',
+    marginLeft: spacing.sm,
+  },
   safetyActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   safetyButton: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
   safetyText: { color: colors.text, fontWeight: '900', marginLeft: spacing.xs, fontSize: 12 },

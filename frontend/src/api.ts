@@ -291,6 +291,25 @@ export type ActivityResponse = {
   chatId?: string;
 };
 
+export type ConversationSummary = {
+  id: string;
+  type: 'activity' | 'direct';
+  state: 'active' | 'request';
+  title: string;
+  image?: string;
+  activity?: { id: string; title: string; coverImage?: string };
+  user?: { id: string; name: string; avatar?: string };
+  latestMessage: string;
+  latestMessageAt: string;
+  unread: boolean;
+};
+
+export type ConversationListResponse = {
+  conversations: ConversationSummary[];
+  unreadConversationCount: number;
+  unreadRequestCount: number;
+};
+
 const mapParticipant = (participant: RawAvatarUser) => ({
   id: participant._id || participant.id,
   name: participant.name,
@@ -527,6 +546,24 @@ export const sendChatMessageRequest = async (chatId: string, message: string, to
   api.post(`/api/chats/${chatId}/message`, { message }, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+export const fetchConversationsRequest = async (token: string, scope: 'active' | 'requests' = 'active') =>
+  api.get<ConversationListResponse>('/api/chats', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { scope },
+  });
+
+export const fetchUnreadConversationCountRequest = async (token: string) =>
+  api.get<{ unreadConversationCount: number; unreadRequestCount: number }>('/api/chats/unread-count', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const openDirectConversationRequest = async (userId: string, token: string) =>
+  api.post<{ chatId: string; state: 'active' | 'request'; title: string }>(
+    `/api/chats/direct/${userId}`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
 
 export const forgotPasswordRequest = (email: string) =>
   api.post('/api/auth/forgot-password', { email });

@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     width: '100%',
-    maxWidth: 430,
+    maxWidth: 520,
     alignSelf: 'center',
     touchAction: 'pan-y' as any,
   },

@@ -87,6 +87,7 @@ export default function ActivityCard({
   const compact = width < 520;
   const dense = cardHeight > 0 && cardHeight < 540;
   const veryDense = cardHeight > 0 && cardHeight < 440;
+  const decisionPairWidth = Math.min(Math.max(width - 36, 0), 430) * 0.25;
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
@@ -137,6 +138,8 @@ export default function ActivityCard({
             />
             <View style={styles.imageWarmth} />
             <View style={styles.bottomScrim} />
+            <View style={styles.bottomScrimMid} />
+            <View style={styles.bottomScrimDeep} />
 
             <Pressable
               style={styles.imagePressTarget}
@@ -263,7 +266,7 @@ export default function ActivityCard({
           </View>
 
           <View style={styles.decisionControls} pointerEvents="box-none">
-            <View style={styles.decisionPair} pointerEvents="box-none">
+            <View style={[styles.decisionPair, { width: decisionPairWidth }]} pointerEvents="box-none">
               <Animated.View style={[styles.passDecisionControl, { transform: [{ scale: passScale }] }]}>
                 <TouchableOpacity
                   style={styles.decisionTouchTarget}
@@ -328,15 +331,9 @@ const styles = StyleSheet.create({
     minHeight: 0,
     width: '100%',
     backgroundColor: '#101010',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.52)',
+    borderRadius: 2,
+    borderWidth: 0,
     overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
   },
   imageFrame: {
     width: '100%',
@@ -359,8 +356,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '52%',
-    backgroundColor: 'rgba(0,0,0,0.54)',
+    height: '64%',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  bottomScrimMid: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '48%',
+    backgroundColor: 'rgba(0,0,0,0.24)',
+  },
+  bottomScrimDeep: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '30%',
+    backgroundColor: 'rgba(0,0,0,0.32)',
   },
   imagePressTarget: {
     position: 'absolute',
@@ -449,7 +462,6 @@ const styles = StyleSheet.create({
   },
   decisionPair: {
     position: 'relative',
-    width: '25%',
     height: 56,
   },
   passDecisionControl: {
@@ -620,6 +632,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 42,
+    transform: [{ translateY: -6 }],
   },
   peopleRowDense: {
     minHeight: 34,

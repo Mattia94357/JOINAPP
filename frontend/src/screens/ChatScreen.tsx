@@ -16,6 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
+import { useMessaging } from '../context/MessagingContext';
 import { fetchChatRequest, sendChatMessageRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import BottomNavigation, {
@@ -39,6 +40,7 @@ type ChatMessage = {
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
   const { token, user } = useAuth();
+  const { refreshUnreadConversations } = useMessaging();
   const safeAreaInsets = useContext(SafeAreaInsetsContext);
   const bottomNavigationClearance = Platform.OS === 'web'
     ? BOTTOM_NAV_WEB_CONTENT_CLEARANCE
@@ -47,6 +49,8 @@ export default function ChatScreen({ route }: Props) {
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [lockedMessage, setLockedMessage] = useState('');
+  const [chatTitle, setChatTitle] = useState(route.params.title);
+  const [chatKind, setChatKind] = useState<'activity' | 'direct'>('activity');
 
   useEffect(() => {
     if (chatId !== 'general' && token) {
@@ -57,15 +61,22 @@ export default function ChatScreen({ route }: Props) {
           const response = await fetchChatRequest(chatId, token);
           const chatData = response.data;
           if (chatData && Array.isArray(chatData.messages)) {
+            const isDirect = chatData.chatType === 'directPrivateChat';
+            const otherMember = isDirect
+              ? chatData.members?.find((member: any) => (member._id || member.id) !== user?.id)
+              : null;
+            setChatKind(isDirect ? 'direct' : 'activity');
+            setChatTitle(isDirect ? otherMember?.name || route.params.title : chatData.activity?.title || route.params.title);
             setMessages(chatData.messages.map((message: any, index: number) => ({
               id: message._id || String(index),
               author: message.author?.name || 'Member',
               text: message.message,
-              time: message.createdAt
-                ? new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+              time: message.sentAt
+                ? new Date(message.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
                 : 'Now',
               reactions: [],
             })));
+            await refreshUnreadConversations();
           }
         } catch (error) {
           console.warn(error);
@@ -78,7 +89,7 @@ export default function ChatScreen({ route }: Props) {
 
       loadChat();
     }
-  }, [chatId, token]);
+  }, [chatId, refreshUnreadConversations, route.params.title, token, user?.id]);
 
   const sendMessage = async () => {
     if (!draft.trim() || lockedMessage) return;
@@ -100,6 +111,7 @@ export default function ChatScreen({ route }: Props) {
       try {
         await sendChatMessageRequest(chatId, nextMessage, token);
         setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'sent' } : message));
+        await refreshUnreadConversations();
       } catch (error: any) {
         setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
         Alert.alert('Message not sent', error?.response?.data?.message || 'You need to join this activity to access the chat.');
@@ -147,8 +159,8 @@ export default function ChatScreen({ route }: Props) {
           <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
         </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>Group chat</Text>
-          <Text style={styles.headerMeta}>Chat unlocks after you join the plan</Text>
+          <Text style={styles.headerTitle}>{chatTitle}</Text>
+          <Text style={styles.headerMeta}>{chatKind === 'activity' ? 'Activity group chat' : 'Direct conversation'}</Text>
         </View>
       </View>
 
@@ -203,7 +215,7 @@ export default function ChatScreen({ route }: Props) {
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="Message the group..."
+          placeholder={chatKind === 'activity' ? 'Message the group...' : 'Write a message...'}
           placeholderTextColor={colors.textSubtle}
           value={draft}
           onChangeText={setDraft}

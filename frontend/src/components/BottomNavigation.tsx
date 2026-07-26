@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { useMessaging } from '../context/MessagingContext';
 import { colors } from '../theme';
 
 type BottomNavTab = 'discover' | 'host' | 'notifications' | 'messages' | 'profile';
@@ -21,6 +22,7 @@ type BottomNavIconProps = {
   accessibilityLabel: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   onPress: () => void;
+  badgeCount?: number;
 };
 
 const activeTabByRoute: Partial<Record<keyof RootStackParamList, BottomNavTab>> = {
@@ -28,10 +30,12 @@ const activeTabByRoute: Partial<Record<keyof RootStackParamList, BottomNavTab>> 
   CreateActivity: 'host',
   Notifications: 'notifications',
   Chat: 'messages',
+  Messages: 'messages',
+  MessageRequests: 'messages',
   Profile: 'profile',
 };
 
-function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavIconProps) {
+function BottomNavIcon({ active, accessibilityLabel, icon, onPress, badgeCount = 0 }: BottomNavIconProps) {
   const pressProgress = useRef(new Animated.Value(0)).current;
   const activeProgress = useRef(new Animated.Value(0)).current;
   const activeIconScale = useRef(new Animated.Value(1)).current;
@@ -121,6 +125,11 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress }: BottomNavI
           >
             <Ionicons name={icon} size={27.5} color={colors.primary} style={styles.bottomNavGlyph} />
           </Animated.View>
+          {badgeCount > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+            </View>
+          ) : null}
         </Animated.View>
       )}
     </Pressable>
@@ -131,11 +140,12 @@ export default function BottomNavigation() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  const { unreadConversationCount } = useMessaging();
   const activeTab = activeTabByRoute[route.name];
 
   const openMessages = () => {
-    if (route.name !== 'Chat') {
-      navigation.navigate('Chat', { chatId: 'general', title: 'Messages' });
+    if (route.name !== 'Messages') {
+      navigation.navigate('Messages');
     }
   };
 
@@ -147,7 +157,13 @@ export default function BottomNavigation() {
       <BottomNavIcon active={activeTab === 'discover'} accessibilityLabel="Discover" icon="compass-outline" onPress={() => navigation.navigate('Home')} />
       <BottomNavIcon active={activeTab === 'host'} accessibilityLabel="Host" icon="add-circle-outline" onPress={() => navigation.navigate('CreateActivity')} />
       <BottomNavIcon active={activeTab === 'notifications'} accessibilityLabel="Notifications" icon="notifications-outline" onPress={() => navigation.navigate('Notifications')} />
-      <BottomNavIcon active={activeTab === 'messages'} accessibilityLabel="Messages" icon="chatbubbles-outline" onPress={openMessages} />
+      <BottomNavIcon
+        active={activeTab === 'messages'}
+        accessibilityLabel={`Messages${unreadConversationCount ? `, ${unreadConversationCount} unread conversations` : ''}`}
+        icon="chatbubbles-outline"
+        onPress={openMessages}
+        badgeCount={unreadConversationCount}
+      />
       <BottomNavIcon active={activeTab === 'profile'} accessibilityLabel="Profile" icon="person-outline" onPress={() => navigation.navigate('Profile')} />
     </View>
   );
@@ -244,5 +260,26 @@ const styles = StyleSheet.create({
   },
   bottomNavIconPressed: {
     borderColor: 'rgba(244,197,66,0.18)',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+    zIndex: 3,
+  },
+  unreadBadgeText: {
+    color: colors.primaryText,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '900',
   },
 });
