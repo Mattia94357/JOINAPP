@@ -17,6 +17,8 @@ import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import MessagesScreen, { MessageRequestsScreen } from './src/screens/MessagesScreen';
+import MapModeScreen from './src/screens/MapModeScreen';
+import type { Activity } from './src/components/ActivityCard';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { MessagingProvider } from './src/context/MessagingContext';
 import { colors } from './src/theme';
@@ -32,6 +34,7 @@ export type RootStackParamList = {
   ResetPassword: { token?: string } | undefined;
   PublicProfile: { userId?: string; fallbackName?: string; fallbackAvatar?: string };
   Home: undefined;
+  MapMode: { activity: Activity };
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };
@@ -104,6 +107,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
         {user ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MapMode" component={MapModeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
             <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
             <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />

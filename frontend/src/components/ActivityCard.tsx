@@ -52,6 +52,7 @@ type Props = {
   onJoin?: () => void;
   actionsDisabled?: boolean;
   onSave?: () => void;
+  onMapMode?: () => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
 };
@@ -63,6 +64,7 @@ export default function ActivityCard({
   onJoin,
   actionsDisabled,
   onSave,
+  onMapMode,
   onViewParticipants,
   onOpenProfile,
 }: Props) {
@@ -165,6 +167,7 @@ export default function ActivityCard({
                       Animated.spring(mapScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
                     ]).start();
                     console.log('Map Mode');
+                    onMapMode?.();
                   }}
                   activeOpacity={0.78}
                   accessibilityRole="button"

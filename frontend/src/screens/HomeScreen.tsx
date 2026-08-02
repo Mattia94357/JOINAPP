@@ -344,6 +344,7 @@ export default function HomeScreen({ navigation }: Props) {
             }}
             onSwipeRight={handleJoinActivity}
             onSave={handleSaveActivity}
+            onMapMode={(activity) => navigation.navigate('MapMode', { activity })}
             onPress={handlePress}
             onViewParticipants={setParticipantsActivity}
             onOpenProfile={openPublicProfile}
