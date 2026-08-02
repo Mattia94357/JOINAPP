@@ -324,7 +324,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     width: '100%',
-    paddingBottom: 22,
     backgroundColor: '#090909',
   },
   card: {
@@ -440,24 +439,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 24,
+    bottom: 62,
   },
   imageCopyCompact: {
     left: 20,
     right: 20,
-    bottom: 22,
+    bottom: 60,
   },
   imageCopyDense: {
     left: 14,
     right: 14,
-    bottom: 12,
+    bottom: 50,
   },
   imageCopyVeryDense: {
-    bottom: 8,
+    bottom: 46,
   },
   decisionControls: {
     position: 'absolute',
-    bottom: -6,
+    bottom: 10,
     left: 0,
     right: 0,
     height: 56,

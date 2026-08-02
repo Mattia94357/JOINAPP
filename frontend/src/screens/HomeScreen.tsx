@@ -18,7 +18,6 @@ import { RootStackParamList } from '../../App';
 import SwipeDeck from '../components/SwipeDeck';
 import ParticipantsModal from '../components/ParticipantsModal';
 import BottomNavigation, {
-  BOTTOM_NAV_CONTENT_GAP,
   BOTTOM_NAV_HEIGHT,
 } from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
@@ -653,8 +652,8 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingHorizontal: 0,
     paddingBottom: Platform.OS === 'web'
-      ? (`calc(${BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP}px + env(safe-area-inset-bottom))` as any)
-      : BOTTOM_NAV_HEIGHT + BOTTOM_NAV_CONTENT_GAP,
+      ? (`calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` as any)
+      : BOTTOM_NAV_HEIGHT,
   },
   skeletonCard: {
     flex: 1,
