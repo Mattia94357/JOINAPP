@@ -301,7 +301,7 @@ export default function ActivityCard({
                   accessibilityLabel="Pass on activity"
                 >
                   <View style={styles.decisionButton}>
-                    <Ionicons name="close" size={36} color={colors.primary} />
+                    <Text style={styles.decisionButtonText}>SKIP</Text>
                   </View>
                 </TouchableOpacity>
               </Animated.View>
@@ -318,7 +318,7 @@ export default function ActivityCard({
                   accessibilityLabel="Join activity"
                 >
                   <View style={styles.decisionButton}>
-                    <Ionicons name="checkmark" size={37} color={colors.primary} />
+                    <Text style={styles.decisionButtonText}>JOIN</Text>
                   </View>
                 </TouchableOpacity>
               </Animated.View>
@@ -523,6 +523,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 10,
+  },
+  decisionButtonText: {
+    color: colors.primary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   detailsNavigationButton: {
     position: 'absolute',
