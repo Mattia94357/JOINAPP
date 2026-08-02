@@ -107,7 +107,11 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
         {user ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="MapMode" component={MapModeScreen} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="MapMode"
+              component={MapModeScreen}
+              options={{ headerShown: false, animation: 'none' }}
+            />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
             <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
             <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />

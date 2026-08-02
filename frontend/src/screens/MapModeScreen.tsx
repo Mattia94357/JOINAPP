@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
-import { colors, spacing } from '../theme';
+import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
 
 const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife'];
@@ -24,17 +24,23 @@ type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 function MapPlaceholder() {
   return (
     <View style={styles.mapPlaceholder} pointerEvents="none">
+      <View style={[styles.mapGridLine, styles.mapGridVerticalOne]} />
+      <View style={[styles.mapGridLine, styles.mapGridVerticalTwo]} />
+      <View style={[styles.mapGridLine, styles.mapGridVerticalThree]} />
+      <View style={[styles.mapGridLine, styles.mapGridHorizontalOne]} />
+      <View style={[styles.mapGridLine, styles.mapGridHorizontalTwo]} />
+      <View style={[styles.mapGridLine, styles.mapGridHorizontalThree]} />
+      <View style={[styles.mapParcel, styles.mapParcelOne]} />
+      <View style={[styles.mapParcel, styles.mapParcelTwo]} />
+      <View style={[styles.mapParcel, styles.mapParcelThree]} />
       <View style={[styles.mapRoad, styles.mapRoadOne]} />
       <View style={[styles.mapRoad, styles.mapRoadTwo]} />
       <View style={[styles.mapRoad, styles.mapRoadThree]} />
+      <View style={[styles.mapMinorRoad, styles.mapMinorRoadOne]} />
+      <View style={[styles.mapMinorRoad, styles.mapMinorRoadTwo]} />
+      <View style={[styles.mapMinorRoad, styles.mapMinorRoadThree]} />
       <View style={[styles.mapDistrict, styles.mapDistrictOne]} />
       <View style={[styles.mapDistrict, styles.mapDistrictTwo]} />
-      <View style={styles.placeholderCopy}>
-        <View style={styles.placeholderIcon}>
-          <Ionicons name="map-outline" size={26} color={colors.primary} />
-        </View>
-        <Text style={styles.placeholderText}>Interactive map coming next</Text>
-      </View>
     </View>
   );
 }
@@ -167,26 +173,31 @@ const styles = StyleSheet.create({
   mapPlaceholder: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
-    backgroundColor: '#171916',
+    backgroundColor: '#141713',
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(0.55px)' } as any) : {}),
   },
   safeOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
     justifyContent: 'space-between',
     paddingTop: Platform.OS === 'web'
-      ? ('calc(10px + env(safe-area-inset-top))' as any)
+      ? ('env(safe-area-inset-top)' as any)
       : 0,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(10px + env(safe-area-inset-bottom))' as any)
+      ? ('calc(28px + env(safe-area-inset-bottom))' as any)
       : 0,
   },
   mapRoad: {
     position: 'absolute',
-    height: 2,
+    height: 5,
     width: '145%',
-    backgroundColor: 'rgba(246,196,69,0.1)',
+    backgroundColor: 'rgba(246,196,69,0.032)',
     borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.06)',
+    borderColor: 'rgba(246,196,69,0.055)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.035,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
   },
   mapRoadOne: {
     top: '30%',
@@ -203,14 +214,111 @@ const styles = StyleSheet.create({
     left: '-20%',
     transform: [{ rotate: '-8deg' }],
   },
+  mapMinorRoad: {
+    position: 'absolute',
+    width: '125%',
+    height: 1,
+    backgroundColor: 'rgba(236,239,230,0.035)',
+  },
+  mapMinorRoadOne: {
+    top: '19%',
+    left: '-10%',
+    transform: [{ rotate: '9deg' }],
+  },
+  mapMinorRoadTwo: {
+    top: '45%',
+    left: '-12%',
+    transform: [{ rotate: '-7deg' }],
+  },
+  mapMinorRoadThree: {
+    top: '84%',
+    left: '-10%',
+    transform: [{ rotate: '15deg' }],
+  },
+  mapGridLine: {
+    position: 'absolute',
+    backgroundColor: 'rgba(236,239,230,0.018)',
+  },
+  mapGridVerticalOne: {
+    top: '-10%',
+    bottom: '-10%',
+    left: '18%',
+    width: 1,
+    transform: [{ rotate: '5deg' }],
+  },
+  mapGridVerticalTwo: {
+    top: '-10%',
+    bottom: '-10%',
+    left: '51%',
+    width: 1,
+    transform: [{ rotate: '-3deg' }],
+  },
+  mapGridVerticalThree: {
+    top: '-10%',
+    bottom: '-10%',
+    left: '80%',
+    width: 1,
+    transform: [{ rotate: '7deg' }],
+  },
+  mapGridHorizontalOne: {
+    top: '24%',
+    left: '-10%',
+    right: '-10%',
+    height: 1,
+    transform: [{ rotate: '-2deg' }],
+  },
+  mapGridHorizontalTwo: {
+    top: '52%',
+    left: '-10%',
+    right: '-10%',
+    height: 1,
+    transform: [{ rotate: '3deg' }],
+  },
+  mapGridHorizontalThree: {
+    top: '78%',
+    left: '-10%',
+    right: '-10%',
+    height: 1,
+    transform: [{ rotate: '-4deg' }],
+  },
+  mapParcel: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(236,239,230,0.025)',
+    backgroundColor: 'rgba(236,239,230,0.009)',
+  },
+  mapParcelOne: {
+    top: '12%',
+    left: '8%',
+    width: 130,
+    height: 88,
+    borderRadius: 30,
+    transform: [{ rotate: '-8deg' }],
+  },
+  mapParcelTwo: {
+    top: '46%',
+    right: '5%',
+    width: 156,
+    height: 112,
+    borderRadius: 38,
+    transform: [{ rotate: '11deg' }],
+  },
+  mapParcelThree: {
+    bottom: '8%',
+    left: '22%',
+    width: 170,
+    height: 92,
+    borderRadius: 34,
+    transform: [{ rotate: '-5deg' }],
+  },
   mapDistrict: {
     position: 'absolute',
     width: 210,
     height: 210,
     borderRadius: 105,
     borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.08)',
-    backgroundColor: 'rgba(246,196,69,0.018)',
+    borderColor: 'rgba(246,196,69,0.045)',
+    backgroundColor: 'rgba(246,196,69,0.01)',
   },
   mapDistrictOne: {
     top: '18%',
@@ -220,33 +328,9 @@ const styles = StyleSheet.create({
     bottom: '12%',
     left: -92,
   },
-  placeholderCopy: {
-    position: 'absolute',
-    top: '45%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  placeholderIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: 'rgba(10,10,10,0.78)',
-  },
-  placeholderText: {
-    color: 'rgba(255,255,255,0.58)',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
   topOverlay: {
     zIndex: 10,
-    marginTop: Platform.OS === 'web' ? 0 : spacing.sm,
+    marginTop: 0,
   },
   topControls: {
     width: '100%',
@@ -300,7 +384,7 @@ const styles = StyleSheet.create({
     outlineStyle: 'none' as any,
   },
   categoryScroller: {
-    marginTop: 10,
+    marginTop: 4,
   },
   categoryRow: {
     paddingHorizontal: 12,
@@ -338,8 +422,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
     height: 122,
     marginHorizontal: 12,
-    marginBottom: Platform.OS === 'web' ? 0 : spacing.sm,
-    borderRadius: 20,
+    marginBottom: Platform.OS === 'web' ? 0 : 26,
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
@@ -348,7 +432,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10,10,10,0.94)',
     shadowColor: colors.shadow,
     shadowOpacity: 0.42,
-    shadowRadius: 18,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
     ...(Platform.OS === 'web' ? ({
@@ -359,7 +443,7 @@ const styles = StyleSheet.create({
   previewCardCompact: {
     height: 108,
     padding: 8,
-    borderRadius: 18,
+    borderRadius: 22,
   },
   previewImage: {
     width: 94,
