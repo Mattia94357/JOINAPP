@@ -34,7 +34,7 @@ export type RootStackParamList = {
   ResetPassword: { token?: string } | undefined;
   PublicProfile: { userId?: string; fallbackName?: string; fallbackAvatar?: string };
   Home: undefined;
-  MapMode: { activity: Activity };
+  MapMode: { activity: Activity; activities?: Activity[] };
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };

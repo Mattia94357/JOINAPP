@@ -1,11 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { Region } from 'react-native-maps';
-
-type Props = {
-  region: Region;
-  showsUserLocation: boolean;
-};
+import MapView from 'react-native-maps';
+import MapActivityMarker from './MapActivityMarker';
+import type { MapModeMapProps } from './MapModeMap.types';
 
 const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#1b1d1a' }] },
@@ -21,24 +18,24 @@ const darkMapStyle = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#10191c' }] },
 ] as any;
 
-export default function MapModeMap({ region, showsUserLocation }: Props) {
-  const mapRef = useRef<MapView | null>(null);
-
-  useEffect(() => {
-    mapRef.current?.animateToRegion(region, 450);
-  }, [region]);
-
+export default function MapModeMap({
+  initialRegion,
+  showsUserLocation,
+  activities,
+  selectedActivityId,
+  onSelectActivity,
+}: MapModeMapProps) {
   return (
     <MapView
-      ref={mapRef}
       style={StyleSheet.absoluteFill}
-      initialRegion={region}
+      initialRegion={initialRegion}
       customMapStyle={darkMapStyle}
       userInterfaceStyle="dark"
       showsUserLocation={showsUserLocation}
       showsMyLocationButton={false}
       showsCompass={false}
       toolbarEnabled={false}
+      moveOnMarkerPress={false}
       zoomEnabled
       zoomTapEnabled
       scrollEnabled
@@ -48,6 +45,15 @@ export default function MapModeMap({ region, showsUserLocation }: Props) {
       loadingBackgroundColor="#111310"
       loadingIndicatorColor="#F6C445"
       accessibilityLabel="Interactive map"
-    />
+    >
+      {activities.map((activity) => (
+        <MapActivityMarker
+          key={activity.id}
+          activity={activity}
+          selected={activity.id === selectedActivityId}
+          onPress={() => onSelectActivity(activity.id)}
+        />
+      ))}
+    </MapView>
   );
 }

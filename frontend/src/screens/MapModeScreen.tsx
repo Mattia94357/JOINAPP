@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
   SafeAreaView,
@@ -17,6 +18,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Region } from 'react-native-maps';
 import { RootStackParamList } from '../../App';
 import MapModeMap from '../components/MapModeMap';
+import type { MapActivity } from '../components/MapModeMap.types';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
 
@@ -31,18 +33,95 @@ const PHUKET_REGION: Region = {
   longitudeDelta: 0.08,
 };
 
+const LOCATION_TIMEOUT_MS = 6000;
+
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number) => new Promise<T>((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error('Location request timed out')), timeoutMs);
+  promise.then(
+    (value) => {
+      clearTimeout(timeout);
+      resolve(value);
+    },
+    (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    },
+  );
+});
+
+const distanceBetween = (
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => degrees * Math.PI / 180;
+  const latitudeDelta = toRadians(to.latitude - from.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const startLatitude = toRadians(from.latitude);
+  const endLatitude = toRadians(to.latitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  const distanceKm = earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return distanceKm < 10 ? `${distanceKm.toFixed(1)} km away` : `${Math.round(distanceKm)} km away`;
+};
+
 export default function MapModeScreen({ navigation, route }: Props) {
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [mapRegion, setMapRegion] = useState<Region>(PHUKET_REGION);
+  const [selectedActivity, setSelectedActivity] = useState(route.params.activity);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showsUserLocation, setShowsUserLocation] = useState(false);
   const { height } = useWindowDimensions();
-  const { activity } = route.params;
-  const attendees = activity.attendees ?? activity.participants.length;
-  const spotsLeft = activity.maxAttendees
-    ? Math.max(activity.maxAttendees - attendees, 0)
+  const attendees = selectedActivity.attendees ?? selectedActivity.participants.length;
+  const spotsLeft = selectedActivity.maxAttendees
+    ? Math.max(selectedActivity.maxAttendees - attendees, 0)
     : null;
-  const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
+  const coverImage = selectedActivity.coverImage || getActivityCoverImage(selectedActivity.category, selectedActivity.id);
   const compactHeight = height < 760;
+
+  const availableActivities = useMemo(() => {
+    const activities = route.params.activities || [route.params.activity];
+    return activities.some((activity) => activity.id === route.params.activity.id)
+      ? activities
+      : [route.params.activity, ...activities];
+  }, [route.params.activities, route.params.activity]);
+
+  const mapActivities = useMemo<MapActivity[]>(() => availableActivities
+    .filter((activity) => (
+      (selectedCategory === 'All' || activity.category === selectedCategory)
+      && activity.locationPrivacy !== 'private'
+      && Number.isFinite(activity.latitude)
+      && Number.isFinite(activity.longitude)
+    ))
+    .slice(0, 30)
+    .map((activity) => ({
+      id: activity.id,
+      title: activity.title,
+      latitude: activity.latitude as number,
+      longitude: activity.longitude as number,
+      coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity.id),
+    })), [availableActivities, selectedCategory]);
+
+  const selectMapActivity = useCallback((activityId: string) => {
+    const activity = availableActivities.find((candidate) => candidate.id === activityId);
+    if (activity) setSelectedActivity(activity);
+  }, [availableActivities]);
+
+  const distanceText = useMemo(() => {
+    if (
+      userCoordinate
+      && Number.isFinite(selectedActivity.latitude)
+      && Number.isFinite(selectedActivity.longitude)
+    ) {
+      return distanceBetween(userCoordinate, {
+        latitude: selectedActivity.latitude as number,
+        longitude: selectedActivity.longitude as number,
+      });
+    }
+
+    return 'Distance unavailable';
+  }, [selectedActivity.latitude, selectedActivity.longitude, userCoordinate]);
 
   useEffect(() => {
     let active = true;
@@ -54,25 +133,34 @@ export default function MapModeScreen({ navigation, route }: Props) {
           ? existingPermission
           : await Location.requestForegroundPermissionsAsync();
 
-        if (!permission.granted || !active) return;
+        if (!permission.granted || !active) {
+          if (active) setMapRegion(PHUKET_REGION);
+          return;
+        }
 
-        // Let the native map begin tracking immediately while the one-time fix resolves.
-        setShowsUserLocation(true);
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!servicesEnabled) throw new Error('Location services unavailable');
 
-        const currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const currentLocation = await withTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          LOCATION_TIMEOUT_MS,
+        );
 
         if (!active) return;
 
-        setMapRegion({
+        const coordinate = {
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
+        };
+        setUserCoordinate(coordinate);
+        setShowsUserLocation(true);
+        setMapRegion({
+          ...coordinate,
           latitudeDelta: 0.08,
           longitudeDelta: 0.08,
         });
       } catch {
-        // Phuket remains visible if permission or location services are unavailable.
+        if (active) setMapRegion(PHUKET_REGION);
       }
     };
 
@@ -85,7 +173,19 @@ export default function MapModeScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <MapModeMap region={mapRegion} showsUserLocation={showsUserLocation} />
+      {mapRegion ? (
+        <MapModeMap
+          initialRegion={mapRegion}
+          showsUserLocation={showsUserLocation}
+          activities={mapActivities}
+          selectedActivityId={selectedActivity.id}
+          onSelectActivity={selectMapActivity}
+        />
+      ) : (
+        <View style={styles.mapLoading}>
+          <ActivityIndicator color={colors.primary} size="small" />
+        </View>
+      )}
 
       <SafeAreaView style={styles.safeOverlay} pointerEvents="box-none">
         <View style={styles.topOverlay} pointerEvents="box-none">
@@ -155,14 +255,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
         <View
           style={styles.previewContent}
           accessible
-          accessibilityLabel={`Activity preview: ${activity.title}`}
+          accessibilityLabel={`Activity preview: ${selectedActivity.title}`}
         >
-          <Text style={styles.previewTitle} numberOfLines={1}>{activity.title}</Text>
-          <Text style={styles.previewDistance}>{activity.distance || '1.2 km'} away</Text>
+          <Text style={styles.previewTitle} numberOfLines={1}>{selectedActivity.title}</Text>
+          <Text style={styles.previewDistance}>{distanceText}</Text>
           <View style={styles.previewMetaRow}>
             <View style={styles.previewMetaItem}>
               <Ionicons name="time-outline" size={14} color={colors.primary} />
-              <Text style={styles.previewMetaText} numberOfLines={1}>{activity.time || 'Anytime'}</Text>
+              <Text style={styles.previewMetaText} numberOfLines={1}>{selectedActivity.time || 'Anytime'}</Text>
             </View>
             <View style={styles.previewMetaItem}>
               <Ionicons name="people-outline" size={14} color={colors.primary} />
@@ -178,7 +278,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
           onPress={() => undefined}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel={`Join ${activity.title}`}
+          accessibilityLabel={`Join ${selectedActivity.title}`}
         >
           <Text style={styles.joinButtonText}>JOIN</Text>
         </TouchableOpacity>
@@ -196,6 +296,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#111310',
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ height: '100dvh' } as any) : {}),
+  },
+  mapLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111310',
   },
   safeOverlay: {
     ...StyleSheet.absoluteFillObject,
