@@ -18,7 +18,7 @@ import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import MessagesScreen, { MessageRequestsScreen } from './src/screens/MessagesScreen';
 import MapModeScreen from './src/screens/MapModeScreen';
-import type { Activity } from './src/components/ActivityCard';
+import type { ActivityResponse } from './src/api';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { MessagingProvider } from './src/context/MessagingContext';
 import { colors } from './src/theme';
@@ -33,8 +33,21 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { token?: string } | undefined;
   PublicProfile: { userId?: string; fallbackName?: string; fallbackAvatar?: string };
-  Home: undefined;
-  MapMode: { activity: Activity; activities?: Activity[] };
+  Home: {
+    source?: 'map';
+    mapDecisionActivity?: ActivityResponse;
+    mapReturnRouteKey?: string;
+  } | undefined;
+  MapMode: {
+    activity: ActivityResponse;
+    activities?: ActivityResponse[];
+    decisionResult?: {
+      activityId: string;
+      decision: 'skip' | 'join';
+      joinStatus?: 'joined' | 'pending' | 'declined' | 'waitlisted';
+      completedAt: number;
+    };
+  };
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };

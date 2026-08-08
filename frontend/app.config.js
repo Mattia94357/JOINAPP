@@ -44,7 +44,7 @@ module.exports = ({ config }) => ({
   extra: {
     API_URL: apiUrl,
     MAPTILER_API_KEY: mapTilerApiKey,
-    MAPTILER_MAP_STYLE: mapTilerMapStyle || 'dataviz-dark',
+    MAPTILER_MAP_STYLE: mapTilerMapStyle || 'streets-v4-dark',
     PRIVACY_POLICY_URL: legalUrl('PRIVACY_POLICY_URL', 'privacy'),
     TERMS_URL: legalUrl('TERMS_URL', 'terms'),
     COMMUNITY_GUIDELINES_URL: legalUrl('COMMUNITY_GUIDELINES_URL', 'community-guidelines'),

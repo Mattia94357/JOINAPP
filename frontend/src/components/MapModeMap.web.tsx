@@ -3,13 +3,16 @@ import * as maptilersdk from '@maptiler/sdk';
 import '@maptiler/sdk/dist/maptiler-sdk.css';
 import './MapModeMap.web.css';
 import type { MapActivity, MapModeMapProps } from './MapModeMap.types';
+import { getMapActivityIconGlyph } from '../utils/mapActivityIcons';
 
 type MapTilerMapProps = MapModeMapProps & { mapTilerApiKey: string };
 
 const markerCard = (activity: MapActivity, selected: boolean, onPress: () => void) => {
+  const marker = document.createElement('div');
+  marker.className = `join-map-activity-marker${selected ? ' selected' : ''}`;
   const card = document.createElement('button');
   card.type = 'button';
-  card.className = `join-map-activity-card${selected ? ' selected' : ''}`;
+  card.className = 'join-map-activity-card';
   card.setAttribute('aria-label', `${activity.title} activity`);
 
   if (activity.coverImage) {
@@ -23,15 +26,21 @@ const markerCard = (activity: MapActivity, selected: boolean, onPress: () => voi
     card.appendChild(imageFallback);
   }
 
-  const title = document.createElement('span');
-  title.className = 'join-map-activity-title';
-  title.textContent = activity.title;
-  card.appendChild(title);
+  const shade = document.createElement('span');
+  shade.className = 'join-map-activity-shade';
+  card.appendChild(shade);
+
+  const icon = document.createElement('span');
+  icon.className = 'join-map-activity-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = getMapActivityIconGlyph(activity.category);
+  card.appendChild(icon);
   card.addEventListener('click', (event) => {
     event.stopPropagation();
     onPress();
   });
-  return card;
+  marker.appendChild(card);
+  return marker;
 };
 
 function MapTilerMap({
@@ -81,9 +90,12 @@ function MapTilerMap({
       const element = markerCard(
         activity,
         activity.id === selectedActivityId,
-        () => onSelectActivity(activity.id),
+        () => {
+          onSelectActivity(activity.id);
+          map.easeTo({ center: [activity.longitude, activity.latitude], duration: 450 });
+        },
       );
-      const marker = new maptilersdk.Marker({ element, anchor: 'center' })
+      const marker = new maptilersdk.Marker({ element, anchor: 'bottom' })
         .setLngLat([activity.longitude, activity.latitude])
         .addTo(map);
       return { id: activity.id, marker, element };
@@ -126,11 +138,12 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
     const locationIndicator = showsUserLocation ? `L.circleMarker([${initialRegion.latitude},${initialRegion.longitude}],{radius:7,color:'#fff',weight:2,fillColor:'#4285f4',fillOpacity:1}).addTo(map);` : '';
     const markers = activities.map((activity) => {
       const image = activity.coverImage ? `<img src="${escapeHtml(activity.coverImage)}" alt="">` : '<span class="activity-image"></span>';
-      const content = JSON.stringify(`<button class="activity-card${activity.id === selectedActivityId ? ' selected' : ''}">${image}<span>${escapeHtml(activity.title)}</span></button>`).replace(/</g, '\\u003c');
+      const icon = escapeHtml(getMapActivityIconGlyph(activity.category));
+      const content = JSON.stringify(`<button aria-label="${escapeHtml(activity.title)} activity" class="activity-card${activity.id === selectedActivityId ? ' selected' : ''}">${image}<span class="activity-shade"></span><span class="activity-icon">${icon}</span></button>`).replace(/</g, '\\u003c');
       const id = JSON.stringify(activity.id).replace(/</g, '\\u003c');
-      return `(()=>{const marker=L.marker([${activity.latitude},${activity.longitude}],{icon:L.divIcon({className:'join-activity-marker',html:${content},iconSize:[142,44],iconAnchor:[71,22]})}).addTo(map);marker.on('click',()=>{document.querySelectorAll('.activity-card.selected').forEach((card)=>card.classList.remove('selected'));marker.getElement()?.querySelector('.activity-card')?.classList.add('selected');window.parent.postMessage({type:'join-map-activity-select',activityId:${id}},'*')})})();`;
+      return `(()=>{const marker=L.marker([${activity.latitude},${activity.longitude}],{icon:L.divIcon({className:'join-activity-marker',html:${content},iconSize:[60,84],iconAnchor:[30,84]})}).addTo(map);marker.on('click',()=>{document.querySelectorAll('.activity-card.selected').forEach((card)=>card.classList.remove('selected'));marker.getElement()?.querySelector('.activity-card')?.classList.add('selected');map.panTo([${activity.latitude},${activity.longitude}],{animate:true,duration:.45});window.parent.postMessage({type:'join-map-activity-select',activityId:${id}},'*')})})();`;
     }).join('');
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{height:100%;margin:0;background:#1b1d1a}.leaflet-control-attribution{font:9px sans-serif;background:rgba(10,10,10,.76)!important;color:#aaa}.leaflet-tile{filter:brightness(.62) saturate(.52)}.join-activity-marker{background:transparent;border:0}.activity-card{box-sizing:border-box;width:142px;height:44px;padding:4px 10px 4px 4px;border-radius:12px;border:1px solid rgba(246,196,69,.25);background:rgba(10,10,10,.96);display:flex;align-items:center;color:#fff;font:900 11px system-ui;box-shadow:0 3px 10px rgba(0,0,0,.45)}.activity-card.selected{border-color:#f6c445}.activity-card img,.activity-image{width:34px;height:34px;flex:0 0 34px;border-radius:8px;object-fit:cover;background:#25251f}.activity-card span:last-child{min-width:0;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const map=L.map('map',{zoomControl:false}).setView([${initialRegion.latitude},${initialRegion.longitude}],13);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);${locationIndicator}${markers}</script></body></html>`;
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>@font-face{font-family:Ionicons;src:url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@13.0.0/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf')}html,body,#map{height:100%;margin:0;background:#16191b}.leaflet-control-attribution{font:9px sans-serif;background:rgba(10,10,10,.76)!important;color:#aaa}.leaflet-control-attribution a{color:#d8b75c}.leaflet-tile{filter:brightness(.78) saturate(.78) contrast(1.06)}.join-activity-marker{background:transparent;border:0}.activity-card{position:relative;box-sizing:border-box;width:60px;height:84px;padding:0;overflow:hidden;border-radius:11px;border:1px solid rgba(255,255,255,.38);background:#171717;box-shadow:0 7px 18px rgba(0,0,0,.48);transition:transform .18s ease,border-color .18s ease}.activity-card.selected{transform:scale(1.09);border-color:#f6c445;box-shadow:0 8px 22px rgba(0,0,0,.56),0 0 0 1px rgba(246,196,69,.15)}.activity-card img,.activity-image{display:block;width:100%;height:100%;object-fit:cover;background:#25251f}.activity-shade{position:absolute;inset:38% 0 0;background:linear-gradient(180deg,transparent,rgba(4,4,4,.2) 28%,rgba(4,4,4,.86) 100%)}.activity-icon{position:absolute;left:7px;bottom:7px;width:22px;height:22px;border-radius:11px;display:grid;place-items:center;background:rgba(8,8,8,.74);color:#f6c445;font:14px Ionicons}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const map=L.map('map',{zoomControl:false}).setView([${initialRegion.latitude},${initialRegion.longitude}],13);L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap contributors and the GIS User Community'}).addTo(map);${locationIndicator}${markers}</script></body></html>`;
   }, [activities, initialRegion, showsUserLocation]);
 
   useEffect(() => {

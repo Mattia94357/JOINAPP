@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import MapView from 'react-native-maps';
 import { WebView } from 'react-native-webview';
@@ -21,6 +21,7 @@ const darkMapStyle = [
 ] as any;
 
 export default function MapModeMap(props: MapModeMapProps) {
+  const nativeMapRef = useRef<MapView | null>(null);
   const {
     initialRegion,
     showsUserLocation,
@@ -66,6 +67,7 @@ export default function MapModeMap(props: MapModeMapProps) {
 
   return (
     <MapView
+      ref={nativeMapRef}
       style={styles.map}
       initialRegion={initialRegion}
       customMapStyle={darkMapStyle}
@@ -90,7 +92,15 @@ export default function MapModeMap(props: MapModeMapProps) {
           key={activity.id}
           activity={activity}
           selected={activity.id === selectedActivityId}
-          onPress={() => onSelectActivity(activity.id)}
+          onPress={() => {
+            onSelectActivity(activity.id);
+            nativeMapRef.current?.animateCamera({
+              center: {
+                latitude: activity.latitude,
+                longitude: activity.longitude,
+              },
+            }, { duration: 450 });
+          }}
         />
       ))}
     </MapView>

@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import SwipeDeck from '../components/SwipeDeck';
@@ -47,10 +48,13 @@ type HostGenderFilter = typeof hostGenderFilters[number]['value'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-export default function HomeScreen({ navigation }: Props) {
+export default function HomeScreen({ navigation, route }: Props) {
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 520;
+  const isMapDecision = route.params?.source === 'map'
+    && Boolean(route.params.mapDecisionActivity)
+    && Boolean(route.params.mapReturnRouteKey);
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
@@ -94,6 +98,12 @@ export default function HomeScreen({ navigation }: Props) {
     const combinedFeed = [...baseFeed, ...supplements];
     return combinedFeed.length > 0 ? combinedFeed : curatedActivities;
   }, [curatedFeedForCategory, filteredActivities]);
+
+  const decisionFeed = useMemo(() => {
+    const focusedActivity = route.params?.mapDecisionActivity;
+    if (!isMapDecision || !focusedActivity) return visibleFeed;
+    return [focusedActivity, ...visibleFeed.filter((activity) => activity.id !== focusedActivity.id)];
+  }, [isMapDecision, route.params?.mapDecisionActivity, visibleFeed]);
 
   useEffect(() => {
     const load = async () => {
@@ -149,7 +159,32 @@ export default function HomeScreen({ navigation }: Props) {
     setPhotoRequiredVisible(true);
   };
 
-  const handleJoinActivity = async (activity: ActivityResponse) => {
+  const returnDecisionToMap = (
+    decision: 'skip' | 'join',
+    activityId: string,
+    joinStatus?: 'joined' | 'pending' | 'declined' | 'waitlisted',
+  ) => {
+    const mapRouteKey = route.params?.mapReturnRouteKey;
+    if (!isMapDecision || !mapRouteKey) return;
+
+    navigation.dispatch({
+      ...CommonActions.setParams({
+        decisionResult: {
+          activityId,
+          decision,
+          joinStatus,
+          completedAt: Date.now(),
+        },
+      }),
+      source: mapRouteKey,
+    });
+    navigation.goBack();
+  };
+
+  const handleJoinActivity = async (
+    activity: ActivityResponse,
+    onCompleted?: (status: 'joined' | 'pending' | 'declined' | 'waitlisted') => void,
+  ) => {
     if (hasCurrentUserJoined(activity)) {
       navigation.navigate('Chat', { chatId: activity.id, title: activity.title });
       return true;
@@ -221,6 +256,11 @@ export default function HomeScreen({ navigation }: Props) {
       }
       // Keep the card in place so the CTA immediately transitions from JOIN to CHAT.
       void refreshActivities();
+      onCompleted?.(
+        status === 'pending' || status === 'declined' || status === 'waitlisted'
+          ? status
+          : 'joined',
+      );
       return false;
     } catch (error: any) {
       console.warn(error);
@@ -338,11 +378,20 @@ export default function HomeScreen({ navigation }: Props) {
         ) : (
           <SwipeDeck
             key={`${selectedCategory}-${visibleFeed.length}`}
-            activities={visibleFeed}
-            onSwipeLeft={() => {
+            activities={decisionFeed}
+            onSwipeLeft={(activity) => {
+              if (isMapDecision) {
+                returnDecisionToMap('skip', activity.id);
+                return false;
+              }
               return true;
             }}
-            onSwipeRight={handleJoinActivity}
+            onSwipeRight={(activity) => handleJoinActivity(
+              activity,
+              isMapDecision
+                ? (status) => returnDecisionToMap('join', activity.id, status)
+                : undefined,
+            )}
             onSave={handleSaveActivity}
             onMapMode={(activity) => navigation.navigate('MapMode', { activity, activities: visibleFeed })}
             onPress={handlePress}

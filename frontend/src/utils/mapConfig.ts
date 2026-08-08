@@ -13,7 +13,7 @@ const extras = () => (
 
 export const getMapTilerConfig = () => ({
   apiKey: cleanValue(extras().MAPTILER_API_KEY || process.env.EXPO_PUBLIC_MAPTILER_API_KEY),
-  styleId: cleanValue(extras().MAPTILER_MAP_STYLE || process.env.EXPO_PUBLIC_MAPTILER_MAP_STYLE) || 'dataviz-dark',
+  styleId: cleanValue(extras().MAPTILER_MAP_STYLE || process.env.EXPO_PUBLIC_MAPTILER_MAP_STYLE) || 'streets-v4-dark',
 });
 
 type GeocodingResponse = {

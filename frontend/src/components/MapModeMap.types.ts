@@ -3,6 +3,7 @@ import type { Region } from 'react-native-maps';
 export type MapActivity = {
   id: string;
   title: string;
+  category: string;
   latitude: number;
   longitude: number;
   coverImage?: string;

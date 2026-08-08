@@ -103,6 +103,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
     .map((activity) => ({
       id: activity.id,
       title: activity.title,
+      category: activity.category,
       latitude: activity.latitude as number,
       longitude: activity.longitude as number,
       coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity.id),
@@ -117,6 +118,37 @@ export default function MapModeScreen({ navigation, route }: Props) {
     const activity = availableActivities.find((candidate) => candidate.id === activityId);
     if (activity) setSelectedActivity(activity);
   }, [availableActivities]);
+
+  useEffect(() => {
+    const result = route.params.decisionResult;
+    if (!result) return;
+
+    if (result.decision === 'join') {
+      setSelectedActivity((activity) => activity.id === result.activityId
+        ? {
+          ...activity,
+          joined: result.joinStatus === 'joined',
+          pending: result.joinStatus === 'pending',
+          declined: result.joinStatus === 'declined',
+          waitlisted: result.joinStatus === 'waitlisted',
+        }
+        : activity);
+      return;
+    }
+
+    setSelectedActivity((activity) => {
+      if (activity.id !== result.activityId) return activity;
+      return filteredActivities.find((candidate) => candidate.id !== result.activityId) || activity;
+    });
+  }, [filteredActivities, route.params.decisionResult]);
+
+  const openDecisionCard = useCallback(() => {
+    navigation.push('Home', {
+      source: 'map',
+      mapDecisionActivity: selectedActivity,
+      mapReturnRouteKey: route.key,
+    });
+  }, [navigation, route.key, selectedActivity]);
 
   const distanceText = useMemo(() => {
     if (
@@ -259,8 +291,12 @@ export default function MapModeScreen({ navigation, route }: Props) {
           </ScrollView>
         </View>
 
-        <View
+        <TouchableOpacity
           style={[styles.previewCard, compactHeight && styles.previewCardCompact]}
+          onPress={openDecisionCard}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${selectedActivity.title} decision card`}
         >
         <Image source={{ uri: coverImage }} style={[styles.previewImage, compactHeight && styles.previewImageCompact]} />
 
@@ -285,16 +321,13 @@ export default function MapModeScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        <TouchableOpacity
+        <View
           style={styles.joinButton}
-          onPress={() => undefined}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel={`Join ${selectedActivity.title}`}
+          pointerEvents="none"
         >
           <Text style={styles.joinButtonText}>JOIN</Text>
-        </TouchableOpacity>
         </View>
+        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );
