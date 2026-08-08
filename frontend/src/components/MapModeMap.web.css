@@ -1,0 +1,63 @@
+.join-maptiler-map .maplibregl-canvas {
+  outline: none;
+}
+
+.join-maptiler-map .maplibregl-ctrl-attrib {
+  color: rgba(255, 255, 255, 0.58);
+  background: rgba(10, 10, 10, 0.72);
+  font-size: 9px;
+}
+
+.join-maptiler-map .maplibregl-ctrl-attrib a {
+  color: #d8b75c;
+}
+
+.join-map-activity-card {
+  box-sizing: border-box;
+  width: 142px;
+  height: 44px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid rgba(246, 196, 69, 0.25);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  background: rgba(10, 10, 10, 0.96);
+  box-shadow: 0 4px 13px rgba(0, 0, 0, 0.48);
+  color: #fff;
+  cursor: pointer;
+}
+
+.join-map-activity-card.selected {
+  border-color: #f6c445;
+  background: rgba(21, 19, 12, 0.98);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(246, 196, 69, 0.12);
+}
+
+.join-map-activity-card img,
+.join-map-activity-image {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #25251f;
+}
+
+.join-map-activity-title {
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  color: #fff;
+  font: 900 11px/1.2 system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.join-map-user-location {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #4285f4;
+  box-shadow: 0 0 0 5px rgba(66, 133, 244, 0.2), 0 2px 7px rgba(0, 0, 0, 0.45);
+}

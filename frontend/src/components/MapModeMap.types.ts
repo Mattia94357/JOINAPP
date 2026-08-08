@@ -14,4 +14,6 @@ export type MapModeMapProps = {
   activities: MapActivity[];
   selectedActivityId: string;
   onSelectActivity: (activityId: string) => void;
+  mapTilerApiKey?: string;
+  mapStyleId: string;
 };

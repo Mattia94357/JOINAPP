@@ -15,6 +15,11 @@ type CreateActivityBody = {
   title: string;
   category?: string;
   location: string;
+  locationName?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  isApproximateLocation?: boolean;
+  locationPrivacy?: string;
   description: string;
   date?: string;
   vibe?: string;
@@ -190,6 +195,11 @@ router.post(
   body('title').isString().trim().isLength({ min: 3, max: 120 }),
   body('category').optional().isString().isIn(allowedCategories),
   body('location').isString().trim().isLength({ min: 2, max: 120 }),
+  body('locationName').optional({ checkFalsy: true }).isString().trim().isLength({ max: 120 }),
+  body('latitude').optional().isFloat({ min: -90, max: 90 }),
+  body('longitude').optional().isFloat({ min: -180, max: 180 }),
+  body('isApproximateLocation').optional().isBoolean(),
+  body('locationPrivacy').optional().isIn(['public', 'approximate', 'private']),
   body('description').isString().trim().isLength({ min: 20, max: 3000 }),
   body('date').isISO8601(),
   body('maxAttendees').isInt({ min: 2 }),
@@ -203,6 +213,11 @@ router.post(
       title,
       category,
       location,
+      locationName,
+      latitude,
+      longitude,
+      isApproximateLocation,
+      locationPrivacy,
       description,
       date,
       vibe,
@@ -221,6 +236,13 @@ router.post(
       joinApproval,
       galleryImages,
     } = req.body;
+    const hasLatitude = latitude !== undefined && latitude !== null && latitude !== '';
+    const hasLongitude = longitude !== undefined && longitude !== null && longitude !== '';
+    if (hasLatitude !== hasLongitude) {
+      return res.status(400).json({ message: 'Both latitude and longitude are required for an activity location.' });
+    }
+    const normalizedLatitude = hasLatitude ? Number(latitude) : undefined;
+    const normalizedLongitude = hasLongitude ? Number(longitude) : undefined;
     const gallery = Array.isArray(galleryImages) ? galleryImages.map((image) => String(image).trim()).filter(Boolean).slice(0, 5) : [];
     if (coverImage && !imageUrlPattern.test(String(coverImage))) {
       return res.status(400).json({ message: 'Use a valid JPEG, PNG, or WEBP cover image URL.' });
@@ -233,6 +255,13 @@ router.post(
       title: cleanText(title, 120),
       category: category && allowedCategories.includes(category) ? category : 'Other',
       location: cleanText(location, 120),
+      locationName: cleanText(locationName || venueName || location, 120),
+      latitude: normalizedLatitude,
+      longitude: normalizedLongitude,
+      isApproximateLocation: Boolean(isApproximateLocation),
+      locationPrivacy: ['public', 'approximate', 'private'].includes(locationPrivacy || '')
+        ? locationPrivacy
+        : 'public',
       description: cleanText(description, 3000),
       date: date ? new Date(date) : new Date(),
       vibe: cleanText(vibe, 80),

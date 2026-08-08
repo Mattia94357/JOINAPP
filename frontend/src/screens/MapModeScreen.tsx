@@ -21,6 +21,7 @@ import MapModeMap from '../components/MapModeMap';
 import type { MapActivity } from '../components/MapModeMap.types';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
+import { getMapTilerConfig } from '../utils/mapConfig';
 
 const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife'];
 
@@ -79,6 +80,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
     : null;
   const coverImage = selectedActivity.coverImage || getActivityCoverImage(selectedActivity.category, selectedActivity.id);
   const compactHeight = height < 760;
+  const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
 
   const availableActivities = useMemo(() => {
     const activities = route.params.activities || [route.params.activity];
@@ -87,10 +89,13 @@ export default function MapModeScreen({ navigation, route }: Props) {
       : [route.params.activity, ...activities];
   }, [route.params.activities, route.params.activity]);
 
-  const mapActivities = useMemo<MapActivity[]>(() => availableActivities
+  const filteredActivities = useMemo(() => availableActivities.filter((activity) => (
+    selectedCategory === 'All' || activity.category === selectedCategory
+  )), [availableActivities, selectedCategory]);
+
+  const mapActivities = useMemo<MapActivity[]>(() => filteredActivities
     .filter((activity) => (
-      (selectedCategory === 'All' || activity.category === selectedCategory)
-      && activity.locationPrivacy !== 'private'
+      activity.locationPrivacy !== 'private'
       && Number.isFinite(activity.latitude)
       && Number.isFinite(activity.longitude)
     ))
@@ -101,7 +106,12 @@ export default function MapModeScreen({ navigation, route }: Props) {
       latitude: activity.latitude as number,
       longitude: activity.longitude as number,
       coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity.id),
-    })), [availableActivities, selectedCategory]);
+    })), [filteredActivities]);
+
+  useEffect(() => {
+    if (filteredActivities.some((activity) => activity.id === selectedActivity.id)) return;
+    if (filteredActivities[0]) setSelectedActivity(filteredActivities[0]);
+  }, [filteredActivities, selectedActivity.id]);
 
   const selectMapActivity = useCallback((activityId: string) => {
     const activity = availableActivities.find((candidate) => candidate.id === activityId);
@@ -180,6 +190,8 @@ export default function MapModeScreen({ navigation, route }: Props) {
           activities={mapActivities}
           selectedActivityId={selectedActivity.id}
           onSelectActivity={selectMapActivity}
+          mapTilerApiKey={mapTilerConfig.apiKey}
+          mapStyleId={mapTilerConfig.styleId}
         />
       ) : (
         <View style={styles.mapLoading}>

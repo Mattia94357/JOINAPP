@@ -8,6 +8,7 @@ import BottomNavigation from '../components/BottomNavigation';
 import { createActivityRequest } from '../api';
 import { colors, spacing } from '../theme';
 import { activityCategories } from '../utils/categories';
+import { geocodeActivityLocation } from '../utils/mapConfig';
 
 const categoryOptions = activityCategories;
 const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
@@ -71,10 +72,18 @@ export default function CreateActivityScreen({ navigation }: Props) {
 
     setLoading(true);
     try {
+      const geocodingQuery = [exactAddress.trim(), venueName.trim(), location.trim()]
+        .filter(Boolean)
+        .join(', ');
+      const coordinate = await geocodeActivityLocation(geocodingQuery);
       await createActivityRequest(
         {
           title: title.trim(),
           location: location.trim(),
+          locationName: venueName.trim() || location.trim(),
+          ...coordinate,
+          isApproximateLocation: false,
+          locationPrivacy: visibility === 'private' ? 'private' : 'public',
           venueName: venueName.trim(),
           exactAddress: exactAddress.trim(),
           category: category.trim(),

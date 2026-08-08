@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
-    "seed:demo": "node dist/scripts/seed-demo-data.js"
+    "seed:demo": "node dist/scripts/seed-demo-data.js",
+    "backfill:activity-coordinates": "node dist/scripts/backfill-activity-coordinates.js"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.2",

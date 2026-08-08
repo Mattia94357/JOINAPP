@@ -20,6 +20,13 @@ type ApiConfigStatus = {
 };
 
 const cleanUrl = (value?: unknown) => (typeof value === 'string' && value.trim() ? value.trim().replace(/\/$/, '') : null);
+const coordinateNumber = (value: unknown, min: number, max: number) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const coordinate = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(coordinate) && coordinate >= min && coordinate <= max
+    ? coordinate
+    : undefined;
+};
 
 const getExpoExtraApiUrl = () =>
   cleanUrl(
@@ -341,8 +348,8 @@ export const fetchActivities = async (token?: string, filters?: { hostGender?: '
     locationName: activity.locationName || activity.venueName,
     venueName: activity.venueName,
     exactAddress: activity.exactAddress,
-    latitude: activity.latitude,
-    longitude: activity.longitude,
+    latitude: coordinateNumber(activity.latitude, -90, 90),
+    longitude: coordinateNumber(activity.longitude, -180, 180),
     isApproximateLocation: activity.isApproximateLocation,
     locationPrivacy: activity.locationPrivacy,
     description: activity.description,
@@ -393,8 +400,8 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     locationName: activity.locationName || activity.venueName,
     venueName: activity.venueName,
     exactAddress: activity.exactAddress,
-    latitude: activity.latitude,
-    longitude: activity.longitude,
+    latitude: coordinateNumber(activity.latitude, -90, 90),
+    longitude: coordinateNumber(activity.longitude, -180, 180),
     isApproximateLocation: activity.isApproximateLocation,
     locationPrivacy: activity.locationPrivacy,
     description: activity.description,
@@ -437,6 +444,11 @@ export const createActivityRequest = async (
     title: string;
     category: string;
     location: string;
+    locationName?: string;
+    latitude?: number;
+    longitude?: number;
+    isApproximateLocation?: boolean;
+    locationPrivacy?: 'public' | 'approximate' | 'private';
     description: string;
     date?: string;
     vibe?: string;

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import MapView from 'react-native-maps';
+import { WebView } from 'react-native-webview';
 import MapActivityMarker from './MapActivityMarker';
 import type { MapModeMapProps } from './MapModeMap.types';
+import { buildMapTilerHtml } from './mapModeMapHtml';
 
 const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#1b1d1a' }] },
@@ -18,16 +20,53 @@ const darkMapStyle = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#10191c' }] },
 ] as any;
 
-export default function MapModeMap({
-  initialRegion,
-  showsUserLocation,
-  activities,
-  selectedActivityId,
-  onSelectActivity,
-}: MapModeMapProps) {
+export default function MapModeMap(props: MapModeMapProps) {
+  const {
+    initialRegion,
+    showsUserLocation,
+    activities,
+    selectedActivityId,
+    onSelectActivity,
+    mapTilerApiKey,
+    mapStyleId,
+  } = props;
+  const mapHtml = useMemo(() => mapTilerApiKey ? buildMapTilerHtml({
+    latitude: initialRegion.latitude,
+    longitude: initialRegion.longitude,
+    activities,
+    selectedActivityId,
+    showsUserLocation,
+    apiKey: mapTilerApiKey,
+    styleId: mapStyleId,
+  }) : undefined, [activities, initialRegion.latitude, initialRegion.longitude, mapStyleId, mapTilerApiKey, showsUserLocation]);
+
+  if (mapHtml) {
+    return (
+      <WebView
+        style={styles.map}
+        source={{ html: mapHtml }}
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+        setSupportMultipleWindows={false}
+        onMessage={(event) => {
+          try {
+            const message = JSON.parse(event.nativeEvent.data);
+            if (message?.type === 'join-map-activity-select' && typeof message.activityId === 'string') {
+              onSelectActivity(message.activityId);
+            }
+          } catch {
+            // Ignore unrelated or malformed web-map messages.
+          }
+        }}
+        accessibilityLabel="Interactive map"
+      />
+    );
+  }
+
   return (
     <MapView
-      style={StyleSheet.absoluteFill}
+      style={styles.map}
       initialRegion={initialRegion}
       customMapStyle={darkMapStyle}
       userInterfaceStyle="dark"
@@ -57,3 +96,10 @@ export default function MapModeMap({
     </MapView>
   );
 }
+
+const styles = StyleSheet.create({
+  map: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#151815',
+  },
+});

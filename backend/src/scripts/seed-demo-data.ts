@@ -60,6 +60,19 @@ const activityTemplates = [
   ['Trivia & Tapas', 'Nightlife', 'Leederville', 'A fun trivia table with shared plates and low pressure.', 6, 4, 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1200&q=85'],
 ] as const;
 
+const activityCoordinates: Record<string, { latitude: number; longitude: number }> = {
+  'Perth CBD': { latitude: -31.9523, longitude: 115.8613 },
+  'Cottesloe Beach': { latitude: -31.9949, longitude: 115.7511 },
+  Northbridge: { latitude: -31.9475, longitude: 115.8587 },
+  Subiaco: { latitude: -31.9486, longitude: 115.8242 },
+  'Matilda Bay': { latitude: -31.9778, longitude: 115.8249 },
+  'Kings Park': { latitude: -31.9617, longitude: 115.8324 },
+  'Elizabeth Quay': { latitude: -31.9587, longitude: 115.8575 },
+  Leederville: { latitude: -31.9364, longitude: 115.8419 },
+  Scarborough: { latitude: -31.8958, longitude: 115.7572 },
+  Fremantle: { latitude: -32.0569, longitude: 115.7439 },
+};
+
 const avatarFor = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=111111&color=F6C445&size=256&bold=true`;
 
@@ -103,6 +116,8 @@ async function seedDemoData() {
         title,
         category,
         location,
+        locationName: location,
+        ...activityCoordinates[location],
         description,
         host,
         participants: participantIds,

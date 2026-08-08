@@ -22,7 +22,7 @@ export const curatedFakeUsers = [
 const people = (start: number, count: number) =>
   Array.from({ length: count }, (_, index) => curatedFakeUsers[(start + index) % curatedFakeUsers.length]);
 
-export const curatedActivities: ActivityResponse[] = [
+const curatedActivityData: ActivityResponse[] = [
   {
     id: 'template-1',
     title: 'Sunset rooftop dinner',
@@ -354,5 +354,23 @@ export const curatedActivities: ActivityResponse[] = [
     participants: people(3, 6),
   },
 ];
+
+// Curated/demo plans use verified real place centers so Map Mode can exercise
+// the same coordinate path as API activities without inventing random offsets.
+const curatedLocationCoordinates: Record<string, { latitude: number; longitude: number }> = {
+  'Kata Beach': { latitude: 7.8214, longitude: 98.2962 },
+  'Perth CBD': { latitude: -31.9523, longitude: 115.8613 },
+  'Cottesloe Beach': { latitude: -31.9949, longitude: 115.7511 },
+  Northbridge: { latitude: -31.9475, longitude: 115.8587 },
+  'Matilda Bay': { latitude: -31.9778, longitude: 115.8249 },
+  'Kings Park': { latitude: -31.9617, longitude: 115.8324 },
+  'Elizabeth Quay': { latitude: -31.9587, longitude: 115.8575 },
+  Leederville: { latitude: -31.9364, longitude: 115.8419 },
+};
+
+export const curatedActivities: ActivityResponse[] = curatedActivityData.map((activity) => ({
+  ...activity,
+  ...curatedLocationCoordinates[activity.location],
+}));
 
 export const getCuratedActivity = (id: string) => curatedActivities.find((activity) => activity.id === id);
