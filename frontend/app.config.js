@@ -36,6 +36,7 @@ module.exports = ({ config }) => ({
       NSCameraUsageDescription: 'JOIN needs camera access so you can take a profile picture.',
       NSPhotoLibraryUsageDescription: 'JOIN needs photo library access so you can choose a profile picture.',
       NSPhotoLibraryAddUsageDescription: 'JOIN needs photo library access so you can choose a profile picture.',
+      NSLocationWhenInUseUsageDescription: 'JOIN uses your location to center Map Mode on nearby activities.',
     },
   },
   extra: {

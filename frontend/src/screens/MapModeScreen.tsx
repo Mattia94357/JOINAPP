@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Platform,
@@ -12,8 +12,11 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { Region } from 'react-native-maps';
 import { RootStackParamList } from '../../App';
+import MapModeMap from '../components/MapModeMap';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
 
@@ -21,32 +24,17 @@ const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife']
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 
-function MapPlaceholder() {
-  return (
-    <View style={styles.mapPlaceholder} pointerEvents="none">
-      <View style={[styles.mapGridLine, styles.mapGridVerticalOne]} />
-      <View style={[styles.mapGridLine, styles.mapGridVerticalTwo]} />
-      <View style={[styles.mapGridLine, styles.mapGridVerticalThree]} />
-      <View style={[styles.mapGridLine, styles.mapGridHorizontalOne]} />
-      <View style={[styles.mapGridLine, styles.mapGridHorizontalTwo]} />
-      <View style={[styles.mapGridLine, styles.mapGridHorizontalThree]} />
-      <View style={[styles.mapParcel, styles.mapParcelOne]} />
-      <View style={[styles.mapParcel, styles.mapParcelTwo]} />
-      <View style={[styles.mapParcel, styles.mapParcelThree]} />
-      <View style={[styles.mapRoad, styles.mapRoadOne]} />
-      <View style={[styles.mapRoad, styles.mapRoadTwo]} />
-      <View style={[styles.mapRoad, styles.mapRoadThree]} />
-      <View style={[styles.mapMinorRoad, styles.mapMinorRoadOne]} />
-      <View style={[styles.mapMinorRoad, styles.mapMinorRoadTwo]} />
-      <View style={[styles.mapMinorRoad, styles.mapMinorRoadThree]} />
-      <View style={[styles.mapDistrict, styles.mapDistrictOne]} />
-      <View style={[styles.mapDistrict, styles.mapDistrictTwo]} />
-    </View>
-  );
-}
+const PHUKET_REGION: Region = {
+  latitude: 7.8804,
+  longitude: 98.3923,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
 
 export default function MapModeScreen({ navigation, route }: Props) {
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [mapRegion, setMapRegion] = useState<Region>(PHUKET_REGION);
+  const [showsUserLocation, setShowsUserLocation] = useState(false);
   const { height } = useWindowDimensions();
   const { activity } = route.params;
   const attendees = activity.attendees ?? activity.participants.length;
@@ -56,9 +44,48 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
   const compactHeight = height < 760;
 
+  useEffect(() => {
+    let active = true;
+
+    const centerOnCurrentLocation = async () => {
+      try {
+        const existingPermission = await Location.getForegroundPermissionsAsync();
+        const permission = existingPermission.granted || !existingPermission.canAskAgain
+          ? existingPermission
+          : await Location.requestForegroundPermissionsAsync();
+
+        if (!permission.granted || !active) return;
+
+        // Let the native map begin tracking immediately while the one-time fix resolves.
+        setShowsUserLocation(true);
+
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        if (!active) return;
+
+        setMapRegion({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+          latitudeDelta: 0.08,
+          longitudeDelta: 0.08,
+        });
+      } catch {
+        // Phuket remains visible if permission or location services are unavailable.
+      }
+    };
+
+    centerOnCurrentLocation();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <View style={styles.container}>
-      <MapPlaceholder />
+      <MapModeMap region={mapRegion} showsUserLocation={showsUserLocation} />
 
       <SafeAreaView style={styles.safeOverlay} pointerEvents="box-none">
         <View style={styles.topOverlay} pointerEvents="box-none">
@@ -170,12 +197,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ height: '100dvh' } as any) : {}),
   },
-  mapPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    backgroundColor: '#141713',
-    ...(Platform.OS === 'web' ? ({ filter: 'blur(0.55px)' } as any) : {}),
-  },
   safeOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
@@ -186,147 +207,6 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'web'
       ? ('calc(28px + env(safe-area-inset-bottom))' as any)
       : 0,
-  },
-  mapRoad: {
-    position: 'absolute',
-    height: 5,
-    width: '145%',
-    backgroundColor: 'rgba(246,196,69,0.032)',
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.055)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.035,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  mapRoadOne: {
-    top: '30%',
-    left: '-22%',
-    transform: [{ rotate: '-18deg' }],
-  },
-  mapRoadTwo: {
-    top: '55%',
-    left: '-18%',
-    transform: [{ rotate: '24deg' }],
-  },
-  mapRoadThree: {
-    top: '72%',
-    left: '-20%',
-    transform: [{ rotate: '-8deg' }],
-  },
-  mapMinorRoad: {
-    position: 'absolute',
-    width: '125%',
-    height: 1,
-    backgroundColor: 'rgba(236,239,230,0.035)',
-  },
-  mapMinorRoadOne: {
-    top: '19%',
-    left: '-10%',
-    transform: [{ rotate: '9deg' }],
-  },
-  mapMinorRoadTwo: {
-    top: '45%',
-    left: '-12%',
-    transform: [{ rotate: '-7deg' }],
-  },
-  mapMinorRoadThree: {
-    top: '84%',
-    left: '-10%',
-    transform: [{ rotate: '15deg' }],
-  },
-  mapGridLine: {
-    position: 'absolute',
-    backgroundColor: 'rgba(236,239,230,0.018)',
-  },
-  mapGridVerticalOne: {
-    top: '-10%',
-    bottom: '-10%',
-    left: '18%',
-    width: 1,
-    transform: [{ rotate: '5deg' }],
-  },
-  mapGridVerticalTwo: {
-    top: '-10%',
-    bottom: '-10%',
-    left: '51%',
-    width: 1,
-    transform: [{ rotate: '-3deg' }],
-  },
-  mapGridVerticalThree: {
-    top: '-10%',
-    bottom: '-10%',
-    left: '80%',
-    width: 1,
-    transform: [{ rotate: '7deg' }],
-  },
-  mapGridHorizontalOne: {
-    top: '24%',
-    left: '-10%',
-    right: '-10%',
-    height: 1,
-    transform: [{ rotate: '-2deg' }],
-  },
-  mapGridHorizontalTwo: {
-    top: '52%',
-    left: '-10%',
-    right: '-10%',
-    height: 1,
-    transform: [{ rotate: '3deg' }],
-  },
-  mapGridHorizontalThree: {
-    top: '78%',
-    left: '-10%',
-    right: '-10%',
-    height: 1,
-    transform: [{ rotate: '-4deg' }],
-  },
-  mapParcel: {
-    position: 'absolute',
-    borderWidth: 1,
-    borderColor: 'rgba(236,239,230,0.025)',
-    backgroundColor: 'rgba(236,239,230,0.009)',
-  },
-  mapParcelOne: {
-    top: '12%',
-    left: '8%',
-    width: 130,
-    height: 88,
-    borderRadius: 30,
-    transform: [{ rotate: '-8deg' }],
-  },
-  mapParcelTwo: {
-    top: '46%',
-    right: '5%',
-    width: 156,
-    height: 112,
-    borderRadius: 38,
-    transform: [{ rotate: '11deg' }],
-  },
-  mapParcelThree: {
-    bottom: '8%',
-    left: '22%',
-    width: 170,
-    height: 92,
-    borderRadius: 34,
-    transform: [{ rotate: '-5deg' }],
-  },
-  mapDistrict: {
-    position: 'absolute',
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    borderWidth: 1,
-    borderColor: 'rgba(246,196,69,0.045)',
-    backgroundColor: 'rgba(246,196,69,0.01)',
-  },
-  mapDistrictOne: {
-    top: '18%',
-    right: -74,
-  },
-  mapDistrictTwo: {
-    bottom: '12%',
-    left: -92,
   },
   topOverlay: {
     zIndex: 10,
