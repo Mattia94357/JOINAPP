@@ -408,7 +408,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      <BottomNavigation />
+      <BottomNavigation mapActivities={visibleFeed} />
 
       <ParticipantsModal
         visible={Boolean(participantsActivity)}

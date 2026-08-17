@@ -6,12 +6,13 @@ import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigat
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
+import type { ActivityResponse } from '../api';
 import { useMessaging } from '../context/MessagingContext';
 import { colors } from '../theme';
 
-type BottomNavTab = 'discover' | 'host' | 'notifications' | 'messages' | 'profile';
+type BottomNavTab = 'discover' | 'host' | 'map' | 'messages' | 'profile';
 
-export const BOTTOM_NAV_HEIGHT = 54;
+export const BOTTOM_NAV_HEIGHT = 64;
 export const BOTTOM_NAV_CONTENT_GAP = 16;
 export const getBottomNavigationClearance = (bottomInset: number) =>
   BOTTOM_NAV_HEIGHT + bottomInset + BOTTOM_NAV_CONTENT_GAP;
@@ -30,11 +31,15 @@ type BottomNavIconProps = {
 const activeTabByRoute: Partial<Record<keyof RootStackParamList, BottomNavTab>> = {
   Home: 'discover',
   CreateActivity: 'host',
-  Notifications: 'notifications',
+  MapMode: 'map',
   Chat: 'messages',
   Messages: 'messages',
   MessageRequests: 'messages',
   Profile: 'profile',
+};
+
+type BottomNavigationProps = {
+  mapActivities?: ActivityResponse[];
 };
 
 function BottomNavIcon({ active, accessibilityLabel, icon, label, onPress, badgeCount = 0 }: BottomNavIconProps) {
@@ -146,7 +151,7 @@ function BottomNavIcon({ active, accessibilityLabel, icon, label, onPress, badge
   );
 }
 
-export default function BottomNavigation() {
+export default function BottomNavigation({ mapActivities = [] }: BottomNavigationProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList>>();
   const isFocused = useIsFocused();
@@ -160,6 +165,15 @@ export default function BottomNavigation() {
     }
   };
 
+  const openMap = () => {
+    const activity = mapActivities[0];
+    if (activity) {
+      navigation.navigate('MapMode', { activity, activities: mapActivities });
+    } else {
+      navigation.navigate('MapMode');
+    }
+  };
+
   if (!isFocused) return null;
 
   return (
@@ -168,14 +182,14 @@ export default function BottomNavigation() {
         styles.bottomNav,
         Platform.OS !== 'web' && {
           height: BOTTOM_NAV_HEIGHT + safeAreaInsets.bottom,
-          paddingBottom: 2 + safeAreaInsets.bottom,
+          paddingBottom: 3 + safeAreaInsets.bottom,
         },
       ]}
     >
       <View style={styles.bottomNavDivider} pointerEvents="none" />
       <BottomNavIcon active={activeTab === 'discover'} accessibilityLabel="Explore" icon="compass-outline" label="Explore" onPress={() => navigation.navigate('Home')} />
       <BottomNavIcon active={activeTab === 'host'} accessibilityLabel="Create" icon="add-circle-outline" label="Create" onPress={() => navigation.navigate('CreateActivity')} />
-      <BottomNavIcon active={activeTab === 'notifications'} accessibilityLabel="Alerts" icon="notifications-outline" label="Alerts" onPress={() => navigation.navigate('Notifications')} />
+      <BottomNavIcon active={activeTab === 'map'} accessibilityLabel="Map" icon="map-outline" label="Map" onPress={openMap} />
       <BottomNavIcon
         active={activeTab === 'messages'}
         accessibilityLabel={`Messages${unreadConversationCount ? `, ${unreadConversationCount} unread conversations` : ''}`}
@@ -202,10 +216,10 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
     marginHorizontal: 'auto' as any,
-    paddingTop: 2,
+    paddingTop: 3,
     paddingBottom: Platform.OS === 'web'
-      ? ('calc(2px + env(safe-area-inset-bottom))' as any)
-      : 2,
+      ? ('calc(3px + env(safe-area-inset-bottom))' as any)
+      : 3,
     paddingHorizontal: 10,
     backgroundColor: Platform.OS === 'web' ? 'rgba(8,8,8,0.94)' : 'rgba(8,8,8,0.97)',
     borderTopLeftRadius: 20,
@@ -235,7 +249,7 @@ const styles = StyleSheet.create({
   bottomNavItem: {
     flex: 1,
     minWidth: 44,
-    minHeight: 50,
+    minHeight: 58,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     paddingVertical: 0,
@@ -244,23 +258,23 @@ const styles = StyleSheet.create({
   },
   bottomNavContent: {
     width: '100%',
-    height: 48,
+    height: 56,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bottomNavIcon: {
-    width: 36,
-    height: 34,
+    width: 38,
+    height: 36,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bottomNavRing: {
     position: 'absolute',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
   },
   bottomNavGlyph: {
@@ -280,10 +294,10 @@ const styles = StyleSheet.create({
   },
   bottomNavLabel: {
     maxWidth: '100%',
-    marginTop: -1,
+    marginTop: 0,
     color: colors.textMuted,
-    fontSize: 9.5,
-    lineHeight: 11,
+    fontSize: 10.5,
+    lineHeight: 13,
     fontWeight: '600',
     letterSpacing: 0.1,
     textAlign: 'center',

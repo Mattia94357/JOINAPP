@@ -48,7 +48,7 @@ export type RootStackParamList = {
       joinStatus?: 'joined' | 'pending' | 'declined' | 'waitlisted';
       completedAt: number;
     };
-  };
+  } | undefined;
   Activity: { activityId: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };

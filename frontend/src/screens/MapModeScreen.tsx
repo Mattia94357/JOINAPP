@@ -21,6 +21,7 @@ import MapModeMap from '../components/MapModeMap';
 import type { MapActivity } from '../components/MapModeMap.types';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
+import { curatedActivities } from '../utils/curatedActivities';
 import { getMapTilerConfig } from '../utils/mapConfig';
 
 const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife'];
@@ -68,8 +69,12 @@ const distanceBetween = (
 };
 
 export default function MapModeScreen({ navigation, route }: Props) {
+  const initialActivities = route.params?.activities?.length
+    ? route.params.activities
+    : curatedActivities;
+  const initialActivity = route.params?.activity || initialActivities[0];
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedActivity, setSelectedActivity] = useState(route.params.activity);
+  const [selectedActivity, setSelectedActivity] = useState(initialActivity);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showsUserLocation, setShowsUserLocation] = useState(false);
@@ -83,11 +88,15 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
 
   const availableActivities = useMemo(() => {
-    const activities = route.params.activities || [route.params.activity];
-    return activities.some((activity) => activity.id === route.params.activity.id)
+    const requestedActivity = route.params?.activity;
+    const activities = route.params?.activities?.length
+      ? route.params.activities
+      : curatedActivities;
+    if (!requestedActivity) return activities;
+    return activities.some((activity) => activity.id === requestedActivity.id)
       ? activities
-      : [route.params.activity, ...activities];
-  }, [route.params.activities, route.params.activity]);
+      : [requestedActivity, ...activities];
+  }, [route.params?.activities, route.params?.activity]);
 
   const filteredActivities = useMemo(() => availableActivities.filter((activity) => (
     selectedCategory === 'All' || activity.category === selectedCategory
@@ -120,7 +129,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
   }, [availableActivities]);
 
   useEffect(() => {
-    const result = route.params.decisionResult;
+    const result = route.params?.decisionResult;
     if (!result) return;
 
     if (result.decision === 'join') {
@@ -140,7 +149,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
       if (activity.id !== result.activityId) return activity;
       return filteredActivities.find((candidate) => candidate.id !== result.activityId) || activity;
     });
-  }, [filteredActivities, route.params.decisionResult]);
+  }, [filteredActivities, route.params?.decisionResult]);
 
   const openDecisionCard = useCallback(() => {
     navigation.push('Home', {
