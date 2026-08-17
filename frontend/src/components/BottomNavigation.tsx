@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { useMessaging } from '../context/MessagingContext';
 import { colors } from '../theme';
@@ -21,6 +22,7 @@ type BottomNavIconProps = {
   active: boolean;
   accessibilityLabel: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
   onPress: () => void;
   badgeCount?: number;
 };
@@ -35,7 +37,7 @@ const activeTabByRoute: Partial<Record<keyof RootStackParamList, BottomNavTab>> 
   Profile: 'profile',
 };
 
-function BottomNavIcon({ active, accessibilityLabel, icon, onPress, badgeCount = 0 }: BottomNavIconProps) {
+function BottomNavIcon({ active, accessibilityLabel, icon, label, onPress, badgeCount = 0 }: BottomNavIconProps) {
   const pressProgress = useRef(new Animated.Value(0)).current;
   const activeProgress = useRef(new Animated.Value(0)).current;
   const activeIconScale = useRef(new Animated.Value(1)).current;
@@ -85,51 +87,59 @@ function BottomNavIcon({ active, accessibilityLabel, icon, onPress, badgeCount =
         <Animated.View
           pointerEvents="none"
           style={[
-            styles.bottomNavIcon,
+            styles.bottomNavContent,
             {
               opacity: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }),
               transform: [{ scale: pressProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }],
             },
           ]}
         >
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.bottomNavRing,
-              active && styles.bottomNavIconActive,
-              pressed && !active && styles.bottomNavIconPressed,
-              {
-                backgroundColor: activeProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['rgba(8,8,8,0)', 'rgba(8,8,8,0.78)'],
-                }),
-                borderColor: activeProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['rgba(244,197,66,0)', colors.goldBorder],
-                }),
-                transform: [{ scale: activeProgress.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
-              },
-            ]}
-          />
-          <Animated.View style={[styles.bottomNavGlyphLayer, { opacity: pressed ? 0 : activeProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
-            <Ionicons name={icon} size={27} color={colors.textMuted} style={styles.bottomNavGlyph} />
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.bottomNavGlyphLayer,
-              {
-                opacity: pressed ? 1 : activeProgress,
-                transform: [{ scale: activeIconScale }],
-              },
-            ]}
+          <View style={styles.bottomNavIcon}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.bottomNavRing,
+                active && styles.bottomNavIconActive,
+                pressed && !active && styles.bottomNavIconPressed,
+                {
+                  backgroundColor: activeProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['rgba(8,8,8,0)', 'rgba(8,8,8,0.78)'],
+                  }),
+                  borderColor: activeProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['rgba(244,197,66,0)', colors.goldBorder],
+                  }),
+                  transform: [{ scale: activeProgress.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+                },
+              ]}
+            />
+            <Animated.View style={[styles.bottomNavGlyphLayer, { opacity: pressed ? 0 : activeProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
+              <Ionicons name={icon} size={27} color={colors.textMuted} style={styles.bottomNavGlyph} />
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.bottomNavGlyphLayer,
+                {
+                  opacity: pressed ? 1 : activeProgress,
+                  transform: [{ scale: activeIconScale }],
+                },
+              ]}
+            >
+              <Ionicons name={icon} size={27.5} color={colors.primary} style={styles.bottomNavGlyph} />
+            </Animated.View>
+            {badgeCount > 0 ? (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text
+            numberOfLines={1}
+            style={[styles.bottomNavLabel, active && styles.bottomNavLabelActive]}
           >
-            <Ionicons name={icon} size={27.5} color={colors.primary} style={styles.bottomNavGlyph} />
-          </Animated.View>
-          {badgeCount > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
-            </View>
-          ) : null}
+            {label}
+          </Text>
         </Animated.View>
       )}
     </Pressable>
@@ -140,6 +150,7 @@ export default function BottomNavigation() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  const safeAreaInsets = useSafeAreaInsets();
   const { unreadConversationCount } = useMessaging();
   const activeTab = activeTabByRoute[route.name];
 
@@ -152,19 +163,28 @@ export default function BottomNavigation() {
   if (!isFocused) return null;
 
   return (
-    <View style={styles.bottomNav}>
+    <View
+      style={[
+        styles.bottomNav,
+        Platform.OS !== 'web' && {
+          height: BOTTOM_NAV_HEIGHT + safeAreaInsets.bottom,
+          paddingBottom: 2 + safeAreaInsets.bottom,
+        },
+      ]}
+    >
       <View style={styles.bottomNavDivider} pointerEvents="none" />
-      <BottomNavIcon active={activeTab === 'discover'} accessibilityLabel="Discover" icon="compass-outline" onPress={() => navigation.navigate('Home')} />
-      <BottomNavIcon active={activeTab === 'host'} accessibilityLabel="Host" icon="add-circle-outline" onPress={() => navigation.navigate('CreateActivity')} />
-      <BottomNavIcon active={activeTab === 'notifications'} accessibilityLabel="Notifications" icon="notifications-outline" onPress={() => navigation.navigate('Notifications')} />
+      <BottomNavIcon active={activeTab === 'discover'} accessibilityLabel="Explore" icon="compass-outline" label="Explore" onPress={() => navigation.navigate('Home')} />
+      <BottomNavIcon active={activeTab === 'host'} accessibilityLabel="Create" icon="add-circle-outline" label="Create" onPress={() => navigation.navigate('CreateActivity')} />
+      <BottomNavIcon active={activeTab === 'notifications'} accessibilityLabel="Alerts" icon="notifications-outline" label="Alerts" onPress={() => navigation.navigate('Notifications')} />
       <BottomNavIcon
         active={activeTab === 'messages'}
         accessibilityLabel={`Messages${unreadConversationCount ? `, ${unreadConversationCount} unread conversations` : ''}`}
         icon="chatbubbles-outline"
+        label="Messages"
         onPress={openMessages}
         badgeCount={unreadConversationCount}
       />
-      <BottomNavIcon active={activeTab === 'profile'} accessibilityLabel="Profile" icon="person-outline" onPress={() => navigation.navigate('Profile')} />
+      <BottomNavIcon active={activeTab === 'profile'} accessibilityLabel="Profile" icon="person-outline" label="Profile" onPress={() => navigation.navigate('Profile')} />
     </View>
   );
 }
@@ -215,25 +235,32 @@ const styles = StyleSheet.create({
   bottomNavItem: {
     flex: 1,
     minWidth: 44,
-    minHeight: 44,
+    minHeight: 50,
     marginHorizontal: 2,
     paddingHorizontal: 2,
     paddingVertical: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bottomNavContent: {
+    width: '100%',
+    height: 48,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bottomNavIcon: {
-    width: 42,
-    height: 42,
+    width: 36,
+    height: 34,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bottomNavRing: {
     position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
   },
   bottomNavGlyph: {
@@ -250,6 +277,20 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bottomNavLabel: {
+    maxWidth: '100%',
+    marginTop: -1,
+    color: colors.textMuted,
+    fontSize: 9.5,
+    lineHeight: 11,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  bottomNavLabelActive: {
+    color: colors.primary,
   },
   bottomNavIconActive: {
     shadowColor: colors.primary,
