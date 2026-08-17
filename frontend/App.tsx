@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { ActivityIndicator, Platform, StyleSheet, View, Text, useWindowDimensions } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
@@ -239,12 +240,14 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <MessagingProvider>
-        <AppCanvas />
-      </MessagingProvider>
-      <StatusBar style="light" />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <MessagingProvider>
+          <AppCanvas />
+        </MessagingProvider>
+        <StatusBar style="light" />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

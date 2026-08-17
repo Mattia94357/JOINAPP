@@ -117,11 +117,19 @@ function ConversationList({
     : getBottomNavigationClearance(safeAreaInsets.bottom);
 
   const loadConversations = useCallback(async (showLoader = false) => {
-    if (!token) return;
+    if (!token) {
+      setConversations([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (showLoader) setLoading(true);
     try {
       const response = await fetchConversationsRequest(token, requestMode ? 'requests' : 'active');
-      setConversations(response.data.conversations || []);
+      const nextConversations = Array.isArray(response.data?.conversations)
+        ? response.data.conversations.filter((conversation) => Boolean(conversation?.id))
+        : [];
+      setConversations(nextConversations);
       await refreshUnreadConversations();
     } catch {
       // Preserve the current list during temporary connectivity failures.
