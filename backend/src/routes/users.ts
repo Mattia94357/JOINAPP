@@ -6,8 +6,11 @@ import User, { IUser } from '../models/User';
 import Activity from '../models/Activity';
 import UserReport from '../models/UserReport';
 import Chat from '../models/Chat';
+import Moment from '../models/Moment';
 import { rateLimit } from 'express-rate-limit';
 import type { ParamsDictionary } from 'express-serve-static-core';
+import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/security';
 
 const router = express.Router();
 
@@ -55,6 +58,37 @@ const isAllowedGender = (value: unknown): value is Gender =>
   typeof value === 'string' && (allowedGenders as readonly string[]).includes(value);
 
 const optionalTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : undefined);
+
+const getRequesterId = (req: express.Request) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return undefined;
+  try {
+    return (jwt.verify(header.slice(7), getJwtSecret()) as { userId?: string }).userId;
+  } catch {
+    return undefined;
+  }
+};
+
+const historyActivityFields = 'title category location locationPrivacy date visibility status coverImage host participants';
+const canViewHistoryActivity = (activity: any, viewerId?: string) => (
+  activity.visibility !== 'private'
+  || activity.host?.toString?.() === viewerId
+  || (activity.participants || []).some((id: any) => id.toString() === viewerId)
+);
+const historyActivityPayload = (activity: any, viewerId?: string) => {
+  const isMember = activity.host?.toString?.() === viewerId
+    || (activity.participants || []).some((id: any) => id.toString() === viewerId);
+  return ({
+  _id: activity._id,
+  title: activity.title,
+  category: activity.category,
+  location: activity.locationPrivacy === 'private' && !isMember ? undefined : activity.location,
+  date: activity.date,
+  visibility: activity.visibility,
+  status: activity.status,
+  coverImage: activity.coverImage,
+  });
+};
 
 const getBase64ByteSize = (value: string) => {
   const base64 = value.split(',')[1] || '';
@@ -179,6 +213,21 @@ router.get('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
   res.json(userPayload(user));
 });
 
+router.get('/me/history', auth, async (req: AuthRequest, res: ApiResponse) => {
+  const [hostedActivities, joinedActivities, hostedCount, joinedCount] = await Promise.all([
+    Activity.find({ host: req.userId, status: { $ne: 'cancelled' } }).sort({ date: -1 }).limit(100).select(historyActivityFields),
+    Activity.find({ participants: req.userId, host: { $ne: req.userId }, status: { $ne: 'cancelled' } }).sort({ date: -1 }).limit(100).select(historyActivityFields),
+    Activity.countDocuments({ host: req.userId, status: { $ne: 'cancelled' } }),
+    Activity.countDocuments({ participants: req.userId, host: { $ne: req.userId }, status: { $ne: 'cancelled' } }),
+  ]);
+  res.json({
+    hostedActivities: hostedActivities.map((activity) => historyActivityPayload(activity, req.userId)),
+    joinedActivities: joinedActivities.map((activity) => historyActivityPayload(activity, req.userId)),
+    hostedCount,
+    joinedCount,
+  });
+});
+
 router.patch(
   '/me/profile-photo',
   auth,
@@ -259,6 +308,8 @@ router.delete('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
   await Activity.updateMany({ host: userId, status: { $ne: 'cancelled' } }, { $set: { status: 'cancelled', cancellationReason: 'Host account deleted.' } });
   await Activity.updateMany({}, { $pull: { participants: userId, pendingParticipants: userId, declinedParticipants: userId, waitlist: userId, invitedUsers: userId } });
   await Chat.updateMany({}, { $pull: { members: userId, messages: { author: userId } } });
+  await Moment.deleteMany({ creator: userId });
+  await Moment.updateMany({}, { $pull: { likes: userId } });
   await User.updateMany({ blockedUsers: userId }, { $pull: { blockedUsers: userId } });
   await UserReport.deleteMany({ $or: [{ reporter: userId }, { reportedUser: userId }] });
   await User.deleteOne({ _id: userId });
@@ -342,17 +393,31 @@ router.get('/:id', async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   const user = await User.findById(req.params.id).select('-password -passwordResetTokenHash -passwordResetExpires');
   if (!user) return res.status(404).json({ message: 'User not found' });
 
-  const hostedActivities = user.hostedActivitiesPublic
-    ? await Activity.find({ host: user.id }).sort({ createdAt: -1 }).limit(5).select('title category location date visibility')
-    : [];
-  const joinedActivities = user.joinedActivitiesPublic
-    ? await Activity.find({ participants: user.id }).sort({ createdAt: -1 }).limit(5).select('title category location date visibility')
-    : [];
+  const viewerId = getRequesterId(req);
+  const accessQuery = viewerId
+    ? { $or: [{ visibility: { $ne: 'private' } }, { host: viewerId }, { participants: viewerId }] }
+    : { visibility: { $ne: 'private' } };
+  const hostedQuery = { $and: [{ host: user.id, status: { $ne: 'cancelled' } }, accessQuery] };
+  const joinedQuery = { $and: [{ participants: user.id, host: { $ne: user.id }, status: { $ne: 'cancelled' } }, accessQuery] };
+  const [hostedCandidates, joinedCandidates, hostedCount, joinedCount] = await Promise.all([
+    user.hostedActivitiesPublic
+      ? Activity.find(hostedQuery).sort({ date: -1 }).limit(100).select(historyActivityFields)
+      : [],
+    user.joinedActivitiesPublic
+      ? Activity.find(joinedQuery).sort({ date: -1 }).limit(100).select(historyActivityFields)
+      : [],
+    user.hostedActivitiesPublic ? Activity.countDocuments(hostedQuery) : 0,
+    user.joinedActivitiesPublic ? Activity.countDocuments(joinedQuery) : 0,
+  ]);
+  const hostedActivities = hostedCandidates.filter((activity: any) => canViewHistoryActivity(activity, viewerId));
+  const joinedActivities = joinedCandidates.filter((activity: any) => canViewHistoryActivity(activity, viewerId));
 
   res.json({
     ...publicUserPayload(user),
-    hostedActivities,
-    joinedActivities,
+    hostedActivities: hostedActivities.map((activity) => historyActivityPayload(activity, viewerId)),
+    joinedActivities: joinedActivities.map((activity) => historyActivityPayload(activity, viewerId)),
+    hostedCount,
+    joinedCount,
   });
 });
 

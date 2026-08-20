@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import activityRoutes from './routes/activities';
 import chatRoutes from './routes/chats';
 import userRoutes from './routes/users';
+import momentRoutes from './routes/moments';
 import { assertProductionEnvironment, printStartupWarnings } from './config/env';
 
 dotenv.config();
@@ -51,6 +52,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/moments', momentRoutes);
 
 app.get('/', (req, res) => res.send({ message: 'JoinApp backend is up and running' }));
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'JOIN API' }));

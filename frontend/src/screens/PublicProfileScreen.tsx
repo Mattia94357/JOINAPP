@@ -6,20 +6,28 @@ import { RootStackParamList } from '../../App';
 import {
   blockUserRequest,
   fetchPublicUserRequest,
+  fetchUserMomentsRequest,
+  likeMomentRequest,
+  MomentResponse,
   openDirectConversationRequest,
+  ProfileActivity,
   reportUserRequest,
   ApiUser,
+  unlikeMomentRequest,
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
+import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PublicProfile'>;
 
 export default function PublicProfileScreen({ route, navigation }: Props) {
   const { userId, fallbackName, fallbackAvatar } = route.params;
   const { token, user } = useAuth();
-  const [profile, setProfile] = useState<(ApiUser & { hostedActivities?: any[]; joinedActivities?: any[] }) | null>(null);
+  const [profile, setProfile] = useState<(ApiUser & { hostedActivities?: ProfileActivity[]; joinedActivities?: ProfileActivity[] }) | null>(null);
+  const [moments, setMoments] = useState<MomentResponse[]>([]);
+  const [busyMomentId, setBusyMomentId] = useState<string>();
   const [loading, setLoading] = useState(Boolean(userId));
   const [openingMessage, setOpeningMessage] = useState(false);
 
@@ -28,8 +36,14 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
       if (!userId) return;
       setLoading(true);
       try {
-        const response = await fetchPublicUserRequest(userId);
+        const response = await fetchPublicUserRequest(userId, token || undefined);
         setProfile(response.data);
+        try {
+          const momentResponse = await fetchUserMomentsRequest(userId, token || undefined);
+          setMoments(momentResponse.data || []);
+        } catch {
+          setMoments([]);
+        }
       } catch (error) {
         setProfile(null);
       } finally {
@@ -37,7 +51,7 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
       }
     };
     load();
-  }, [userId]);
+  }, [token, userId]);
 
   if (loading) {
     return (
@@ -52,7 +66,6 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const interests = profile?.interests || [];
   const languages = profile?.languages || [];
   const targetUserId = profile?.id || userId;
-  const recentActivities = [...(profile?.hostedActivities || []), ...(profile?.joinedActivities || [])].slice(0, 5);
   const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
 
   const handleReport = async () => {
@@ -100,6 +113,27 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
       Alert.alert('Unable to open messages', error?.response?.data?.message || 'Please try again later.');
     } finally {
       setOpeningMessage(false);
+    }
+  };
+
+  const toggleMomentLike = async (moment: MomentResponse) => {
+    if (!token) {
+      Alert.alert('Sign in required', 'Please log in to like a Moment.');
+      return;
+    }
+    if (busyMomentId) return;
+    setBusyMomentId(moment.id);
+    try {
+      const response = moment.likedByViewer
+        ? await unlikeMomentRequest(moment.id, token)
+        : await likeMomentRequest(moment.id, token);
+      setMoments((current) => current.map((item) => item.id === moment.id
+        ? { ...item, likedByViewer: response.data.liked, likeCount: response.data.likeCount }
+        : item));
+    } catch (error: any) {
+      Alert.alert('Like not updated', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      setBusyMomentId(undefined);
     }
   };
 
@@ -152,6 +186,20 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostRating ?? 'New'}</Text><Text style={styles.statLabel}>Rating</Text></View>
       </View>
 
+      <ProfileHistoryTabs
+        joined={profile?.joinedActivities || []}
+        hosted={profile?.hostedActivities || []}
+        moments={moments}
+        joinedCount={profile?.joinedCount}
+        hostedCount={profile?.hostedCount}
+        busyMomentId={busyMomentId}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onCreatorPress={(creatorId) => {
+          if (creatorId !== targetUserId) navigation.push('PublicProfile', { userId: creatorId });
+        }}
+        onToggleLike={toggleMomentLike}
+      />
+
       <Text style={styles.sectionTitle}>Interests</Text>
       <View style={styles.tags}>
         {interests.length ? interests.map((interest) => <Text key={interest} style={styles.tag}>{interest}</Text>) : <Text style={styles.emptyText}>No interests added yet.</Text>}
@@ -170,16 +218,6 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         </View>
       ) : null}
 
-      <Text style={styles.sectionTitle}>Recent activity</Text>
-      {recentActivities.length ? recentActivities.map((activity, index) => (
-        <View key={activity._id || index} style={styles.activityRow}>
-          <Ionicons name="calendar-outline" size={16} color={colors.primary} />
-          <View style={styles.activityCopy}>
-            <Text style={styles.activityTitle}>{activity.title}</Text>
-            <Text style={styles.activityMeta}>{activity.category} - {activity.location}</Text>
-          </View>
-        </View>
-      )) : <Text style={styles.emptyText}>No public activity yet.</Text>}
     </ScrollView>
   );
 }

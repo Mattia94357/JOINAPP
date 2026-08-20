@@ -19,11 +19,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
-import { approveJoinRequest, cancelActivityRequest, declineJoinRequest, fetchActivity, joinActivityRequest } from '../api';
+import {
+  approveJoinRequest,
+  cancelActivityRequest,
+  declineJoinRequest,
+  deleteMomentRequest,
+  fetchActivity,
+  fetchActivityMomentsRequest,
+  joinActivityRequest,
+  likeMomentRequest,
+  MomentResponse,
+  unlikeMomentRequest,
+} from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import ParticipantsModal from '../components/ParticipantsModal';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { getCuratedActivity } from '../utils/curatedActivities';
+import MomentCard from '../components/MomentCard';
+import CreateMomentModal from '../components/CreateMomentModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -34,6 +47,7 @@ type ActivityDetails = {
   location: string;
   description: string;
   date?: string;
+  startsAt?: string;
   time?: string;
   distance?: string;
   vibe?: string;
@@ -70,6 +84,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const [errorMessage, setErrorMessage] = useState('');
   const [participantsVisible, setParticipantsVisible] = useState(false);
   const [photoRequiredVisible, setPhotoRequiredVisible] = useState(false);
+  const [moments, setMoments] = useState<MomentResponse[]>([]);
+  const [momentsLoading, setMomentsLoading] = useState(false);
+  const [momentError, setMomentError] = useState('');
+  const [createMomentVisible, setCreateMomentVisible] = useState(false);
+  const [busyMomentId, setBusyMomentId] = useState<string>();
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -95,6 +114,28 @@ export default function ActivityScreen({ route, navigation }: Props) {
     };
 
     loadActivity();
+  }, [activityId, token]);
+
+  useEffect(() => {
+    let active = true;
+    const loadMoments = async () => {
+      if (getCuratedActivity(activityId)) return;
+      setMomentsLoading(true);
+      setMomentError('');
+      try {
+        const response = await fetchActivityMomentsRequest(activityId, token || undefined);
+        if (active) setMoments(response.data || []);
+      } catch (error: any) {
+        if (active) {
+          setMoments([]);
+          setMomentError(error?.response?.status === 403 ? '' : 'Moments are temporarily unavailable.');
+        }
+      } finally {
+        if (active) setMomentsLoading(false);
+      }
+    };
+    loadMoments();
+    return () => { active = false; };
   }, [activityId, token]);
 
   const handleJoin = async () => {
@@ -171,6 +212,9 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const waitlisted = user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
   const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
   const isCancelled = activity.status === 'cancelled';
+  const hasActivityStarted = activity.status === 'completed'
+    || Boolean(activity.startsAt && new Date(activity.startsAt).getTime() <= Date.now());
+  const canCreateMoment = Boolean(token && (alreadyJoined || isHost) && !isCancelled && hasActivityStarted);
   const canOpenChat = alreadyJoined || isHost;
   const hostRating = activity.hostRating ? activity.hostRating.toFixed(1) : 'New';
   const joinLabel = alreadyJoined
@@ -269,6 +313,49 @@ export default function ActivityScreen({ route, navigation }: Props) {
         onPress: async () => {
           await cancelActivityRequest(activity.id, token, 'Cancelled by host.');
           await refreshActivity();
+        },
+      },
+    ]);
+  };
+
+  const toggleMomentLike = async (moment: MomentResponse) => {
+    if (!token) {
+      Alert.alert('Sign in required', 'Please log in to like a Moment.');
+      return;
+    }
+    if (busyMomentId) return;
+    setBusyMomentId(moment.id);
+    try {
+      const response = moment.likedByViewer
+        ? await unlikeMomentRequest(moment.id, token)
+        : await likeMomentRequest(moment.id, token);
+      setMoments((current) => current.map((item) => item.id === moment.id
+        ? { ...item, likedByViewer: response.data.liked, likeCount: response.data.likeCount }
+        : item));
+    } catch (error: any) {
+      Alert.alert('Like not updated', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      setBusyMomentId(undefined);
+    }
+  };
+
+  const deleteMoment = (moment: MomentResponse) => {
+    if (!token) return;
+    Alert.alert('Delete Moment?', 'This removes it from the activity and your profile.', [
+      { text: 'Keep Moment', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusyMomentId(moment.id);
+          try {
+            await deleteMomentRequest(moment.id, token);
+            setMoments((current) => current.filter((item) => item.id !== moment.id));
+          } catch (error: any) {
+            Alert.alert('Moment not deleted', error?.response?.data?.message || 'Please try again.');
+          } finally {
+            setBusyMomentId(undefined);
+          }
         },
       },
     ]);
@@ -385,6 +472,36 @@ export default function ActivityScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
+        {(hasActivityStarted || moments.length > 0) ? (
+          <View style={styles.section}>
+            <View style={styles.momentSectionHeader}>
+              <View style={styles.momentSectionCopy}>
+                <Text style={styles.momentEyebrow}>REAL EXPERIENCES</Text>
+                <Text style={styles.sectionTitle}>Moments from this activity</Text>
+              </View>
+              {canCreateMoment ? (
+                <TouchableOpacity style={styles.addMomentButton} onPress={() => setCreateMomentVisible(true)}>
+                  <Ionicons name="add" size={17} color="#050505" />
+                  <Text style={styles.addMomentText}>Add Moment</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {momentsLoading ? <ActivityIndicator color="#f5c12d" style={styles.momentLoader} /> : null}
+            {momentError ? <Text style={styles.momentError}>{momentError}</Text> : null}
+            {!momentsLoading && !moments.length ? <Text style={styles.momentEmpty}>No Moments yet</Text> : null}
+            {moments.map((moment) => (
+              <MomentCard
+                key={moment.id}
+                moment={moment}
+                busy={busyMomentId === moment.id}
+                onCreatorPress={(creatorId) => navigation.navigate('PublicProfile', { userId: creatorId })}
+                onToggleLike={toggleMomentLike}
+                onDelete={deleteMoment}
+              />
+            ))}
+          </View>
+        ) : null}
+
         {isHost && activity.pendingParticipants?.length ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Pending requests</Text>
@@ -485,6 +602,17 @@ export default function ActivityScreen({ route, navigation }: Props) {
           });
         }}
       />
+
+      {token ? (
+        <CreateMomentModal
+          visible={createMomentVisible}
+          activityId={activity.id}
+          activityTitle={activity.title}
+          token={token}
+          onClose={() => setCreateMomentVisible(false)}
+          onCreated={(moment) => setMoments((current) => [moment, ...current])}
+        />
+      ) : null}
 
       <Modal
         visible={photoRequiredVisible}
@@ -817,6 +945,50 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 10,
     backgroundColor: '#111111',
+  },
+  momentSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  momentSectionCopy: {
+    flex: 1,
+  },
+  momentEyebrow: {
+    color: '#f5c12d',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    marginBottom: 3,
+  },
+  addMomentButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 19,
+    paddingHorizontal: 12,
+    backgroundColor: '#f5c12d',
+  },
+  addMomentText: {
+    color: '#050505',
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 4,
+  },
+  momentLoader: {
+    marginVertical: 18,
+  },
+  momentEmpty: {
+    color: '#888888',
+    fontSize: 13,
+    fontWeight: '700',
+    paddingVertical: 14,
+  },
+  momentError: {
+    color: '#f5c12d',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingVertical: 10,
   },
   pendingRow: {
     flexDirection: 'row',

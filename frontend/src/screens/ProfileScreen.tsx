@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
-import { updateProfilePhotoRequest, updateProfileRequest } from '../api';
+import {
+  deleteMomentRequest,
+  fetchOwnActivityHistoryRequest,
+  fetchUserMomentsRequest,
+  likeMomentRequest,
+  MomentResponse,
+  ProfileActivity,
+  unlikeMomentRequest,
+  updateProfilePhotoRequest,
+  updateProfileRequest,
+} from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
@@ -25,6 +35,7 @@ import BottomNavigation, {
   BOTTOM_NAV_WEB_CONTENT_CLEARANCE,
   getBottomNavigationClearance,
 } from '../components/BottomNavigation';
+import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -36,9 +47,6 @@ const genderOptions = [
   { label: 'Non-binary', value: 'non_binary' },
   { label: 'Prefer not to say', value: 'prefer_not_to_say' },
 ] as const;
-
-const hosted: Array<{ title: string; meta: string }> = [];
-const joined: Array<{ title: string; meta: string }> = [];
 
 const getMimeTypeFromAsset = (asset: ImagePicker.ImagePickerAsset) => {
   const mimeType = (asset as ImagePicker.ImagePickerAsset & { mimeType?: string }).mimeType;
@@ -75,13 +83,21 @@ export default function ProfileScreen({ navigation }: Props) {
   const [ageRange, setAgeRange] = useState(user?.ageRange || '');
   const [gender, setGender] = useState(user?.gender || 'prefer_not_to_say');
   const [publicGender, setPublicGender] = useState(Boolean(user?.publicGender));
+  const [hostedActivities, setHostedActivities] = useState<ProfileActivity[]>([]);
+  const [joinedActivities, setJoinedActivities] = useState<ProfileActivity[]>([]);
+  const [moments, setMoments] = useState<MomentResponse[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [hostedCount, setHostedCount] = useState(user?.hostedCount || 0);
+  const [joinedCount, setJoinedCount] = useState(user?.joinedCount || 0);
+  const [historyError, setHistoryError] = useState('');
+  const [busyMomentId, setBusyMomentId] = useState<string>();
 
   const interests = user?.interests || [];
   const location = user?.location || 'Location not added';
   const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
   const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
-  const displayHostedCount = user?.hostedCount ?? hosted.length;
-  const displayJoinedCount = user?.joinedCount ?? joined.length;
+  const displayHostedCount = hostedCount;
+  const displayJoinedCount = joinedCount;
   const displayRating = user?.hostRating ? user.hostRating.toFixed(1) : 'New';
 
   const badges = useMemo(
@@ -92,6 +108,79 @@ export default function ProfileScreen({ navigation }: Props) {
     ],
     [displayJoinedCount, hasProfilePhoto, user?.verified],
   );
+
+  useEffect(() => {
+    let active = true;
+    const loadHistory = async () => {
+      if (!token || !user?.id) {
+        if (active) setHistoryLoading(false);
+        return;
+      }
+      setHistoryLoading(true);
+      setHistoryError('');
+      try {
+        const [historyResult, momentResult] = await Promise.allSettled([
+          fetchOwnActivityHistoryRequest(token),
+          fetchUserMomentsRequest(user.id, token),
+        ]);
+        if (!active) return;
+        if (historyResult.status === 'fulfilled') {
+          setHostedActivities(historyResult.value.data.hostedActivities || []);
+          setJoinedActivities(historyResult.value.data.joinedActivities || []);
+          setHostedCount(historyResult.value.data.hostedCount ?? historyResult.value.data.hostedActivities.length);
+          setJoinedCount(historyResult.value.data.joinedCount ?? historyResult.value.data.joinedActivities.length);
+        } else {
+          setHistoryError('Activity history is temporarily unavailable.');
+        }
+        setMoments(momentResult.status === 'fulfilled' ? (momentResult.value.data || []) : []);
+      } catch {
+        if (active) setHistoryError('Activity history is temporarily unavailable.');
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    };
+    loadHistory();
+    return () => { active = false; };
+  }, [token, user?.id]);
+
+  const toggleMomentLike = async (moment: MomentResponse) => {
+    if (!token || busyMomentId) return;
+    setBusyMomentId(moment.id);
+    try {
+      const response = moment.likedByViewer
+        ? await unlikeMomentRequest(moment.id, token)
+        : await likeMomentRequest(moment.id, token);
+      setMoments((current) => current.map((item) => item.id === moment.id
+        ? { ...item, likedByViewer: response.data.liked, likeCount: response.data.likeCount }
+        : item));
+    } catch (error: any) {
+      Alert.alert('Like not updated', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      setBusyMomentId(undefined);
+    }
+  };
+
+  const deleteMoment = (moment: MomentResponse) => {
+    if (!token) return;
+    Alert.alert('Delete Moment?', 'This removes it from your profile and the activity.', [
+      { text: 'Keep Moment', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusyMomentId(moment.id);
+          try {
+            await deleteMomentRequest(moment.id, token);
+            setMoments((current) => current.filter((item) => item.id !== moment.id));
+          } catch (error: any) {
+            Alert.alert('Moment not deleted', error?.response?.data?.message || 'Please try again.');
+          } finally {
+            setBusyMomentId(undefined);
+          }
+        },
+      },
+    ]);
+  };
 
   const uploadSelectedPhoto = async (source: PhotoSource) => {
     if (!token) {
@@ -284,6 +373,21 @@ export default function ProfileScreen({ navigation }: Props) {
         </View>
       </View>
 
+      {historyError ? <Text style={styles.historyError}>{historyError}</Text> : null}
+      <ProfileHistoryTabs
+        joined={joinedActivities}
+        hosted={hostedActivities}
+        moments={moments}
+        joinedCount={joinedCount}
+        hostedCount={hostedCount}
+        loading={historyLoading}
+        ownProfile
+        busyMomentId={busyMomentId}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onToggleLike={toggleMomentLike}
+        onDeleteMoment={deleteMoment}
+      />
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Beta profile</Text>
         <TextInput
@@ -364,31 +468,6 @@ export default function ProfileScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <View style={styles.activityColumn}>
-          <Text style={styles.sectionTitle}>Hosted</Text>
-          {hosted.length ? hosted.map((activity) => (
-            <View key={activity.title} style={styles.activityRow}>
-              <Ionicons name="star-outline" size={16} color={colors.primary} />
-              <View style={styles.activityTextBlock}>
-                <Text style={styles.activityTitle}>{activity.title}</Text>
-                <Text style={styles.activityMeta}>{activity.meta}</Text>
-              </View>
-            </View>
-          )) : <Text style={styles.emptyText}>No hosted activities yet.</Text>}
-        </View>
-
-        <View style={styles.activityColumn}>
-          <Text style={styles.sectionTitle}>Joined</Text>
-          {joined.length ? joined.map((activity) => (
-            <View key={activity.title} style={styles.activityRow}>
-              <Ionicons name="calendar-outline" size={16} color={colors.primary} />
-              <View style={styles.activityTextBlock}>
-                <Text style={styles.activityTitle}>{activity.title}</Text>
-                <Text style={styles.activityMeta}>{activity.meta}</Text>
-              </View>
-            </View>
-          )) : <Text style={styles.emptyText}>No joined activities yet.</Text>}
-        </View>
       </View>
 
       <View style={styles.actions}>
@@ -555,6 +634,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginTop: spacing.sm,
+  },
+  historyError: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
   trustCard: {
     flexDirection: 'row',

@@ -224,6 +224,7 @@ export type RawActivity = {
   locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   date?: string;
+  startsAt?: string;
   coverImage?: string;
   vibe?: string;
   availabilityTag?: string;
@@ -255,6 +256,7 @@ export type ActivityResponse = {
   locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   date?: string;
+  startsAt?: string;
   time?: string;
   distance?: string;
   vibe?: string;
@@ -318,6 +320,51 @@ export type ConversationListResponse = {
   unreadRequestCount: number;
 };
 
+export type ProfileActivity = {
+  _id: string;
+  title: string;
+  category: string;
+  location?: string;
+  date: string;
+  visibility?: 'public' | 'private';
+  status?: 'active' | 'full' | 'cancelled' | 'completed';
+  coverImage?: string;
+};
+
+export type ActivityHistoryResponse = {
+  hostedActivities: ProfileActivity[];
+  joinedActivities: ProfileActivity[];
+  hostedCount?: number;
+  joinedCount?: number;
+};
+
+export type MomentResponse = {
+  id: string;
+  creator: {
+    id?: string;
+    name: string;
+    avatar?: string;
+    profilePictureUrl?: string;
+    profileThumbnailUrl?: string;
+  };
+  activity: {
+    id?: string;
+    title: string;
+    category?: string;
+    date?: string;
+    location?: string;
+    coverImage?: string;
+    visibility?: 'public' | 'private';
+  };
+  images: string[];
+  caption?: string;
+  likeCount: number;
+  likedByViewer: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const mapParticipant = (participant: RawAvatarUser) => ({
   id: participant._id || participant.id,
   name: participant.name,
@@ -335,6 +382,9 @@ export const registerRequest = (name: string, email: string, password: string) =
 
 export const fetchCurrentUserRequest = (token: string) =>
   api.get<ApiUser>('/api/users/me', { headers: { Authorization: `Bearer ${token}` } });
+
+export const fetchOwnActivityHistoryRequest = (token: string) =>
+  api.get<ActivityHistoryResponse>('/api/users/me/history', { headers: { Authorization: `Bearer ${token}` } });
 
 export const fetchActivities = async (token?: string, filters?: { hostGender?: 'male' | 'female' | 'non_binary' }) => {
   const response = await api.get<RawActivity[]>('/api/activities', {
@@ -355,6 +405,7 @@ export const fetchActivities = async (token?: string, filters?: { hostGender?: '
     locationPrivacy: activity.locationPrivacy,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
+    startsAt: activity.date,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
@@ -407,6 +458,7 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     locationPrivacy: activity.locationPrivacy,
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
+    startsAt: activity.date,
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     distance: '1.2 km',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
@@ -584,5 +636,36 @@ export const forgotPasswordRequest = (email: string) =>
 export const resetPasswordRequest = (token: string, password: string) =>
   api.post('/api/auth/reset-password', { token, password });
 
-export const fetchPublicUserRequest = (userId: string) =>
-  api.get(`/api/users/${userId}`);
+export const fetchPublicUserRequest = (userId: string, token?: string) =>
+  api.get<ApiUser & ActivityHistoryResponse>(`/api/users/${userId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+export const fetchUserMomentsRequest = (userId: string, token?: string) =>
+  api.get<MomentResponse[]>(`/api/moments/user/${userId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+export const fetchActivityMomentsRequest = (activityId: string, token?: string) =>
+  api.get<MomentResponse[]>(`/api/moments/activity/${activityId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+export const createMomentRequest = (activityId: string, images: string[], caption: string, token: string) =>
+  api.post<MomentResponse>('/api/moments', { activityId, images, caption }, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 45000,
+  });
+
+export const deleteMomentRequest = (momentId: string, token: string) =>
+  api.delete(`/api/moments/${momentId}`, { headers: { Authorization: `Bearer ${token}` } });
+
+export const likeMomentRequest = (momentId: string, token: string) =>
+  api.post<{ liked: true; likeCount: number }>(`/api/moments/${momentId}/like`, {}, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const unlikeMomentRequest = (momentId: string, token: string) =>
+  api.delete<{ liked: false; likeCount: number }>(`/api/moments/${momentId}/like`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
