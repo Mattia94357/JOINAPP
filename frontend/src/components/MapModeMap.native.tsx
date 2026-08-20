@@ -1,6 +1,6 @@
-import React, { useMemo, useRef } from 'react';
-import { StyleSheet } from 'react-native';
-import MapView from 'react-native-maps';
+import React, { useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { WebView } from 'react-native-webview';
 import MapActivityMarker from './MapActivityMarker';
 import type { MapModeMapProps } from './MapModeMap.types';
@@ -31,6 +31,14 @@ export default function MapModeMap(props: MapModeMapProps) {
     mapTilerApiKey,
     mapStyleId,
   } = props;
+  const [nativeExpanded, setNativeExpanded] = useState(false);
+  const clusterCoordinate = useMemo(() => {
+    if (!activities.length) return { latitude: initialRegion.latitude, longitude: initialRegion.longitude };
+    return {
+      latitude: activities.reduce((sum, activity) => sum + activity.latitude, 0) / activities.length,
+      longitude: activities.reduce((sum, activity) => sum + activity.longitude, 0) / activities.length,
+    };
+  }, [activities, initialRegion.latitude, initialRegion.longitude]);
   const mapHtml = useMemo(() => mapTilerApiKey ? buildMapTilerHtml({
     latitude: initialRegion.latitude,
     longitude: initialRegion.longitude,
@@ -55,6 +63,9 @@ export default function MapModeMap(props: MapModeMapProps) {
             const message = JSON.parse(event.nativeEvent.data);
             if (message?.type === 'join-map-activity-select' && typeof message.activityId === 'string') {
               onSelectActivity(message.activityId);
+            }
+            if (message?.type === 'join-map-cluster-select') {
+              props.onSelectCluster?.(Number(message.activityCount) || null);
             }
           } catch {
             // Ignore unrelated or malformed web-map messages.
@@ -87,7 +98,22 @@ export default function MapModeMap(props: MapModeMapProps) {
       loadingIndicatorColor="#F6C445"
       accessibilityLabel="Interactive map"
     >
-      {activities.map((activity) => (
+      {activities.length > 1 && !nativeExpanded && (
+        <Marker
+          coordinate={clusterCoordinate}
+          onPress={() => {
+            props.onSelectCluster?.(activities.length);
+            setNativeExpanded(true);
+            nativeMapRef.current?.animateCamera({ zoom: 15 }, { duration: 500 });
+          }}
+          accessibilityLabel={`${activities.length} activities in this area`}
+        >
+          <View style={styles.clusterMarker}>
+            <Text style={styles.clusterText}>{activities.length}</Text>
+          </View>
+        </Marker>
+      )}
+      {(nativeExpanded || activities.length <= 1) && activities.map((activity) => (
         <MapActivityMarker
           key={activity.id}
           activity={activity}
@@ -111,5 +137,20 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#151815',
+  },
+  clusterMarker: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#F6C445',
+    backgroundColor: '#171713',
+  },
+  clusterText: {
+    color: '#F6C445',
+    fontSize: 15,
+    fontWeight: '900',
   },
 });

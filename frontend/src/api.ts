@@ -309,6 +309,7 @@ export type ConversationSummary = {
   latestMessage: string;
   latestMessageAt: string;
   unread: boolean;
+  unreadCount?: number;
 };
 
 export type ConversationListResponse = {

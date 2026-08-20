@@ -80,11 +80,12 @@ const markChatRead = async (chat: any, userId: string) => {
   await chat.save();
 };
 
-const isUnreadFor = (chat: any, userId: string) => {
-  const latest = chat.messages?.[chat.messages.length - 1];
-  if (!latest || toId(latest.author) === userId) return false;
+const unreadCountFor = (chat: any, userId: string) => {
   const readState = (chat.readStates || []).find((state: any) => toId(state.user) === userId);
-  return !readState || new Date(latest.sentAt).getTime() > new Date(readState.lastReadAt).getTime();
+  const lastReadAt = readState ? new Date(readState.lastReadAt).getTime() : 0;
+  return (chat.messages || []).filter((message: any) =>
+    toId(message.author) !== userId
+    && new Date(message.sentAt).getTime() > lastReadAt).length;
 };
 
 const conversationSummary = (chat: any, userId: string) => {
@@ -92,13 +93,14 @@ const conversationSummary = (chat: any, userId: string) => {
   const isActivity = chat.chatType !== 'directPrivateChat';
   const otherUser = isActivity
     ? null
-    : (chat.members || []).find((member: any) => toId(member) !== userId);
+    : (chat.members || []).find((member: any) => member && toId(member) !== userId);
+  const unreadCount = unreadCountFor(chat, userId);
 
   return {
     id: chat._id.toString(),
     type: isActivity ? 'activity' : 'direct',
     state: chat.directState || 'active',
-    title: isActivity ? chat.activity?.title : otherUser?.name,
+    title: isActivity ? chat.activity?.title || 'Activity chat' : otherUser?.name || 'Unavailable member',
     image: isActivity
       ? chat.activity?.coverImage
       : otherUser?.profileThumbnailUrl || otherUser?.profilePictureUrl || otherUser?.avatar,
@@ -114,7 +116,8 @@ const conversationSummary = (chat: any, userId: string) => {
     } : undefined,
     latestMessage: latest?.message || '',
     latestMessageAt: latest?.sentAt || chat.updatedAt,
-    unread: isUnreadFor(chat, userId),
+    unread: unreadCount > 0,
+    unreadCount,
   };
 };
 
@@ -166,7 +169,7 @@ const getConversationLists = async (userId: string) => {
   return {
     conversations,
     requests,
-    unreadConversationCount: summaries.filter((summary: any) => summary.unread).length,
+    unreadConversationCount: conversations.filter((conversation: any) => conversation.unread).length,
     unreadRequestCount: requests.filter((request: any) => request.unread).length,
   };
 };

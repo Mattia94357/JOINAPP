@@ -34,6 +34,7 @@ type RequestsProps = NativeStackScreenProps<RootStackParamList, 'MessageRequests
 const formatConversationTime = (value?: string) => {
   if (!value) return '';
   const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
   const now = new Date();
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -61,6 +62,7 @@ function ConversationRow({
   conversation: ConversationSummary;
   onPress: () => void;
 }) {
+  const unreadCount = Math.max(0, Number(conversation.unreadCount) || 0);
   return (
     <TouchableOpacity
       style={[styles.row, conversation.unread && styles.rowUnread]}
@@ -92,7 +94,13 @@ function ConversationRow({
           >
             {conversation.latestMessage || (conversation.type === 'activity' ? 'Activity group chat' : 'Start the conversation')}
           </Text>
-          {conversation.unread ? <View style={styles.unreadDot}><Text style={styles.unreadDotText}>1</Text></View> : null}
+          {conversation.unread ? (
+            <View style={styles.unreadDot}>
+              {unreadCount > 0 ? (
+                <Text style={styles.unreadDotText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>
@@ -112,6 +120,7 @@ function ConversationList({
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const bottomClearance = Platform.OS === 'web'
     ? BOTTOM_NAV_WEB_CONTENT_CLEARANCE
     : getBottomNavigationClearance(safeAreaInsets.bottom);
@@ -119,6 +128,7 @@ function ConversationList({
   const loadConversations = useCallback(async (showLoader = false) => {
     if (!token) {
       setConversations([]);
+      setLoadError(false);
       setLoading(false);
       setRefreshing(false);
       return;
@@ -127,12 +137,25 @@ function ConversationList({
     try {
       const response = await fetchConversationsRequest(token, requestMode ? 'requests' : 'active');
       const nextConversations = Array.isArray(response.data?.conversations)
-        ? response.data.conversations.filter((conversation) => Boolean(conversation?.id))
+        ? response.data.conversations
+          .filter((conversation) => Boolean(conversation?.id))
+          .map((conversation) => ({
+            ...conversation,
+            title: conversation.title || (conversation.type === 'activity' ? 'Activity chat' : 'Unavailable member'),
+            latestMessage: typeof conversation.latestMessage === 'string' ? conversation.latestMessage : '',
+          }))
+          .sort((first, second) => {
+            const firstTime = new Date(first.latestMessageAt || 0).getTime();
+            const secondTime = new Date(second.latestMessageAt || 0).getTime();
+            return (Number.isNaN(secondTime) ? 0 : secondTime) - (Number.isNaN(firstTime) ? 0 : firstTime);
+          })
         : [];
       setConversations(nextConversations);
+      setLoadError(false);
       await refreshUnreadConversations();
     } catch {
       // Preserve the current list during temporary connectivity failures.
+      setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -206,16 +229,25 @@ function ConversationList({
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons
-              name={requestMode ? 'mail-open-outline' : 'chatbubbles-outline'}
+              name={loadError ? 'cloud-offline-outline' : requestMode ? 'mail-open-outline' : 'chatbubbles-outline'}
               size={38}
               color={colors.primary}
             />
-            <Text style={styles.emptyTitle}>{requestMode ? 'No message requests' : 'No conversations yet'}</Text>
-            <Text style={styles.emptyText}>
-              {requestMode
-                ? 'New requests from people outside your activities will appear here.'
-                : 'Activity chats and direct conversations will appear here.'}
+            <Text style={styles.emptyTitle}>
+              {loadError ? 'Messages unavailable' : requestMode ? 'No message requests' : 'No messages yet'}
             </Text>
+            <Text style={styles.emptyText}>
+              {loadError
+                ? 'We could not load your conversations. Please try again.'
+                : requestMode
+                ? 'New requests from people outside your activities will appear here.'
+                : 'Join an activity and start connecting.'}
+            </Text>
+            {loadError ? (
+              <TouchableOpacity style={styles.retryButton} onPress={() => void loadConversations(true)}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         }
         renderItem={({ item }) => (
@@ -327,4 +359,13 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '900', marginTop: spacing.md },
   emptyText: { color: colors.textMuted, textAlign: 'center', lineHeight: 20, marginTop: spacing.sm },
+  retryButton: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonText: { color: colors.primary, fontSize: 13, fontWeight: '800' },
 });

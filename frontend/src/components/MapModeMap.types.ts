@@ -15,6 +15,7 @@ export type MapModeMapProps = {
   activities: MapActivity[];
   selectedActivityId: string;
   onSelectActivity: (activityId: string) => void;
+  onSelectCluster?: (activityCount: number | null) => void;
   mapTilerApiKey?: string;
   mapStyleId: string;
 };

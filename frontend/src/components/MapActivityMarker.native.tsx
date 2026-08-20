@@ -23,7 +23,9 @@ export default function MapActivityMarker({ activity, selected, onPress }: MapAc
       anchor={{ x: 0.5, y: 1 }}
       accessibilityLabel={`${activity.title} activity`}
     >
-      <View style={[styles.card, selected && styles.cardSelected]}>
+      <View style={styles.markerWrap}>
+        <View style={[styles.tip, selected && styles.tipSelected]} />
+        <View style={[styles.card, selected && styles.cardSelected]}>
         {activity.coverImage ? (
           <Image
             source={{ uri: activity.coverImage }}
@@ -33,10 +35,9 @@ export default function MapActivityMarker({ activity, selected, onPress }: MapAc
         ) : (
           <View style={styles.imageFallback} />
         )}
-        <View style={styles.shadeLight} pointerEvents="none" />
-        <View style={styles.shadeDeep} pointerEvents="none" />
         <View style={styles.iconBadge} pointerEvents="none">
-          <Ionicons name={getMapActivityIconName(activity.category)} size={14} color={colors.primary} />
+          <Ionicons name={getMapActivityIconName(activity.category)} size={11} color={colors.primary} />
+        </View>
         </View>
       </View>
     </Marker>
@@ -44,12 +45,31 @@ export default function MapActivityMarker({ activity, selected, onPress }: MapAc
 }
 
 const styles = StyleSheet.create({
+  markerWrap: {
+    width: 46,
+    height: 54,
+    alignItems: 'center',
+  },
+  tip: {
+    position: 'absolute',
+    bottom: 2,
+    width: 16,
+    height: 16,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: '#171713',
+    transform: [{ rotate: '45deg' }],
+  },
+  tipSelected: {
+    borderColor: '#fff',
+  },
   card: {
-    width: 60,
-    height: 84,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.primary,
     backgroundColor: '#171717',
     overflow: 'hidden',
     shadowColor: '#000',
@@ -59,8 +79,8 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cardSelected: {
-    borderColor: colors.primary,
-    transform: [{ scale: 1.09 }],
+    borderColor: '#fff',
+    transform: [{ scale: 1.1 }],
     elevation: 11,
   },
   image: {
@@ -73,29 +93,13 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: colors.surfaceElevated,
   },
-  shadeLight: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 46,
-    backgroundColor: 'rgba(4,4,4,0.2)',
-  },
-  shadeDeep: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 25,
-    backgroundColor: 'rgba(4,4,4,0.62)',
-  },
   iconBadge: {
     position: 'absolute',
-    left: 7,
-    bottom: 7,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    right: -2,
+    bottom: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(8,8,8,0.74)',

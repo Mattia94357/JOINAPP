@@ -74,7 +74,9 @@ export default function MapModeScreen({ navigation, route }: Props) {
     : curatedActivities;
   const initialActivity = route.params?.activity || initialActivities[0];
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(initialActivity);
+  const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showsUserLocation, setShowsUserLocation] = useState(false);
@@ -98,9 +100,18 @@ export default function MapModeScreen({ navigation, route }: Props) {
       : [requestedActivity, ...activities];
   }, [route.params?.activities, route.params?.activity]);
 
-  const filteredActivities = useMemo(() => availableActivities.filter((activity) => (
-    selectedCategory === 'All' || activity.category === selectedCategory
-  )), [availableActivities, selectedCategory]);
+  const filteredActivities = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    return availableActivities.filter((activity) => (
+      (selectedCategory === 'All' || activity.category === selectedCategory)
+      && (!query || [activity.title, activity.category, activity.location]
+        .some((value) => value?.toLocaleLowerCase().includes(query)))
+    ));
+  }, [availableActivities, searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    setSelectedClusterCount(null);
+  }, [searchQuery, selectedCategory]);
 
   const mapActivities = useMemo<MapActivity[]>(() => filteredActivities
     .filter((activity) => (
@@ -108,7 +119,6 @@ export default function MapModeScreen({ navigation, route }: Props) {
       && Number.isFinite(activity.latitude)
       && Number.isFinite(activity.longitude)
     ))
-    .slice(0, 30)
     .map((activity) => ({
       id: activity.id,
       title: activity.title,
@@ -125,7 +135,10 @@ export default function MapModeScreen({ navigation, route }: Props) {
 
   const selectMapActivity = useCallback((activityId: string) => {
     const activity = availableActivities.find((candidate) => candidate.id === activityId);
-    if (activity) setSelectedActivity(activity);
+    if (activity) {
+      setSelectedClusterCount(null);
+      setSelectedActivity(activity);
+    }
   }, [availableActivities]);
 
   useEffect(() => {
@@ -231,6 +244,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
           activities={mapActivities}
           selectedActivityId={selectedActivity.id}
           onSelectActivity={selectMapActivity}
+          onSelectCluster={setSelectedClusterCount}
           mapTilerApiKey={mapTilerConfig.apiKey}
           mapStyleId={mapTilerConfig.styleId}
         />
@@ -261,6 +275,8 @@ export default function MapModeScreen({ navigation, route }: Props) {
               placeholderTextColor={colors.textMuted}
               accessibilityLabel="Search activities or places"
               returnKeyType="search"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
           </View>
 
@@ -300,7 +316,22 @@ export default function MapModeScreen({ navigation, route }: Props) {
           </ScrollView>
         </View>
 
-        <TouchableOpacity
+        {selectedClusterCount ? (
+          <View
+            style={[styles.clusterSummary, compactHeight && styles.clusterSummaryCompact]}
+            accessibilityRole="summary"
+            accessibilityLabel={`${selectedClusterCount} activities in this area. Zoom in to explore.`}
+          >
+            <View style={styles.clusterSummaryCount}>
+              <Text style={styles.clusterSummaryCountText}>{selectedClusterCount}</Text>
+            </View>
+            <View style={styles.clusterSummaryCopy}>
+              <Text style={styles.clusterSummaryTitle}>{selectedClusterCount} activities here</Text>
+              <Text style={styles.clusterSummaryHint}>Zoom in to explore</Text>
+            </View>
+            <Ionicons name="chevron-up" size={18} color={colors.primary} />
+          </View>
+        ) : <TouchableOpacity
           style={[styles.previewCard, compactHeight && styles.previewCardCompact]}
           onPress={openDecisionCard}
           activeOpacity={0.9}
@@ -336,7 +367,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
         >
           <Text style={styles.joinButtonText}>JOIN</Text>
         </View>
-        </TouchableOpacity>
+        </TouchableOpacity>}
       </SafeAreaView>
     </View>
   );
@@ -479,6 +510,57 @@ const styles = StyleSheet.create({
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
     } as any) : {}),
+  },
+  clusterSummary: {
+    zIndex: 10,
+    minHeight: 82,
+    marginHorizontal: 12,
+    marginBottom: Platform.OS === 'web' ? 0 : 26,
+    borderRadius: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: 'rgba(10,10,10,0.94)',
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  clusterSummaryCompact: {
+    minHeight: 72,
+  },
+  clusterSummaryCount: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: '#171713',
+  },
+  clusterSummaryCountText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  clusterSummaryCopy: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  clusterSummaryTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  clusterSummaryHint: {
+    marginTop: 3,
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   previewCardCompact: {
     height: 108,
