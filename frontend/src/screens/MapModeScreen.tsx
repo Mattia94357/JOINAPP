@@ -28,7 +28,7 @@ const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife']
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 
-const PHUKET_REGION: Region = {
+const INITIAL_FALLBACK_REGION: Region = {
   latitude: 7.8804,
   longitude: 98.3923,
   latitudeDelta: 0.08,
@@ -73,6 +73,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
     ? route.params.activities
     : curatedActivities;
   const initialActivity = route.params?.activity || initialActivities[0];
+  const activityContextRegion: Region | null = Number.isFinite(initialActivity?.latitude) && Number.isFinite(initialActivity?.longitude)
+    ? {
+      latitude: initialActivity.latitude as number,
+      longitude: initialActivity.longitude as number,
+      latitudeDelta: 0.08,
+      longitudeDelta: 0.08,
+    }
+    : null;
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(initialActivity);
@@ -198,7 +206,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
           : await Location.requestForegroundPermissionsAsync();
 
         if (!permission.granted || !active) {
-          if (active) setMapRegion(PHUKET_REGION);
+          if (active) setMapRegion(activityContextRegion || INITIAL_FALLBACK_REGION);
           return;
         }
 
@@ -224,7 +232,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
           longitudeDelta: 0.08,
         });
       } catch {
-        if (active) setMapRegion(PHUKET_REGION);
+        if (active) setMapRegion(activityContextRegion || INITIAL_FALLBACK_REGION);
       }
     };
 

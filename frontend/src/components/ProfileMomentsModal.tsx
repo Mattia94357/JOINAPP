@@ -1,23 +1,33 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { MomentResponse } from '../api';
 import { colors, spacing } from '../theme';
 import MomentCard from './MomentCard';
+import MomentCommentsSection from './MomentCommentsSection';
 
 type Props = {
   visible: boolean;
   moments: MomentResponse[];
   total: number;
   busyMomentId?: string;
+  token?: string | null;
+  initialCommentMomentId?: string;
   onClose: () => void;
   onActivityPress: (activityId: string) => void;
   onCreatorPress?: (userId: string) => void;
   onToggleLike?: (moment: MomentResponse) => void;
   onDeleteMoment?: (moment: MomentResponse) => void;
+  onMomentUpdate: (momentId: string, update: Pick<MomentResponse, 'commentCount' | 'latestComments'>) => void;
 };
 
 export default function ProfileMomentsModal(props: Props) {
+  const [commentMomentId, setCommentMomentId] = useState<string>();
+
+  useEffect(() => {
+    setCommentMomentId(props.visible ? props.initialCommentMomentId : undefined);
+  }, [props.initialCommentMomentId, props.visible]);
+
   return (
     <Modal visible={props.visible} animationType="slide" onRequestClose={props.onClose}>
       <View style={styles.screen}>
@@ -32,15 +42,25 @@ export default function ProfileMomentsModal(props: Props) {
         </View>
         <ScrollView contentContainerStyle={styles.content}>
           {props.moments.map((moment) => (
-            <MomentCard
-              key={moment.id}
-              moment={moment}
-              busy={props.busyMomentId === moment.id}
-              onActivityPress={(activityId) => { props.onClose(); props.onActivityPress(activityId); }}
-              onCreatorPress={props.onCreatorPress}
-              onToggleLike={props.onToggleLike}
-              onDelete={props.onDeleteMoment}
-            />
+            <React.Fragment key={moment.id}>
+              <MomentCard
+                moment={moment}
+                busy={props.busyMomentId === moment.id}
+                onActivityPress={(activityId) => { props.onClose(); props.onActivityPress(activityId); }}
+                onCreatorPress={props.onCreatorPress}
+                onToggleLike={props.onToggleLike}
+                onCommentsPress={(selectedMoment) => setCommentMomentId((current) => current === selectedMoment.id ? undefined : selectedMoment.id)}
+                onDelete={props.onDeleteMoment}
+              />
+              {commentMomentId === moment.id ? (
+                <MomentCommentsSection
+                  moment={moment}
+                  token={props.token}
+                  onMomentUpdate={props.onMomentUpdate}
+                  onAuthorPress={props.onCreatorPress}
+                />
+              ) : null}
+            </React.Fragment>
           ))}
         </ScrollView>
       </View>

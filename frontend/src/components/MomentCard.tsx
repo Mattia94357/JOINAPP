@@ -11,6 +11,7 @@ type Props = {
   onActivityPress?: (activityId: string) => void;
   onCreatorPress?: (userId: string) => void;
   onToggleLike?: (moment: MomentResponse) => void;
+  onCommentsPress?: (moment: MomentResponse) => void;
   onDelete?: (moment: MomentResponse) => void;
 };
 
@@ -20,7 +21,7 @@ const formatDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-export default function MomentCard({ moment, busy, onActivityPress, onCreatorPress, onToggleLike, onDelete }: Props) {
+export default function MomentCard({ moment, busy, onActivityPress, onCreatorPress, onToggleLike, onCommentsPress, onDelete }: Props) {
   const avatar = moment.creator.profileThumbnailUrl || moment.creator.profilePictureUrl || moment.creator.avatar;
   return (
     <View style={styles.card}>
@@ -65,6 +66,15 @@ export default function MomentCard({ moment, busy, onActivityPress, onCreatorPre
           )}
           <Text style={styles.likeCount}>{moment.likeCount}</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.commentButton}
+          disabled={!onCommentsPress}
+          onPress={() => onCommentsPress?.(moment)}
+          accessibilityLabel={`View ${moment.commentCount} comments`}
+        >
+          <Ionicons name="chatbubble-outline" size={19} color={colors.text} />
+          <Text style={styles.likeCount}>{moment.commentCount}</Text>
+        </TouchableOpacity>
       </View>
 
       {moment.caption ? <Text style={styles.caption}>{moment.caption}</Text> : null}
@@ -94,6 +104,7 @@ const styles = StyleSheet.create({
   joinedLabel: { color: colors.textSubtle, fontSize: 10, fontWeight: '700' },
   creatorName: { color: colors.text, fontSize: 13, fontWeight: '900' },
   likeButton: { minWidth: 58, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.border },
+  commentButton: { minWidth: 58, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.border, marginLeft: spacing.xs },
   likeCount: { color: colors.text, fontSize: 12, fontWeight: '900', marginLeft: 5 },
   caption: { color: colors.textMuted, fontSize: 13, lineHeight: 19, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   deleteButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', padding: spacing.md },

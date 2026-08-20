@@ -12,6 +12,7 @@ type Props = {
   busy?: boolean;
   onActivityPress: (activityId: string) => void;
   onToggleLike?: (moment: MomentResponse) => void;
+  onCommentsPress: (moment: MomentResponse) => void;
   onViewAll: () => void;
 };
 
@@ -21,7 +22,7 @@ const momentDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString([], { day: 'numeric', month: 'short' });
 };
 
-export default function LatestMomentSection({ moment, total, loading, ownProfile, busy, onActivityPress, onToggleLike, onViewAll }: Props) {
+export default function LatestMomentSection({ moment, total, loading, ownProfile, busy, onActivityPress, onToggleLike, onCommentsPress, onViewAll }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [moment?.id]);
 
@@ -64,16 +65,34 @@ export default function LatestMomentSection({ moment, total, loading, ownProfile
             </TouchableOpacity>
             <Text style={styles.activityMeta}>Joined · {momentDate(moment.activity.date)}{moment.activity.location ? ` · ${moment.activity.location}` : ''}</Text>
             {moment.caption ? <Text style={styles.caption} numberOfLines={3}>{moment.caption}</Text> : null}
+            {moment.latestComments?.length ? (
+              <TouchableOpacity style={styles.commentPreview} onPress={() => onCommentsPress(moment)}>
+                {moment.latestComments.slice(0, 2).map((comment) => (
+                  <Text key={comment.id} style={styles.previewComment} numberOfLines={2}>
+                    <Text style={styles.previewAuthor}>{comment.author.name}: </Text>{comment.text}
+                  </Text>
+                ))}
+              </TouchableOpacity>
+            ) : null}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.like} disabled={busy || !onToggleLike} onPress={() => onToggleLike?.(moment)} accessibilityLabel={`${moment.likedByViewer ? 'Unlike' : 'Like'} latest Moment`}>
                 {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name={moment.likedByViewer ? 'heart' : 'heart-outline'} size={20} color={moment.likedByViewer ? colors.primary : colors.text} />}
                 <Text style={styles.likeCount}>{moment.likeCount}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.comments} onPress={() => onCommentsPress(moment)} accessibilityLabel={`View ${moment.commentCount} comments`}>
+                <Ionicons name="chatbubble-outline" size={19} color={colors.text} />
+                <Text style={styles.likeCount}>{moment.commentCount}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.viewAll} onPress={onViewAll}>
                 <Text style={styles.viewAllText}>View all Moments ({total})</Text>
                 <Ionicons name="arrow-forward" size={16} color={colors.primary} />
               </TouchableOpacity>
             </View>
+            {moment.commentCount > 0 ? (
+              <TouchableOpacity style={styles.viewComments} onPress={() => onCommentsPress(moment)}>
+                <Text style={styles.viewCommentsText}>View all {moment.commentCount} comment{moment.commentCount === 1 ? '' : 's'} →</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -103,9 +122,15 @@ const styles = StyleSheet.create({
   activityTitle: { color: colors.text, fontSize: 17, fontWeight: '900', marginTop: 3 },
   activityMeta: { color: colors.textSubtle, fontSize: 11, marginTop: 4 },
   caption: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  commentPreview: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  previewComment: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 3 },
+  previewAuthor: { color: colors.text, fontWeight: '900' },
   actions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
   like: { minWidth: 58, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.border },
+  comments: { minWidth: 58, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.border, marginLeft: spacing.xs },
   likeCount: { color: colors.text, fontSize: 12, fontWeight: '900', marginLeft: 5 },
   viewAll: { flex: 1, minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   viewAllText: { color: colors.primary, fontSize: 12, fontWeight: '900', marginRight: 5 },
+  viewComments: { alignSelf: 'flex-start', marginTop: spacing.sm },
+  viewCommentsText: { color: colors.primary, fontSize: 11, fontWeight: '900' },
 });

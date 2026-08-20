@@ -6,6 +6,7 @@ export interface IMoment extends Document {
   images: string[];
   caption?: string;
   likes: Types.ObjectId[];
+  commentCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,7 @@ const MomentSchema = new Schema<IMoment>({
   images: [{ type: String, required: true }],
   caption: { type: String, maxlength: 280 },
   likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+  commentCount: { type: Number, default: 0, min: 0 },
 }, { timestamps: true });
 
 MomentSchema.index({ creator: 1, createdAt: -1 });

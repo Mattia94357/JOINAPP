@@ -6,6 +6,7 @@ import { rateLimit } from 'express-rate-limit';
 import auth, { AuthRequest } from '../middleware/auth';
 import Activity from '../models/Activity';
 import Moment from '../models/Moment';
+import MomentComment from '../models/MomentComment';
 import { getJwtSecret } from '../config/security';
 
 const router = express.Router();
@@ -17,9 +18,11 @@ const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 
 type MomentIdParams = { id: string };
+type MomentCommentParams = { id: string; commentId: string };
 type UserMomentsParams = { userId: string };
 type ActivityMomentsParams = { activityId: string };
 type CreateMomentBody = { activityId: string; images: string[]; caption?: string };
+type CreateCommentBody = { text: string; clientRequestId?: string };
 
 const requesterId = (req: express.Request) => {
   const header = req.headers.authorization;
@@ -59,6 +62,15 @@ const personPayload = (user: any) => ({
   profileThumbnailUrl: user?.profileThumbnailUrl,
 });
 
+const commentPayload = (comment: any, viewerId?: string) => ({
+  id: comment.id,
+  momentId: comment.moment?._id?.toString?.() || comment.moment?.toString?.(),
+  author: personPayload(comment.author),
+  text: comment.text,
+  canDelete: comment.author?._id?.toString?.() === viewerId || comment.author?.toString?.() === viewerId,
+  createdAt: comment.createdAt,
+});
+
 const visibleActivityLocation = (activity: any, viewerId?: string) => {
   if (activity?.locationPrivacy !== 'private') return activity?.location;
   const isMember = activity?.host?._id?.toString?.() === viewerId
@@ -67,7 +79,7 @@ const visibleActivityLocation = (activity: any, viewerId?: string) => {
   return isMember ? activity?.location : undefined;
 };
 
-const momentPayload = (moment: any, viewerId?: string) => ({
+const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = []) => ({
   id: moment.id,
   creator: personPayload(moment.creator),
   activity: {
@@ -83,6 +95,8 @@ const momentPayload = (moment: any, viewerId?: string) => ({
   caption: moment.caption,
   likeCount: (moment.likes || []).length,
   likedByViewer: idInList(moment.likes, viewerId),
+  commentCount: moment.commentCount || 0,
+  latestComments: latestComments.map((comment) => commentPayload(comment, viewerId)),
   canDelete: moment.creator?._id?.toString?.() === viewerId || moment.creator?.toString?.() === viewerId,
   createdAt: moment.createdAt,
   updatedAt: moment.updatedAt,
@@ -91,6 +105,9 @@ const momentPayload = (moment: any, viewerId?: string) => ({
 const populatedMoment = (query: any) => query
   .populate('creator', 'name avatar profilePictureUrl profileThumbnailUrl')
   .populate('activity', 'title category date location locationPrivacy coverImage visibility host participants');
+
+const populatedComments = (query: any) => query
+  .populate('author', 'name avatar profilePictureUrl profileThumbnailUrl');
 
 router.post(
   '/',
@@ -120,6 +137,7 @@ router.post(
       images: req.body.images.slice(0, MAX_IMAGES),
       caption: typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 280) : undefined,
       likes: [],
+      commentCount: 0,
     });
     const populated = await populatedMoment(Moment.findById(moment.id));
     return res.status(201).json(momentPayload(populated, req.userId));
@@ -139,7 +157,13 @@ router.get('/user/:userId', async (req: AuthRequest<UserMomentsParams>, res) => 
     Moment.countDocuments(query),
   ]);
   const visible = moments.filter((moment: any) => moment.creator && moment.activity);
-  return res.json({ moments: visible.map((moment: any) => momentPayload(moment, viewerId)), total });
+  const latestComments = visible[0]
+    ? await populatedComments(MomentComment.find({ moment: visible[0]._id }).sort({ createdAt: -1 }).limit(2))
+    : [];
+  return res.json({
+    moments: visible.map((moment: any, index: number) => momentPayload(moment, viewerId, index === 0 ? latestComments : [])),
+    total,
+  });
 });
 
 router.get('/activity/:activityId', async (req: AuthRequest<ActivityMomentsParams>, res) => {
@@ -152,11 +176,105 @@ router.get('/activity/:activityId', async (req: AuthRequest<ActivityMomentsParam
   return res.json(moments.filter((moment: any) => moment.creator).map((moment: any) => momentPayload(moment, viewerId)));
 });
 
+router.get('/:id/comments', async (req: AuthRequest<MomentIdParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Moment not found.' });
+  const viewerId = requesterId(req);
+  const moment = await populatedMoment(Moment.findById(req.params.id));
+  if (!moment || !moment.activity || !canViewActivity(moment.activity, viewerId)) {
+    return res.status(404).json({ message: 'Moment not found.' });
+  }
+
+  const comments = await populatedComments(
+    MomentComment.find({ moment: moment._id }).sort({ createdAt: 1 }),
+  );
+  return res.json({
+    comments: comments.map((comment: any) => commentPayload(comment, viewerId)),
+    count: comments.length,
+  });
+});
+
+router.post(
+  '/:id/comments',
+  auth,
+  writeLimiter,
+  body('text').isString().trim().isLength({ min: 1, max: 400 }).withMessage('Comments must be between 1 and 400 characters.'),
+  body('clientRequestId').optional().isString().isLength({ min: 1, max: 64 }),
+  async (req: AuthRequest<MomentIdParams, unknown, CreateCommentBody>, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
+    if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Moment not found.' });
+
+    const moment = await populatedMoment(Moment.findById(req.params.id));
+    if (!moment || !moment.activity || !canViewActivity(moment.activity, req.userId)) {
+      return res.status(404).json({ message: 'Moment not found.' });
+    }
+
+    let comment: any;
+    let created = true;
+    try {
+      comment = await MomentComment.create({
+        moment: moment._id,
+        author: req.userId,
+        text: req.body.text,
+        clientRequestId: req.body.clientRequestId,
+      });
+    } catch (error: any) {
+      if (error?.code !== 11000 || !req.body.clientRequestId) throw error;
+      created = false;
+      comment = await MomentComment.findOne({
+        moment: moment._id,
+        author: req.userId,
+        clientRequestId: req.body.clientRequestId,
+      });
+    }
+
+    if (!comment) return res.status(500).json({ message: 'Comment could not be saved.' });
+    const updatedMoment = created
+      ? await Moment.findByIdAndUpdate(moment._id, { $inc: { commentCount: 1 } }, { new: true })
+      : await Moment.findById(moment._id);
+    const populated = await populatedComments(MomentComment.findById(comment._id));
+    return res.status(created ? 201 : 200).json({
+      comment: commentPayload(populated, req.userId),
+      commentCount: updatedMoment?.commentCount || 0,
+    });
+  },
+);
+
+router.delete('/:id/comments/:commentId', auth, writeLimiter, async (req: AuthRequest<MomentCommentParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.commentId)) {
+    return res.status(404).json({ message: 'Comment not found.' });
+  }
+  const moment = await populatedMoment(Moment.findById(req.params.id));
+  if (!moment || !moment.activity || !canViewActivity(moment.activity, req.userId)) {
+    return res.status(404).json({ message: 'Moment not found.' });
+  }
+  const comment = await MomentComment.findOne({ _id: req.params.commentId, moment: moment._id });
+  if (!comment) return res.status(404).json({ message: 'Comment not found.' });
+  if (comment.author.toString() !== req.userId) {
+    return res.status(403).json({ message: 'You can only delete your own comments.' });
+  }
+
+  await comment.deleteOne();
+  const updatedMoment = await Moment.findByIdAndUpdate(
+    moment._id,
+    [{
+      $set: {
+        commentCount: {
+          $max: [0, { $subtract: [{ $ifNull: ['$commentCount', 0] }, 1] }],
+        },
+      },
+    }],
+    { new: true },
+  );
+  return res.json({ commentCount: Math.max(updatedMoment?.commentCount || 0, 0) });
+});
+
 router.delete('/:id', auth, writeLimiter, async (req: AuthRequest<MomentIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Moment not found.' });
   const moment = await Moment.findById(req.params.id);
   if (!moment) return res.status(404).json({ message: 'Moment not found.' });
   if (moment.creator.toString() !== req.userId) return res.status(403).json({ message: 'You can only delete your own Moments.' });
+  await MomentComment.deleteMany({ moment: moment._id });
   await moment.deleteOne();
   return res.json({ message: 'Moment deleted.' });
 });

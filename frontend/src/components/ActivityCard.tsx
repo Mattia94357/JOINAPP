@@ -52,7 +52,7 @@ type Props = {
   onJoin?: () => void;
   actionsDisabled?: boolean;
   onSave?: () => void;
-  onMapMode?: () => void;
+  onNotifications?: () => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
 };
@@ -64,7 +64,7 @@ export default function ActivityCard({
   onJoin,
   actionsDisabled,
   onSave,
-  onMapMode,
+  onNotifications,
   onViewParticipants,
   onOpenProfile,
 }: Props) {
@@ -82,7 +82,7 @@ export default function ActivityCard({
     : [{ id: activity.hostId, name: activity.host, avatar: activity.hostAvatar }];
   const imagePressScale = useRef(new Animated.Value(1)).current;
   const imagePressOpacity = useRef(new Animated.Value(1)).current;
-  const mapScale = useRef(new Animated.Value(1)).current;
+  const notificationsScale = useRef(new Animated.Value(1)).current;
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
   const passScale = useRef(new Animated.Value(1)).current;
@@ -158,26 +158,26 @@ export default function ActivityCard({
                 <Text style={[styles.categoryText, compact && styles.categoryTextCompact]} numberOfLines={1}>{activity.category}</Text>
               </View>
 
-              <Animated.View style={[styles.headerActions, styles.mapHeaderAction, { transform: [{ scale: mapScale }] }]}>
-                <TouchableOpacity
-                  style={styles.headerActionButton}
-                  onPress={() => {
-                    Animated.sequence([
-                      Animated.timing(mapScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
-                      Animated.spring(mapScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
-                    ]).start();
-                    console.log('Map Mode');
-                    onMapMode?.();
-                  }}
-                  activeOpacity={0.78}
-                  accessibilityRole="button"
-                  accessibilityLabel="Map Mode"
-                >
-                  <Ionicons name="map-outline" size={compact ? 23 : 25} color={colors.primary} />
-                </TouchableOpacity>
-              </Animated.View>
+              <View style={styles.utilityActions}>
+                <Animated.View style={[styles.headerActions, styles.utilityActionSpacing, { transform: [{ scale: notificationsScale }] }]}>
+                  <TouchableOpacity
+                    style={styles.headerActionButton}
+                    onPress={() => {
+                      Animated.sequence([
+                        Animated.timing(notificationsScale, { toValue: 0.82, duration: 90, useNativeDriver: true }),
+                        Animated.spring(notificationsScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
+                      ]).start();
+                      onNotifications?.();
+                    }}
+                    activeOpacity={0.78}
+                    accessibilityRole="button"
+                    accessibilityLabel="Notifications"
+                  >
+                    <Ionicons name="notifications-outline" size={compact ? 23 : 25} color={colors.primary} />
+                  </TouchableOpacity>
+                </Animated.View>
 
-              <Animated.View style={[styles.headerActions, { transform: [{ scale: bookmarkScale }] }]}>
+                <Animated.View style={[styles.headerActions, { transform: [{ scale: bookmarkScale }] }]}>
                   <TouchableOpacity
                     style={[styles.headerActionButton, activity.saved && styles.headerActionButtonActive]}
                     onPress={() => {
@@ -193,7 +193,8 @@ export default function ActivityCard({
                   >
                     <Ionicons name={activity.saved ? 'bookmark' : 'bookmark-outline'} size={compact ? 23 : 25} color={activity.saved ? colors.primaryText : colors.primary} />
                   </TouchableOpacity>
-              </Animated.View>
+                </Animated.View>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -421,6 +422,7 @@ const styles = StyleSheet.create({
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    maxWidth: '55%',
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -438,10 +440,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  mapHeaderAction: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -24,
+  utilityActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  utilityActionSpacing: {
+    marginRight: 8,
   },
   headerActionButton: {
     width: 48,

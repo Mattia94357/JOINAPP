@@ -393,7 +393,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                 : undefined,
             )}
             onSave={handleSaveActivity}
-            onMapMode={(activity) => navigation.navigate('MapMode', { activity, activities: visibleFeed })}
+            onNotifications={() => navigation.navigate('Notifications')}
             onPress={handlePress}
             onViewParticipants={setParticipantsActivity}
             onOpenProfile={openPublicProfile}

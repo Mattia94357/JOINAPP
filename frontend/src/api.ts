@@ -338,6 +338,21 @@ export type ActivityHistoryResponse = {
   joinedCount?: number;
 };
 
+export type MomentCommentResponse = {
+  id: string;
+  momentId: string;
+  author: {
+    id?: string;
+    name: string;
+    avatar?: string;
+    profilePictureUrl?: string;
+    profileThumbnailUrl?: string;
+  };
+  text: string;
+  canDelete: boolean;
+  createdAt: string;
+};
+
 export type MomentResponse = {
   id: string;
   creator: {
@@ -360,6 +375,8 @@ export type MomentResponse = {
   caption?: string;
   likeCount: number;
   likedByViewer: boolean;
+  commentCount: number;
+  latestComments: MomentCommentResponse[];
   canDelete: boolean;
   createdAt: string;
   updatedAt: string;
@@ -368,6 +385,11 @@ export type MomentResponse = {
 export type UserMomentsResponse = {
   moments: MomentResponse[];
   total: number;
+};
+
+export type MomentCommentsResponse = {
+  comments: MomentCommentResponse[];
+  count: number;
 };
 
 const mapParticipant = (participant: RawAvatarUser) => ({
@@ -672,5 +694,26 @@ export const likeMomentRequest = (momentId: string, token: string) =>
 
 export const unlikeMomentRequest = (momentId: string, token: string) =>
   api.delete<{ liked: false; likeCount: number }>(`/api/moments/${momentId}/like`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const fetchMomentCommentsRequest = (momentId: string, token?: string) =>
+  api.get<MomentCommentsResponse>(`/api/moments/${momentId}/comments`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+export const createMomentCommentRequest = (
+  momentId: string,
+  text: string,
+  clientRequestId: string,
+  token: string,
+) => api.post<{ comment: MomentCommentResponse; commentCount: number }>(
+  `/api/moments/${momentId}/comments`,
+  { text, clientRequestId },
+  { headers: { Authorization: `Bearer ${token}` } },
+);
+
+export const deleteMomentCommentRequest = (momentId: string, commentId: string, token: string) =>
+  api.delete<{ commentCount: number }>(`/api/moments/${momentId}/comments/${commentId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });

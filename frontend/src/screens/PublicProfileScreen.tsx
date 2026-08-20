@@ -31,6 +31,7 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const [moments, setMoments] = useState<MomentResponse[]>([]);
   const [momentTotal, setMomentTotal] = useState(0);
   const [momentsVisible, setMomentsVisible] = useState(false);
+  const [commentMomentId, setCommentMomentId] = useState<string>();
   const [busyMomentId, setBusyMomentId] = useState<string>();
   const [loading, setLoading] = useState(Boolean(userId));
   const [openingMessage, setOpeningMessage] = useState(false);
@@ -145,6 +146,13 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
     }
   };
 
+  const updateMomentComments = (
+    momentId: string,
+    update: Pick<MomentResponse, 'commentCount' | 'latestComments'>,
+  ) => {
+    setMoments((current) => current.map((moment) => moment.id === momentId ? { ...moment, ...update } : moment));
+  };
+
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <AvatarBadge name={name} avatarUrl={image} size={112} />
@@ -200,7 +208,14 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         busy={busyMomentId === latestMoment?.id}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
         onToggleLike={toggleMomentLike}
-        onViewAll={() => setMomentsVisible(true)}
+        onCommentsPress={(moment) => {
+          setCommentMomentId(moment.id);
+          setMomentsVisible(true);
+        }}
+        onViewAll={() => {
+          setCommentMomentId(undefined);
+          setMomentsVisible(true);
+        }}
       />
 
       <ProfileHistoryTabs
@@ -234,12 +249,21 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         moments={moments}
         total={momentTotal}
         busyMomentId={busyMomentId}
-        onClose={() => setMomentsVisible(false)}
+        token={token}
+        initialCommentMomentId={commentMomentId}
+        onClose={() => {
+          setMomentsVisible(false);
+          setCommentMomentId(undefined);
+        }}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
         onCreatorPress={(creatorId) => {
-          if (creatorId !== targetUserId) navigation.push('PublicProfile', { userId: creatorId });
+          if (creatorId !== targetUserId) {
+            setMomentsVisible(false);
+            navigation.push('PublicProfile', { userId: creatorId });
+          }
         }}
         onToggleLike={toggleMomentLike}
+        onMomentUpdate={updateMomentComments}
       />
 
     </ScrollView>

@@ -37,6 +37,7 @@ import { getActivityCoverImage } from '../utils/activityAssets';
 import { getCuratedActivity } from '../utils/curatedActivities';
 import MomentCard from '../components/MomentCard';
 import CreateMomentModal from '../components/CreateMomentModal';
+import MomentCommentsSection from '../components/MomentCommentsSection';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -89,6 +90,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const [momentError, setMomentError] = useState('');
   const [createMomentVisible, setCreateMomentVisible] = useState(false);
   const [busyMomentId, setBusyMomentId] = useState<string>();
+  const [commentMomentId, setCommentMomentId] = useState<string>();
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -339,6 +341,13 @@ export default function ActivityScreen({ route, navigation }: Props) {
     }
   };
 
+  const updateMomentComments = (
+    momentId: string,
+    update: Pick<MomentResponse, 'commentCount' | 'latestComments'>,
+  ) => {
+    setMoments((current) => current.map((moment) => moment.id === momentId ? { ...moment, ...update } : moment));
+  };
+
   const deleteMoment = (moment: MomentResponse) => {
     if (!token) return;
     Alert.alert('Delete Moment?', 'This removes it from the activity and your profile.', [
@@ -490,14 +499,24 @@ export default function ActivityScreen({ route, navigation }: Props) {
             {momentError ? <Text style={styles.momentError}>{momentError}</Text> : null}
             {!momentsLoading && !moments.length ? <Text style={styles.momentEmpty}>No Moments yet</Text> : null}
             {moments.map((moment) => (
-              <MomentCard
-                key={moment.id}
-                moment={moment}
-                busy={busyMomentId === moment.id}
-                onCreatorPress={(creatorId) => navigation.navigate('PublicProfile', { userId: creatorId })}
-                onToggleLike={toggleMomentLike}
-                onDelete={deleteMoment}
-              />
+              <React.Fragment key={moment.id}>
+                <MomentCard
+                  moment={moment}
+                  busy={busyMomentId === moment.id}
+                  onCreatorPress={(creatorId) => navigation.navigate('PublicProfile', { userId: creatorId })}
+                  onToggleLike={toggleMomentLike}
+                  onCommentsPress={(selectedMoment) => setCommentMomentId((current) => current === selectedMoment.id ? undefined : selectedMoment.id)}
+                  onDelete={deleteMoment}
+                />
+                {commentMomentId === moment.id ? (
+                  <MomentCommentsSection
+                    moment={moment}
+                    token={token}
+                    onMomentUpdate={updateMomentComments}
+                    onAuthorPress={(creatorId) => navigation.navigate('PublicProfile', { userId: creatorId })}
+                  />
+                ) : null}
+              </React.Fragment>
             ))}
           </View>
         ) : null}

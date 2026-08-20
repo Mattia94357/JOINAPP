@@ -120,12 +120,6 @@ export default function MapModeMap(props: MapModeMapProps) {
           selected={activity.id === selectedActivityId}
           onPress={() => {
             onSelectActivity(activity.id);
-            nativeMapRef.current?.animateCamera({
-              center: {
-                latitude: activity.latitude,
-                longitude: activity.longitude,
-              },
-            }, { duration: 450 });
           }}
         />
       ))}

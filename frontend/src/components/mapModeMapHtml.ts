@@ -53,8 +53,6 @@ export const buildMapTilerHtml = ({
     const notifySelection=(activityId)=>{
       selectedActivityId=activityId;
       document.querySelectorAll('.activity-pin').forEach((card)=>card.classList.toggle('selected',card.dataset.activityId===activityId));
-      const activity=activities.find((candidate)=>candidate.id===activityId);
-      if(activity)map.easeTo({center:[activity.longitude,activity.latitude],duration:450});
       const message=JSON.stringify({type:'join-map-activity-select',activityId});
       if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(message);
     };

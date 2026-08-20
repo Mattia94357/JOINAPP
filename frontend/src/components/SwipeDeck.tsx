@@ -24,7 +24,7 @@ type Props = {
   onSwipeLeft: (activity: Activity) => boolean | void | Promise<boolean | void>;
   onSwipeRight: (activity: Activity) => boolean | void | Promise<boolean | void>;
   onSave?: (activity: Activity) => void;
-  onMapMode?: (activity: Activity) => void;
+  onNotifications?: () => void;
   onPress: (activity: Activity) => void;
   onViewParticipants?: (activity: Activity) => void;
   onOpenProfile?: (participant: { id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }) => void;
@@ -35,7 +35,7 @@ export default function SwipeDeck({
   onSwipeLeft,
   onSwipeRight,
   onSave,
-  onMapMode,
+  onNotifications,
   onPress,
   onViewParticipants,
   onOpenProfile,
@@ -190,7 +190,7 @@ export default function SwipeDeck({
           onJoin={() => handleSwipe('right')}
           actionsDisabled={isActing}
           onSave={() => onSave?.(activity)}
-          onMapMode={() => onMapMode?.(activity)}
+          onNotifications={onNotifications}
           onViewParticipants={onViewParticipants}
           onOpenProfile={onOpenProfile}
         />

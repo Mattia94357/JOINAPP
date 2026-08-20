@@ -90,6 +90,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const [moments, setMoments] = useState<MomentResponse[]>([]);
   const [momentTotal, setMomentTotal] = useState(0);
   const [momentsVisible, setMomentsVisible] = useState(false);
+  const [commentMomentId, setCommentMomentId] = useState<string>();
   const [historyLoading, setHistoryLoading] = useState(true);
   const [hostedCount, setHostedCount] = useState(user?.hostedCount || 0);
   const [joinedCount, setJoinedCount] = useState(user?.joinedCount || 0);
@@ -171,6 +172,13 @@ export default function ProfileScreen({ navigation }: Props) {
     } finally {
       setBusyMomentId(undefined);
     }
+  };
+
+  const updateMomentComments = (
+    momentId: string,
+    update: Pick<MomentResponse, 'commentCount' | 'latestComments'>,
+  ) => {
+    setMoments((current) => current.map((moment) => moment.id === momentId ? { ...moment, ...update } : moment));
   };
 
   const deleteMoment = (moment: MomentResponse) => {
@@ -395,7 +403,14 @@ export default function ProfileScreen({ navigation }: Props) {
         busy={busyMomentId === latestMoment?.id}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
         onToggleLike={toggleMomentLike}
-        onViewAll={() => setMomentsVisible(true)}
+        onCommentsPress={(moment) => {
+          setCommentMomentId(moment.id);
+          setMomentsVisible(true);
+        }}
+        onViewAll={() => {
+          setCommentMomentId(undefined);
+          setMomentsVisible(true);
+        }}
       />
 
       {historyError ? <Text style={styles.historyError}>{historyError}</Text> : null}
@@ -512,10 +527,22 @@ export default function ProfileScreen({ navigation }: Props) {
         moments={moments}
         total={momentTotal}
         busyMomentId={busyMomentId}
-        onClose={() => setMomentsVisible(false)}
+        token={token}
+        initialCommentMomentId={commentMomentId}
+        onClose={() => {
+          setMomentsVisible(false);
+          setCommentMomentId(undefined);
+        }}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onCreatorPress={(creatorId) => {
+          if (creatorId !== user?.id) {
+            setMomentsVisible(false);
+            navigation.push('PublicProfile', { userId: creatorId });
+          }
+        }}
         onToggleLike={toggleMomentLike}
         onDeleteMoment={deleteMoment}
+        onMomentUpdate={updateMomentComments}
       />
       <BottomNavigation />
     </View>
