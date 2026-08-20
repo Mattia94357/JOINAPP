@@ -90,7 +90,7 @@ export default function ActivityCard({
   const compact = width < 520;
   const dense = cardHeight > 0 && cardHeight < 540;
   const veryDense = cardHeight > 0 && cardHeight < 440;
-  const decisionPairWidth = Math.min(Math.max(width - 36, 0), 430) * 0.25 + 8;
+  const decisionPairWidth = Math.min(Math.max(width - 36, 0), 430) * 0.25 + 16;
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
