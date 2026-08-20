@@ -129,9 +129,17 @@ router.post(
 router.get('/user/:userId', async (req: AuthRequest<UserMomentsParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.userId)) return res.status(404).json({ message: 'User not found.' });
   const viewerId = requesterId(req);
-  const moments = await populatedMoment(Moment.find({ creator: req.params.userId }).sort({ createdAt: -1 }).limit(60));
-  const visible = moments.filter((moment: any) => moment.creator && moment.activity && canViewActivity(moment.activity, viewerId));
-  return res.json(visible.map((moment: any) => momentPayload(moment, viewerId)));
+  const activityAccess = viewerId
+    ? { $or: [{ visibility: { $ne: 'private' } }, { host: viewerId }, { participants: viewerId }] }
+    : { visibility: { $ne: 'private' } };
+  const accessibleActivityIds = await Activity.find(activityAccess).distinct('_id');
+  const query = { creator: req.params.userId, activity: { $in: accessibleActivityIds } };
+  const [moments, total] = await Promise.all([
+    populatedMoment(Moment.find(query).sort({ createdAt: -1 }).limit(60)),
+    Moment.countDocuments(query),
+  ]);
+  const visible = moments.filter((moment: any) => moment.creator && moment.activity);
+  return res.json({ moments: visible.map((moment: any) => momentPayload(moment, viewerId)), total });
 });
 
 router.get('/activity/:activityId', async (req: AuthRequest<ActivityMomentsParams>, res) => {

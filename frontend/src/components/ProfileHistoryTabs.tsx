@@ -1,25 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { MomentResponse, ProfileActivity } from '../api';
+import type { ProfileActivity } from '../api';
 import { colors, spacing } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
-import MomentCard from './MomentCard';
 
-type Tab = 'joined' | 'hosted' | 'moments';
+type Tab = 'joined' | 'hosted';
 type Props = {
   joined: ProfileActivity[];
   hosted: ProfileActivity[];
-  moments: MomentResponse[];
   joinedCount?: number;
   hostedCount?: number;
   loading?: boolean;
-  ownProfile?: boolean;
-  busyMomentId?: string;
   onActivityPress: (activityId: string) => void;
-  onCreatorPress?: (userId: string) => void;
-  onToggleLike?: (moment: MomentResponse) => void;
-  onDeleteMoment?: (moment: MomentResponse) => void;
 };
 
 const activityTime = (activity: ProfileActivity) => new Date(activity.date).getTime();
@@ -54,8 +47,7 @@ export default function ProfileHistoryTabs(props: Props) {
   const tabs = useMemo(() => [
     { id: 'joined' as const, label: 'JOINED', count: props.joinedCount ?? props.joined.length },
     { id: 'hosted' as const, label: 'HOSTED', count: props.hostedCount ?? props.hosted.length },
-    { id: 'moments' as const, label: 'MOMENTS', count: props.moments.length },
-  ], [props.hosted.length, props.hostedCount, props.joined.length, props.joinedCount, props.moments.length]);
+  ], [props.hosted.length, props.hostedCount, props.joined.length, props.joinedCount]);
 
   return (
     <View style={styles.wrap}>
@@ -70,19 +62,6 @@ export default function ProfileHistoryTabs(props: Props) {
       {props.loading ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : null}
       {!props.loading && tab === 'joined' ? <HistoryList activities={props.joined} empty="No activities joined yet" onPress={props.onActivityPress} /> : null}
       {!props.loading && tab === 'hosted' ? <HistoryList activities={props.hosted} empty="No activities hosted yet" onPress={props.onActivityPress} /> : null}
-      {!props.loading && tab === 'moments' ? (
-        props.moments.length ? props.moments.map((moment) => (
-          <MomentCard
-            key={moment.id}
-            moment={moment}
-            busy={props.busyMomentId === moment.id}
-            onActivityPress={props.onActivityPress}
-            onCreatorPress={props.onCreatorPress}
-            onToggleLike={props.onToggleLike}
-            onDelete={props.onDeleteMoment}
-          />
-        )) : <View style={styles.momentEmpty}><Ionicons name="images-outline" size={28} color={colors.primary} /><Text style={styles.empty}>No Moments yet</Text>{props.ownProfile ? <Text style={styles.emptyHint}>Your activity memories will appear here.</Text> : null}</View>
-      ) : null}
     </View>
   );
 }
@@ -106,6 +85,4 @@ const styles = StyleSheet.create({
   activityCategory: { color: colors.primary, fontSize: 10, fontWeight: '900', marginTop: 4 },
   activityMeta: { color: colors.textSubtle, fontSize: 10, marginTop: 5 },
   empty: { color: colors.textMuted, fontSize: 14, fontWeight: '800', textAlign: 'center', marginTop: spacing.lg },
-  emptyHint: { color: colors.textSubtle, fontSize: 12, textAlign: 'center', marginTop: spacing.xs },
-  momentEmpty: { alignItems: 'center', paddingVertical: spacing.xl },
 });

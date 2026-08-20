@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,6 +19,8 @@ import AvatarBadge from '../components/AvatarBadge';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
+import LatestMomentSection from '../components/LatestMomentSection';
+import ProfileMomentsModal from '../components/ProfileMomentsModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PublicProfile'>;
 
@@ -27,9 +29,14 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const { token, user } = useAuth();
   const [profile, setProfile] = useState<(ApiUser & { hostedActivities?: ProfileActivity[]; joinedActivities?: ProfileActivity[] }) | null>(null);
   const [moments, setMoments] = useState<MomentResponse[]>([]);
+  const [momentTotal, setMomentTotal] = useState(0);
+  const [momentsVisible, setMomentsVisible] = useState(false);
   const [busyMomentId, setBusyMomentId] = useState<string>();
   const [loading, setLoading] = useState(Boolean(userId));
   const [openingMessage, setOpeningMessage] = useState(false);
+  const latestMoment = useMemo(() => [...moments].sort((a, b) => (
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  ))[0], [moments]);
 
   useEffect(() => {
     const load = async () => {
@@ -40,9 +47,11 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         setProfile(response.data);
         try {
           const momentResponse = await fetchUserMomentsRequest(userId, token || undefined);
-          setMoments(momentResponse.data || []);
+          setMoments(momentResponse.data.moments || []);
+          setMomentTotal(momentResponse.data.total || 0);
         } catch {
           setMoments([]);
+          setMomentTotal(0);
         }
       } catch (error) {
         setProfile(null);
@@ -67,7 +76,6 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const languages = profile?.languages || [];
   const targetUserId = profile?.id || userId;
   const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
-
   const handleReport = async () => {
     if (!token || !targetUserId) {
       Alert.alert('Sign in required', 'Please log in to report a user.');
@@ -186,18 +194,21 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
         <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostRating ?? 'New'}</Text><Text style={styles.statLabel}>Rating</Text></View>
       </View>
 
+      <LatestMomentSection
+        moment={latestMoment}
+        total={momentTotal}
+        busy={busyMomentId === latestMoment?.id}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onToggleLike={toggleMomentLike}
+        onViewAll={() => setMomentsVisible(true)}
+      />
+
       <ProfileHistoryTabs
         joined={profile?.joinedActivities || []}
         hosted={profile?.hostedActivities || []}
-        moments={moments}
         joinedCount={profile?.joinedCount}
         hostedCount={profile?.hostedCount}
-        busyMomentId={busyMomentId}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
-        onCreatorPress={(creatorId) => {
-          if (creatorId !== targetUserId) navigation.push('PublicProfile', { userId: creatorId });
-        }}
-        onToggleLike={toggleMomentLike}
       />
 
       <Text style={styles.sectionTitle}>Interests</Text>
@@ -217,6 +228,19 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
           {profile?.instagram ? <Text style={styles.factText}>Instagram: {profile.instagram}</Text> : null}
         </View>
       ) : null}
+
+      <ProfileMomentsModal
+        visible={momentsVisible}
+        moments={moments}
+        total={momentTotal}
+        busyMomentId={busyMomentId}
+        onClose={() => setMomentsVisible(false)}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onCreatorPress={(creatorId) => {
+          if (creatorId !== targetUserId) navigation.push('PublicProfile', { userId: creatorId });
+        }}
+        onToggleLike={toggleMomentLike}
+      />
 
     </ScrollView>
   );

@@ -365,6 +365,11 @@ export type MomentResponse = {
   updatedAt: string;
 };
 
+export type UserMomentsResponse = {
+  moments: MomentResponse[];
+  total: number;
+};
+
 const mapParticipant = (participant: RawAvatarUser) => ({
   id: participant._id || participant.id,
   name: participant.name,
@@ -642,7 +647,7 @@ export const fetchPublicUserRequest = (userId: string, token?: string) =>
   });
 
 export const fetchUserMomentsRequest = (userId: string, token?: string) =>
-  api.get<MomentResponse[]>(`/api/moments/user/${userId}`, {
+  api.get<UserMomentsResponse>(`/api/moments/user/${userId}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 

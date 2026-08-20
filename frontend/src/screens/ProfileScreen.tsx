@@ -36,6 +36,8 @@ import BottomNavigation, {
   getBottomNavigationClearance,
 } from '../components/BottomNavigation';
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
+import LatestMomentSection from '../components/LatestMomentSection';
+import ProfileMomentsModal from '../components/ProfileMomentsModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -86,6 +88,8 @@ export default function ProfileScreen({ navigation }: Props) {
   const [hostedActivities, setHostedActivities] = useState<ProfileActivity[]>([]);
   const [joinedActivities, setJoinedActivities] = useState<ProfileActivity[]>([]);
   const [moments, setMoments] = useState<MomentResponse[]>([]);
+  const [momentTotal, setMomentTotal] = useState(0);
+  const [momentsVisible, setMomentsVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [hostedCount, setHostedCount] = useState(user?.hostedCount || 0);
   const [joinedCount, setJoinedCount] = useState(user?.joinedCount || 0);
@@ -108,6 +112,9 @@ export default function ProfileScreen({ navigation }: Props) {
     ],
     [displayJoinedCount, hasProfilePhoto, user?.verified],
   );
+  const latestMoment = useMemo(() => [...moments].sort((a, b) => (
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  ))[0], [moments]);
 
   useEffect(() => {
     let active = true;
@@ -132,7 +139,13 @@ export default function ProfileScreen({ navigation }: Props) {
         } else {
           setHistoryError('Activity history is temporarily unavailable.');
         }
-        setMoments(momentResult.status === 'fulfilled' ? (momentResult.value.data || []) : []);
+        if (momentResult.status === 'fulfilled') {
+          setMoments(momentResult.value.data.moments || []);
+          setMomentTotal(momentResult.value.data.total || 0);
+        } else {
+          setMoments([]);
+          setMomentTotal(0);
+        }
       } catch {
         if (active) setHistoryError('Activity history is temporarily unavailable.');
       } finally {
@@ -172,6 +185,7 @@ export default function ProfileScreen({ navigation }: Props) {
           try {
             await deleteMomentRequest(moment.id, token);
             setMoments((current) => current.filter((item) => item.id !== moment.id));
+            setMomentTotal((current) => Math.max(current - 1, 0));
           } catch (error: any) {
             Alert.alert('Moment not deleted', error?.response?.data?.message || 'Please try again.');
           } finally {
@@ -373,19 +387,25 @@ export default function ProfileScreen({ navigation }: Props) {
         </View>
       </View>
 
+      <LatestMomentSection
+        moment={latestMoment}
+        total={momentTotal}
+        loading={historyLoading}
+        ownProfile
+        busy={busyMomentId === latestMoment?.id}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onToggleLike={toggleMomentLike}
+        onViewAll={() => setMomentsVisible(true)}
+      />
+
       {historyError ? <Text style={styles.historyError}>{historyError}</Text> : null}
       <ProfileHistoryTabs
         joined={joinedActivities}
         hosted={hostedActivities}
-        moments={moments}
         joinedCount={joinedCount}
         hostedCount={hostedCount}
         loading={historyLoading}
-        ownProfile
-        busyMomentId={busyMomentId}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
-        onToggleLike={toggleMomentLike}
-        onDeleteMoment={deleteMoment}
       />
 
       <View style={styles.section}>
@@ -487,6 +507,16 @@ export default function ProfileScreen({ navigation }: Props) {
         <Ionicons name="chevron-forward-outline" size={18} color={colors.textSubtle} />
       </TouchableOpacity>
       </ScrollView>
+      <ProfileMomentsModal
+        visible={momentsVisible}
+        moments={moments}
+        total={momentTotal}
+        busyMomentId={busyMomentId}
+        onClose={() => setMomentsVisible(false)}
+        onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
+        onToggleLike={toggleMomentLike}
+        onDeleteMoment={deleteMoment}
+      />
       <BottomNavigation />
     </View>
   );
