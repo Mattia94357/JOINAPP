@@ -22,6 +22,7 @@ type CreateActivityBody = {
   locationPrivacy?: string;
   description: string;
   date?: string;
+  ageGroup?: string;
   vibe?: string;
   coverImage?: string;
   maxAttendees: number;
@@ -44,7 +45,9 @@ type CancelActivityBody = {
 const allowedCategories = [
   'Wellness',
   'Food',
+  'Drinks',
   'Networking',
+  'Outdoors',
   'Adventure',
   'Sports',
   'Fitness',
@@ -202,6 +205,7 @@ router.post(
   body('locationPrivacy').optional().isIn(['public', 'approximate', 'private']),
   body('description').isString().trim().isLength({ min: 20, max: 3000 }),
   body('date').isISO8601(),
+  body('ageGroup').optional().isIn(['any', '18-24', '25-34', '35-44', '45+']),
   body('maxAttendees').isInt({ min: 2 }),
   body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
   body('galleryImages').optional().isArray({ max: 5 }),
@@ -220,6 +224,7 @@ router.post(
       locationPrivacy,
       description,
       date,
+      ageGroup,
       vibe,
       coverImage,
       maxAttendees,
@@ -264,6 +269,7 @@ router.post(
         : 'public',
       description: cleanText(description, 3000),
       date: date ? new Date(date) : new Date(),
+      ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
       vibe: cleanText(vibe, 80),
       coverImage,
       galleryImages: gallery,

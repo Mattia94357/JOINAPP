@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -10,8 +10,10 @@ import {
   Modal,
   Platform,
   ScrollView,
+  TextInput,
   useWindowDimensions,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -27,24 +29,28 @@ import { curatedActivities } from '../utils/curatedActivities';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
 import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
+import {
+  activeExploreFilterCount,
+  ActivityAgeGroup,
+  activityDistanceKm,
+  ageGroupOptions,
+  Coordinate,
+  dateOptions,
+  DEFAULT_EXPLORE_FILTERS,
+  distanceOptions,
+  ExploreDateFilter,
+  ExploreFilters,
+  ExploreSort,
+  ExploreTimeFilter,
+  filterAndSortActivities,
+  formatDistance,
+  parseLocalDateInput,
+  sortOptions,
+  timeOptions,
+} from '../utils/activityFilters';
 
 const categories = ['All', ...activityCategories];
-const quickFilterChips = [
-  { label: 'All', value: 'All' },
-  { label: 'Food', value: 'Food' },
-  { label: 'Drinks', value: 'Drinks' },
-  { label: 'Sports', value: 'Sports' },
-  { label: 'Outdoors', value: 'Outdoors' },
-  { label: 'Wellness', value: 'Wellness' },
-  { label: 'Networking', value: 'Networking' },
-];
-const hostGenderFilters = [
-  { label: 'All hosts', value: 'all' },
-  { label: 'Male hosts', value: 'male' },
-  { label: 'Female hosts', value: 'female' },
-  { label: 'Non-binary hosts', value: 'non_binary' },
-] as const;
-type HostGenderFilter = typeof hostGenderFilters[number]['value'];
+const quickFilterChips = categories.slice(0, 8).map((category) => ({ label: category, value: category }));
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -56,9 +62,12 @@ export default function HomeScreen({ navigation, route }: Props) {
     && Boolean(route.params.mapDecisionActivity)
     && Boolean(route.params.mapReturnRouteKey);
 
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedHostGender, setSelectedHostGender] = useState<HostGenderFilter>('all');
+  const [appliedFilters, setAppliedFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [filterError, setFilterError] = useState('');
+  const [userCoordinate, setUserCoordinate] = useState<Coordinate | null>(null);
+  const [locationState, setLocationState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [photoRequiredVisible, setPhotoRequiredVisible] = useState(false);
   const [activities, setActivities] = useState<ActivityResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,29 +84,21 @@ export default function HomeScreen({ navigation, route }: Props) {
     { icon: 'add-circle-outline', title: 'Host', text: 'Want to create your own plan? Tap Host.', highlight: 'Host' },
   ];
 
-  const filteredActivities = useMemo(
-    () =>
-      activities.filter((activity) => {
-        return selectedCategory === 'All' || activity.category === selectedCategory;
-      }),
-    [activities, selectedCategory],
-  );
+  const discoveryActivities = useMemo(() => {
+    const existingIds = new Set(activities.map((activity) => activity.id));
+    return [...activities, ...curatedActivities.filter((activity) => !existingIds.has(activity.id))];
+  }, [activities]);
 
-  const curatedFeedForCategory = useMemo(
-    () =>
-      selectedCategory === 'All'
-        ? curatedActivities
-        : curatedActivities.filter((activity) => activity.category === selectedCategory),
-    [selectedCategory],
-  );
+  const visibleFeed = useMemo(() => filterAndSortActivities(
+    discoveryActivities,
+    appliedFilters,
+    userCoordinate,
+  ).map((activity) => ({
+    ...activity,
+    distance: formatDistance(activityDistanceKm(activity, userCoordinate)),
+  })), [appliedFilters, discoveryActivities, userCoordinate]);
 
-  const visibleFeed = useMemo(() => {
-    const baseFeed = filteredActivities.length > 0 ? filteredActivities : [];
-    const existingIds = new Set(baseFeed.map((activity) => activity.id));
-    const supplements = curatedFeedForCategory.filter((activity) => !existingIds.has(activity.id));
-    const combinedFeed = [...baseFeed, ...supplements];
-    return combinedFeed.length > 0 ? combinedFeed : curatedActivities;
-  }, [curatedFeedForCategory, filteredActivities]);
+  const activeFilterCount = activeExploreFilterCount(appliedFilters);
 
   const decisionFeed = useMemo(() => {
     const focusedActivity = route.params?.mapDecisionActivity;
@@ -111,7 +112,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       setToastMessage('');
 
       try {
-        const result = await fetchActivities(token || undefined, selectedHostGender === 'all' ? undefined : { hostGender: selectedHostGender });
+        const result = await fetchActivities(token || undefined);
         setActivities(markJoinedActivities(result));
       } catch (error) {
         setToastMessage('Showing curated plans.');
@@ -121,7 +122,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
 
     load();
-  }, [token, user?.id, user?.name, selectedHostGender]);
+  }, [token, user?.id, user?.name]);
 
   useEffect(() => {
     if (!toastMessage) return undefined;
@@ -148,7 +149,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   const refreshActivities = async () => {
     try {
-      const result = await fetchActivities(token || undefined, selectedHostGender === 'all' ? undefined : { hostGender: selectedHostGender });
+      const result = await fetchActivities(token || undefined);
       setActivities(markJoinedActivities(result));
     } catch (error) {
       console.warn(error);
@@ -315,6 +316,80 @@ export default function HomeScreen({ navigation, route }: Props) {
     completeTutorial();
   };
 
+  const ensureUserLocation = useCallback(async () => {
+    if (userCoordinate) return userCoordinate;
+    setLocationState('loading');
+    try {
+      const existingPermission = await Location.getForegroundPermissionsAsync();
+      const permission = existingPermission.granted || !existingPermission.canAskAgain
+        ? existingPermission
+        : await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationState('unavailable');
+        return null;
+      }
+      const location = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Location timed out')), 6000)),
+      ]);
+      const coordinate = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      setUserCoordinate(coordinate);
+      setLocationState('ready');
+      return coordinate;
+    } catch {
+      setLocationState('unavailable');
+      return null;
+    }
+  }, [userCoordinate]);
+
+  const openFilters = () => {
+    setDraftFilters(appliedFilters);
+    setFilterError('');
+    setCategoryModalVisible(true);
+  };
+
+  const applyFilters = async () => {
+    if (draftFilters.customDateEnabled) {
+      const start = parseLocalDateInput(draftFilters.customStart);
+      const end = parseLocalDateInput(draftFilters.customEnd || draftFilters.customStart, true);
+      if (!start || !end || end < start) {
+        setFilterError('Enter a valid custom date or range in YYYY-MM-DD format.');
+        return;
+      }
+    }
+
+    let nextFilters = draftFilters;
+    if (draftFilters.sortBy === 'nearest' || draftFilters.distanceKm !== null) {
+      const coordinate = await ensureUserLocation();
+      if (!coordinate) {
+        nextFilters = {
+          ...draftFilters,
+          sortBy: draftFilters.sortBy === 'nearest' ? 'soonest' : draftFilters.sortBy,
+          distanceKm: null,
+        };
+        setToastMessage('Location unavailable. Using Soonest without a distance limit.');
+      }
+    }
+    setAppliedFilters(nextFilters);
+    setDraftFilters(nextFilters);
+    setFilterError('');
+    setCategoryModalVisible(false);
+  };
+
+  const resetFilters = () => {
+    setAppliedFilters(DEFAULT_EXPLORE_FILTERS);
+    setDraftFilters(DEFAULT_EXPLORE_FILTERS);
+    setFilterError('');
+  };
+
+  const selectQuickCategory = (category: string) => {
+    setAppliedFilters((current) => ({ ...current, category }));
+    setDraftFilters((current) => ({ ...current, category }));
+  };
+
   const handlePress = (activity: ActivityResponse) => {
     navigation.navigate('Activity', { activityId: activity.id });
   };
@@ -327,7 +402,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     });
   };
 
-  const hasNoCategoryResults = !loading && selectedCategory !== 'All' && visibleFeed.length === 0;
+  const hasNoFilterResults = !loading && visibleFeed.length === 0;
 
   return (
     <SafeAreaView style={[styles.container, Platform.OS === 'web' && styles.containerWeb, compact && styles.containerCompact]}>
@@ -338,9 +413,10 @@ export default function HomeScreen({ navigation, route }: Props) {
         <View style={styles.filterBackdropFade} />
       </View>
       <View style={[styles.topBar, compact && styles.topBarCompact]}>
-        <TouchableOpacity style={[styles.filterButton, compact && styles.filterButtonCompact]} onPress={() => setCategoryModalVisible(true)} activeOpacity={0.82}>
+        <TouchableOpacity style={[styles.filterButton, activeFilterCount > 0 && styles.filterButtonActive, compact && styles.filterButtonCompact]} onPress={openFilters} activeOpacity={0.82}>
             <Ionicons name="options-outline" size={compact ? 20 : 24} color={colors.primary} />
           <Text style={[styles.filterButtonText, compact && styles.filterButtonTextCompact]}>Filter</Text>
+          {activeFilterCount > 0 ? <View style={styles.filterCount}><Text style={styles.filterCountText}>{activeFilterCount}</Text></View> : null}
         </TouchableOpacity>
         <ScrollView
           horizontal
@@ -349,12 +425,12 @@ export default function HomeScreen({ navigation, route }: Props) {
           contentContainerStyle={styles.filterChipRow}
         >
           {quickFilterChips.map((chip) => {
-            const active = selectedCategory === chip.value;
+            const active = appliedFilters.category === chip.value;
             return (
               <TouchableOpacity
                 key={`${chip.label}-${chip.value}`}
                 style={[styles.filterChip, active && styles.filterChipActive]}
-                onPress={() => setSelectedCategory(chip.value)}
+                onPress={() => selectQuickCategory(chip.value)}
                 activeOpacity={0.82}
               >
                 <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{chip.label}</Text>
@@ -375,9 +451,18 @@ export default function HomeScreen({ navigation, route }: Props) {
             </View>
             <ActivityIndicator color={colors.primary} size="small" />
           </View>
+        ) : hasNoFilterResults ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="search-outline" size={28} color={colors.primary} />
+            <Text style={styles.emptyStateTitle}>No activities match these filters</Text>
+            <Text style={styles.emptyStateText}>Try widening your search.</Text>
+            <TouchableOpacity style={styles.emptyResetButton} onPress={resetFilters}>
+              <Text style={styles.emptyResetText}>Reset filters</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <SwipeDeck
-            key={`${selectedCategory}-${visibleFeed.length}`}
+            key={`${JSON.stringify(appliedFilters)}-${visibleFeed.length}`}
             activities={decisionFeed}
             onSwipeLeft={(activity) => {
               if (isMapDecision) {
@@ -401,7 +486,6 @@ export default function HomeScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      {hasNoCategoryResults ? <Text style={styles.statusText}>No {selectedCategory} activities yet. Try another category or host the first one.</Text> : null}
       {toastMessage ? (
         <View style={styles.toast}>
           <Text style={styles.toastText}>{toastMessage}</Text>
@@ -508,61 +592,116 @@ export default function HomeScreen({ navigation, route }: Props) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.categoryModal}>
-            <Text style={styles.modalTitle}>Curated near you</Text>
-            <Text style={styles.modalIntro}>Filter discovery by activity or visible host details. Host gender is optional and only shown when hosts choose to make it public.</Text>
+            <View style={styles.filterModalHeader}>
+              <View style={styles.filterModalHeading}>
+                <Text style={styles.modalTitle}>Explore activities</Text>
+                <Text style={styles.modalIntro}>Find plans that fit what you want to do and when.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close filters">
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
 
             <ScrollView style={styles.categoryList} showsVerticalScrollIndicator={false}>
-              <Text style={styles.filterGroupTitle}>Activity</Text>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  style={[
-                    styles.modalCategoryItem,
-                    selectedCategory === category && styles.modalCategoryItemActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedCategory(category);
-                    setCategoryModalVisible(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.modalCategoryText,
-                      selectedCategory === category && styles.modalCategoryTextActive,
-                    ]}
-                  >
-                    {category}
-                  </Text>
+              <Text style={styles.filterGroupTitle}>Sort by</Text>
+              <View style={styles.filterOptionRow}>
+                {sortOptions.map((option) => {
+                  const active = draftFilters.sortBy === option.value;
+                  return <TouchableOpacity key={option.value} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, sortBy: option.value as ExploreSort }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+
+              <Text style={styles.filterGroupTitle}>When</Text>
+              <View style={styles.filterOptionRow}>
+                {dateOptions.map((option) => {
+                  const active = !draftFilters.customDateEnabled && draftFilters.when === option.value;
+                  return <TouchableOpacity key={option.value} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, when: option.value as ExploreDateFilter, customDateEnabled: false }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>;
+                })}
+                <TouchableOpacity style={[styles.filterOption, draftFilters.customDateEnabled && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, customDateEnabled: true, when: 'any' }))}>
+                  <Text style={[styles.filterOptionText, draftFilters.customDateEnabled && styles.filterOptionTextActive]}>Custom</Text>
                 </TouchableOpacity>
-              ))}
-              <Text style={styles.filterGroupTitle}>Host gender</Text>
-              {hostGenderFilters.map((filter) => (
-                <TouchableOpacity
-                  key={filter.value}
-                  style={[
-                    styles.modalCategoryItem,
-                    selectedHostGender === filter.value && styles.modalCategoryItemActive,
-                  ]}
-                  onPress={() => setSelectedHostGender(filter.value)}
-                >
-                  <Text
-                    style={[
-                      styles.modalCategoryText,
-                      selectedHostGender === filter.value && styles.modalCategoryTextActive,
-                    ]}
-                  >
-                    {filter.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              </View>
+              {draftFilters.customDateEnabled ? (
+                <View style={styles.customDateRow}>
+                  <TextInput
+                    style={[styles.dateInput, styles.customDateInput]}
+                    value={draftFilters.customStart}
+                    onChangeText={(customStart) => setDraftFilters((current) => ({ ...current, customStart }))}
+                    placeholder="Start YYYY-MM-DD"
+                    placeholderTextColor={colors.textSubtle}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+                  />
+                  <TextInput
+                    style={[styles.dateInput, styles.customDateInput]}
+                    value={draftFilters.customEnd}
+                    onChangeText={(customEnd) => setDraftFilters((current) => ({ ...current, customEnd }))}
+                    placeholder="End (optional)"
+                    placeholderTextColor={colors.textSubtle}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+                  />
+                </View>
+              ) : null}
+
+              <Text style={styles.filterGroupTitle}>Time</Text>
+              <View style={styles.filterOptionRow}>
+                {timeOptions.map((option) => {
+                  const active = draftFilters.time === option.value;
+                  return <TouchableOpacity key={option.value} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, time: option.value as ExploreTimeFilter }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+
+              <Text style={styles.filterGroupTitle}>Distance</Text>
+              <View style={styles.filterOptionRow}>
+                {distanceOptions.map((option) => {
+                  const active = draftFilters.distanceKm === option.value;
+                  return <TouchableOpacity key={option.label} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, distanceKm: option.value }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+              {(draftFilters.sortBy === 'nearest' || draftFilters.distanceKm !== null) ? (
+                <Text style={styles.locationHint}>
+                  {locationState === 'loading' ? 'Getting your location…' : locationState === 'unavailable' ? 'Location is unavailable. Soonest will be used without a distance limit.' : 'Your location is used privately for discovery only.'}
+                </Text>
+              ) : null}
+
+              <Text style={styles.filterGroupTitle}>Category</Text>
+              <View style={styles.filterOptionRow}>
+                {categories.map((category) => {
+                  const active = draftFilters.category === category;
+                  return <TouchableOpacity key={category} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, category }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{category}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+
+              <Text style={styles.filterGroupTitle}>More filters · Age group</Text>
+              <Text style={styles.filterGroupHint}>Activity suitability only—not profile filtering.</Text>
+              <View style={styles.filterOptionRow}>
+                {ageGroupOptions.map((option) => {
+                  const active = draftFilters.ageGroup === option.value;
+                  return <TouchableOpacity key={option.value} style={[styles.filterOption, active && styles.filterOptionActive]} onPress={() => setDraftFilters((current) => ({ ...current, ageGroup: option.value as ActivityAgeGroup }))}>
+                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>;
+                })}
+              </View>
+              {filterError ? <Text style={styles.filterError}>{filterError}</Text> : null}
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setCategoryModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
+            <View style={styles.filterActions}>
+              <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
+                <Text style={styles.resetButtonText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.applyButton} onPress={applyFilters} disabled={locationState === 'loading'}>
+                <Text style={styles.applyButtonText}>{locationState === 'loading' ? 'Getting location…' : 'Apply filters'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -650,6 +789,10 @@ const styles = StyleSheet.create({
     height: 39,
     paddingHorizontal: 12,
   },
+  filterButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(35,29,13,0.98)',
+  },
   filterButtonText: {
     color: colors.text,
     fontSize: 13,
@@ -658,6 +801,21 @@ const styles = StyleSheet.create({
   },
   filterButtonTextCompact: {
     fontSize: 12,
+  },
+  filterCount: {
+    minWidth: 19,
+    height: 19,
+    borderRadius: 10,
+    marginLeft: 6,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  filterCountText: {
+    color: colors.primaryText,
+    fontSize: 10,
+    fontWeight: '900',
   },
   filterScroller: {
     flex: 1,
@@ -756,6 +914,42 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     fontWeight: '700',
   },
+  emptyState: {
+    flex: 1,
+    minHeight: 0,
+    marginHorizontal: spacing.lg,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  emptyStateTitle: {
+    color: colors.text,
+    marginTop: spacing.md,
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    color: colors.textMuted,
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  emptyResetButton: {
+    marginTop: spacing.lg,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyResetText: {
+    color: colors.primaryText,
+    fontWeight: '900',
+  },
   toast: {
     position: 'absolute',
     left: spacing.xl,
@@ -795,6 +989,16 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    maxHeight: '90%',
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  filterModalHeading: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.md,
   },
   photoRequiredModal: {
     width: '100%',
@@ -933,7 +1137,74 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     marginBottom: spacing.sm,
+    marginTop: spacing.md,
+  },
+  filterGroupHint: {
+    color: colors.textSubtle,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: -4,
+    marginBottom: spacing.sm,
+  },
+  filterOptionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  filterOption: {
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    paddingHorizontal: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  filterOptionText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterOptionTextActive: {
+    color: colors.primaryText,
+  },
+  customDateRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  customDateInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dateInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  locationHint: {
+    color: colors.textSubtle,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+  },
+  filterError: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: spacing.md,
   },
   modalCategoryItem: {
     paddingVertical: 14,
@@ -945,7 +1216,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   categoryList: {
-    maxHeight: 420,
+    flexShrink: 1,
   },
   modalCategoryItemActive: {
     backgroundColor: colors.primary,
@@ -966,5 +1237,38 @@ const styles = StyleSheet.create({
   modalCloseText: {
     color: colors.textMuted,
     fontWeight: '800',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  resetButton: {
+    minHeight: 46,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetButtonText: {
+    color: colors.primary,
+    fontWeight: '900',
+  },
+  applyButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonText: {
+    color: colors.primaryText,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
 });

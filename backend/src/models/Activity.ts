@@ -17,6 +17,7 @@ export interface IActivity extends Document {
   waitlist?: Types.ObjectId[];
   invitedUsers?: Types.ObjectId[];
   date: Date;
+  ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   coverImage?: string;
   galleryImages?: string[];
   vibe?: string;
@@ -48,6 +49,7 @@ const ActivitySchema = new Schema<IActivity>({
   waitlist: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   invitedUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   date: { type: Date, default: Date.now },
+  ageGroup: { type: String, enum: ['any', '18-24', '25-34', '35-44', '45+'], default: 'any' },
   coverImage: { type: String },
   galleryImages: [{ type: String }],
   vibe: { type: String },

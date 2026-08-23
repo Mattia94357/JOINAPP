@@ -370,6 +370,8 @@ const curatedLocationCoordinates: Record<string, { latitude: number; longitude: 
 
 export const curatedActivities: ActivityResponse[] = curatedActivityData.map((activity) => ({
   ...activity,
+  // Discovery calculates this from the current user's coordinate; demo labels must not masquerade as real distance.
+  distance: undefined,
   ...curatedLocationCoordinates[activity.location],
 }));
 

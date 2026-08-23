@@ -24,8 +24,9 @@ import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { curatedActivities } from '../utils/curatedActivities';
 import { getMapTilerConfig } from '../utils/mapConfig';
+import { activityCategories } from '../utils/categories';
 
-const categories = ['All', 'Food', 'Drinks', 'Sports', 'Adventure', 'Nightlife'];
+const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 

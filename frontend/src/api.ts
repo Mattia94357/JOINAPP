@@ -225,6 +225,8 @@ export type RawActivity = {
   description: string;
   date?: string;
   startsAt?: string;
+  createdAt?: string;
+  ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   coverImage?: string;
   vibe?: string;
   availabilityTag?: string;
@@ -257,6 +259,8 @@ export type ActivityResponse = {
   description: string;
   date?: string;
   startsAt?: string;
+  createdAt?: string;
+  ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   time?: string;
   distance?: string;
   vibe?: string;
@@ -413,10 +417,10 @@ export const fetchCurrentUserRequest = (token: string) =>
 export const fetchOwnActivityHistoryRequest = (token: string) =>
   api.get<ActivityHistoryResponse>('/api/users/me/history', { headers: { Authorization: `Bearer ${token}` } });
 
-export const fetchActivities = async (token?: string, filters?: { hostGender?: 'male' | 'female' | 'non_binary' }) => {
+export const fetchActivities = async (token?: string) => {
   const response = await api.get<RawActivity[]>('/api/activities', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    params: { limit: 20, ...(filters?.hostGender ? { hostGender: filters.hostGender } : {}) },
+    params: { limit: 50 },
   });
   return response.data.map((activity) => ({
     id: activity._id,
@@ -433,8 +437,9 @@ export const fetchActivities = async (token?: string, filters?: { hostGender?: '
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     startsAt: activity.date,
+    createdAt: activity.createdAt,
+    ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
-    distance: '1.2 km',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
@@ -486,8 +491,9 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     startsAt: activity.date,
+    createdAt: activity.createdAt,
+    ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
-    distance: '1.2 km',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
@@ -546,6 +552,7 @@ export const createActivityRequest = async (
     visibility?: 'public' | 'private';
     joinApproval?: 'auto' | 'manual';
     galleryImages?: string[];
+    ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   },
   token: string,
 ) =>

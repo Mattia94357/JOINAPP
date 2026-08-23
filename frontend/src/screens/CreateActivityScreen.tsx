@@ -9,6 +9,7 @@ import { createActivityRequest } from '../api';
 import { colors, spacing } from '../theme';
 import { activityCategories } from '../utils/categories';
 import { geocodeActivityLocation } from '../utils/mapConfig';
+import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../utils/activityFilters';
 
 const categoryOptions = activityCategories;
 const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
@@ -36,6 +37,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [coverImage, setCoverImage] = useState('');
   const [galleryImagesText, setGalleryImagesText] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [ageGroup, setAgeGroup] = useState<ActivityAgeGroup>('any');
   const [hostNote, setHostNote] = useState('');
   const [cancellationPolicy, setCancellationPolicy] = useState('');
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
@@ -54,6 +56,8 @@ export default function CreateActivityScreen({ navigation }: Props) {
     if (!title.trim()) return showError('Activity title is required.');
     if (!location.trim()) return showError('Location is required.');
     if (!date.trim() || !startTime.trim()) return showError('Date and start time are required.');
+    const activityStart = combineLocalDateAndTime(date, startTime);
+    if (!activityStart) return showError('Use a valid date (YYYY-MM-DD) and start time, such as 7:30 PM.');
     if (!Number.isInteger(capacity) || capacity < 2) return showError('Max participants must be at least 2.');
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     if (costType === 'Paid' && Number(costAmount || 0) <= 0) return showError('Enter a cost amount or choose Free.');
@@ -88,7 +92,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
           exactAddress: exactAddress.trim(),
           category: category.trim(),
           description: description.trim(),
-          date: date.trim(),
+          date: activityStart.toISOString(),
           startTime: startTime.trim(),
           endTime: endTime.trim(),
           maxAttendees: capacity,
@@ -102,6 +106,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
           visibility,
           joinApproval: visibility === 'private' ? 'manual' : 'auto',
           galleryImages,
+          ageGroup,
         },
         token,
       );
@@ -199,6 +204,20 @@ export default function CreateActivityScreen({ navigation }: Props) {
             {vibeOptions.map((option) => (
               <TouchableOpacity key={option} style={[styles.choiceChip, vibe === option && styles.choiceChipActive]} onPress={() => setVibe(option)}>
                 <Text style={[styles.choiceLabel, vibe === option && styles.choiceLabelActive]}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Intended age group</Text>
+          <Text style={styles.labelHint}>Optional activity setting. This does not filter people.</Text>
+          <View style={styles.row}>
+            {ageGroupOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.choiceChip, ageGroup === option.value && styles.choiceChipActive]}
+                onPress={() => setAgeGroup(option.value)}
+              >
+                <Text style={[styles.choiceLabel, ageGroup === option.value && styles.choiceLabelActive]}>{option.label}</Text>
               </TouchableOpacity>
             ))}
           </View>

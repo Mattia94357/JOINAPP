@@ -51,6 +51,7 @@ type ActivityDetails = {
   startsAt?: string;
   time?: string;
   distance?: string;
+  ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   vibe?: string;
   attendees?: number;
   maxAttendees?: number;
@@ -433,7 +434,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="navigate-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Distance</Text>
-            <Text style={styles.metadataValue}>{activity.distance || 'Nearby'}</Text>
+            <Text style={styles.metadataValue}>{activity.distance || 'Distance unavailable'}</Text>
           </View>
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="star-outline" size={18} color="#f5c12d" />
@@ -466,6 +467,12 @@ export default function ActivityScreen({ route, navigation }: Props) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
+          {activity.ageGroup && activity.ageGroup !== 'any' ? (
+            <View style={styles.ageGroupTag}>
+              <Ionicons name="people-outline" size={14} color="#f5c12d" />
+              <Text style={styles.ageGroupTagText}>Intended age group {activity.ageGroup.replace('-', '–')}</Text>
+            </View>
+          ) : null}
           <Text style={styles.descriptionText}>{activity.description}</Text>
           {isCancelled && activity.cancellationReason ? <Text style={styles.cancelReason}>{activity.cancellationReason}</Text> : null}
         </View>
@@ -947,6 +954,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     marginBottom: 9,
+  },
+  ageGroupTag: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(245,193,45,0.35)',
+    backgroundColor: 'rgba(245,193,45,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  ageGroupTagText: {
+    color: '#b7b0a2',
+    fontSize: 11,
+    fontWeight: '800',
   },
   descriptionText: {
     color: '#d1d1d1',
