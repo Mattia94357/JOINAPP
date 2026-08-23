@@ -19,6 +19,7 @@ import type { Region } from 'react-native-maps';
 import { RootStackParamList } from '../../App';
 import MapModeMap from '../components/MapModeMap';
 import type { MapActivity } from '../components/MapModeMap.types';
+import AvatarBadge from '../components/AvatarBadge';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { curatedActivities } from '../utils/curatedActivities';
@@ -94,6 +95,8 @@ export default function MapModeScreen({ navigation, route }: Props) {
     ? Math.max(selectedActivity.maxAttendees - attendees, 0)
     : null;
   const coverImage = selectedActivity.coverImage || getActivityCoverImage(selectedActivity.category, selectedActivity.id);
+  const creatorName = selectedActivity.host?.trim() || 'JOIN member';
+  const creatorDisplayName = creatorName.split(/\s+/)[0];
   const compactHeight = height < 760;
   const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
 
@@ -179,6 +182,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
       mapReturnRouteKey: route.key,
     });
   }, [navigation, route.key, selectedActivity]);
+
+  const openCreatorProfile = useCallback(() => {
+    navigation.navigate('PublicProfile', {
+      userId: selectedActivity.hostId || undefined,
+      fallbackName: creatorName,
+      fallbackAvatar: selectedActivity.hostAvatar,
+    });
+  }, [creatorName, navigation, selectedActivity.hostAvatar, selectedActivity.hostId]);
 
   const distanceText = useMemo(() => {
     if (
@@ -350,22 +361,36 @@ export default function MapModeScreen({ navigation, route }: Props) {
 
         <View
           style={styles.previewContent}
-          accessible
           accessibilityLabel={`Activity preview: ${selectedActivity.title}`}
         >
           <Text style={styles.previewTitle} numberOfLines={1}>{selectedActivity.title}</Text>
           <Text style={styles.previewDistance}>{distanceText}</Text>
           <View style={styles.previewMetaRow}>
-            <View style={styles.previewMetaItem}>
-              <Ionicons name="time-outline" size={14} color={colors.primary} />
-              <Text style={styles.previewMetaText} numberOfLines={1}>{selectedActivity.time || 'Anytime'}</Text>
+            <View style={styles.previewMetaList}>
+              <View style={styles.previewMetaItem}>
+                <Ionicons name="time-outline" size={14} color={colors.primary} />
+                <Text style={styles.previewMetaText} numberOfLines={1}>{selectedActivity.time || 'Anytime'}</Text>
+              </View>
+              <View style={styles.previewMetaItem}>
+                <Ionicons name="people-outline" size={14} color={colors.primary} />
+                <Text style={styles.previewMetaText} numberOfLines={1}>
+                  {spotsLeft === null ? 'Spots available' : `${spotsLeft} spots left`}
+                </Text>
+              </View>
             </View>
-            <View style={styles.previewMetaItem}>
-              <Ionicons name="people-outline" size={14} color={colors.primary} />
-              <Text style={styles.previewMetaText} numberOfLines={1}>
-                {spotsLeft === null ? 'Spots available' : `${spotsLeft} spots left`}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={styles.creatorButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                openCreatorProfile();
+              }}
+              activeOpacity={0.72}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${creatorName}'s profile`}
+            >
+              <AvatarBadge name={creatorName} avatarUrl={selectedActivity.hostAvatar} size={26} />
+              <Text style={styles.creatorName} numberOfLines={1}>{creatorDisplayName}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -608,6 +633,14 @@ const styles = StyleSheet.create({
     marginBottom: 9,
   },
   previewMetaRow: {
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  previewMetaList: {
+    flex: 1,
+    minWidth: 0,
     gap: 5,
   },
   previewMetaItem: {
@@ -619,6 +652,22 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginLeft: 5,
     color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  creatorButton: {
+    maxWidth: 88,
+    minWidth: 0,
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 3,
+  },
+  creatorName: {
+    minWidth: 0,
+    flexShrink: 1,
+    color: colors.text,
     fontSize: 10,
     fontWeight: '800',
   },
