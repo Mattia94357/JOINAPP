@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { WebView } from 'react-native-webview';
@@ -22,9 +22,12 @@ const darkMapStyle = [
 
 export default function MapModeMap(props: MapModeMapProps) {
   const nativeMapRef = useRef<MapView | null>(null);
+  const webMapRef = useRef<WebView | null>(null);
   const {
     initialRegion,
     showsUserLocation,
+    userCoordinate,
+    recenterRequest,
     activities,
     selectedActivityId,
     onSelectActivity,
@@ -45,13 +48,43 @@ export default function MapModeMap(props: MapModeMapProps) {
     activities,
     selectedActivityId,
     showsUserLocation,
+    userCoordinate,
     apiKey: mapTilerApiKey,
     styleId: mapStyleId,
-  }) : undefined, [activities, initialRegion.latitude, initialRegion.longitude, mapStyleId, mapTilerApiKey, showsUserLocation]);
+  }) : undefined, [initialRegion.latitude, initialRegion.longitude, mapStyleId, mapTilerApiKey]);
+
+  useEffect(() => {
+    webMapRef.current?.postMessage(JSON.stringify({ type: 'join-map-activities-update', activities }));
+  }, [activities]);
+
+  useEffect(() => {
+    webMapRef.current?.postMessage(JSON.stringify({ type: 'join-map-activity-highlight', activityId: selectedActivityId }));
+  }, [selectedActivityId]);
+
+  useEffect(() => {
+    if (!recenterRequest) return;
+    nativeMapRef.current?.animateToRegion({
+      latitude: recenterRequest.latitude,
+      longitude: recenterRequest.longitude,
+      latitudeDelta: 0.045,
+      longitudeDelta: 0.045,
+    }, 500);
+    webMapRef.current?.postMessage(JSON.stringify({
+      type: 'join-map-recenter',
+      latitude: recenterRequest.latitude,
+      longitude: recenterRequest.longitude,
+    }));
+  }, [recenterRequest?.requestId]);
+
+  useEffect(() => {
+    if (!userCoordinate) return;
+    webMapRef.current?.postMessage(JSON.stringify({ type: 'join-map-user-location', ...userCoordinate }));
+  }, [userCoordinate?.latitude, userCoordinate?.longitude]);
 
   if (mapHtml) {
     return (
       <WebView
+        ref={webMapRef}
         style={styles.map}
         source={{ html: mapHtml }}
         originWhitelist={['*']}
@@ -66,6 +99,14 @@ export default function MapModeMap(props: MapModeMapProps) {
             }
             if (message?.type === 'join-map-cluster-select') {
               props.onSelectCluster?.(Number(message.activityCount) || null);
+            }
+            if (message?.type === 'join-map-viewport-change') {
+              props.onViewportChange?.({
+                latitude: Number(message.latitude),
+                longitude: Number(message.longitude),
+                latitudeDelta: Number(message.latitudeDelta) || 0.045,
+                longitudeDelta: Number(message.longitudeDelta) || 0.045,
+              });
             }
           } catch {
             // Ignore unrelated or malformed web-map messages.
@@ -97,6 +138,7 @@ export default function MapModeMap(props: MapModeMapProps) {
       loadingBackgroundColor="#111310"
       loadingIndicatorColor="#F6C445"
       accessibilityLabel="Interactive map"
+      onRegionChangeComplete={props.onViewportChange}
     >
       {activities.length > 1 && !nativeExpanded && (
         <Marker

@@ -13,7 +13,6 @@ import {
   TextInput,
   useWindowDimensions,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,6 +47,7 @@ import {
   sortOptions,
   timeOptions,
 } from '../utils/activityFilters';
+import { getCurrentJoinLocation } from '../utils/locationService';
 
 const categories = ['All', ...activityCategories];
 const quickFilterChips = categories.slice(0, 8).map((category) => ({ label: category, value: category }));
@@ -320,22 +320,11 @@ export default function HomeScreen({ navigation, route }: Props) {
     if (userCoordinate) return userCoordinate;
     setLocationState('loading');
     try {
-      const existingPermission = await Location.getForegroundPermissionsAsync();
-      const permission = existingPermission.granted || !existingPermission.canAskAgain
-        ? existingPermission
-        : await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
+      const coordinate = await getCurrentJoinLocation();
+      if (!coordinate) {
         setLocationState('unavailable');
         return null;
       }
-      const location = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Location timed out')), 6000)),
-      ]);
-      const coordinate = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
       setUserCoordinate(coordinate);
       setLocationState('ready');
       return coordinate;

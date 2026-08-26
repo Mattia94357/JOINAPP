@@ -7,6 +7,7 @@ type MapHtmlOptions = {
   activities: MapActivity[];
   selectedActivityId: string;
   showsUserLocation: boolean;
+  userCoordinate?: { latitude: number; longitude: number } | null;
   apiKey: string;
   styleId: string;
 };
@@ -19,6 +20,7 @@ export const buildMapTilerHtml = ({
   activities,
   selectedActivityId,
   showsUserLocation,
+  userCoordinate,
   apiKey,
   styleId,
 }: MapHtmlOptions) => `<!doctype html>
@@ -43,38 +45,47 @@ export const buildMapTilerHtml = ({
 <body>
   <div id="map"></div>
   <script>
-    const activities=${safeJson(activities.map((activity) => ({
+    let activities=${safeJson(activities.map((activity) => ({
       ...activity,
       iconGlyph: getMapActivityIconGlyph(activity.category),
     })))};
     let selectedActivityId=${safeJson(selectedActivityId)};
     maptilersdk.config.apiKey=${safeJson(apiKey)};
     const map=new maptilersdk.Map({container:'map',style:${safeJson(styleId)},language:maptilersdk.Language.ENGLISH,center:[${longitude},${latitude}],zoom:12.5,attributionControl:{},navigationControl:false});
+    let mapLoaded=false;
+    let activityMarkers=[];
     const notifySelection=(activityId)=>{
       selectedActivityId=activityId;
       document.querySelectorAll('.activity-pin').forEach((card)=>card.classList.toggle('selected',card.dataset.activityId===activityId));
       const message=JSON.stringify({type:'join-map-activity-select',activityId});
       if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(message);
     };
+    const syncActivities=()=>{
+      if(!mapLoaded)return;
+      const source=map.getSource('activities');if(source)source.setData({type:'FeatureCollection',features:activities.map((activity)=>({type:'Feature',geometry:{type:'Point',coordinates:[activity.longitude,activity.latitude]},properties:{activityId:activity.id}}))});
+      activityMarkers.forEach((entry)=>entry.marker.remove());activityMarkers=[];
+      activities.forEach((activity)=>{const card=document.createElement('button');card.type='button';card.className='activity-pin'+(activity.id===selectedActivityId?' selected':'');card.dataset.activityId=activity.id;card.setAttribute('aria-label',activity.title+' activity');if(activity.coverImage){const image=document.createElement('img');image.src=activity.coverImage;image.alt='';card.appendChild(image)}card.addEventListener('click',(event)=>{event.stopPropagation();notifySelection(activity.id)});const marker=new maptilersdk.Marker({element:card,anchor:'bottom'}).setLngLat([activity.longitude,activity.latitude]).addTo(map);activityMarkers.push({marker,card})});
+      syncPins();
+    };
+    const syncPins=()=>activityMarkers.forEach(({card})=>card.classList.toggle('zoom-hidden',map.getZoom()<15));
     map.on('load',()=>{
       map.addSource('activities',{type:'geojson',data:{type:'FeatureCollection',features:activities.map((activity)=>({type:'Feature',geometry:{type:'Point',coordinates:[activity.longitude,activity.latitude]},properties:{activityId:activity.id}}))},cluster:true,clusterMaxZoom:14,clusterRadius:58});
       map.addLayer({id:'activity-clusters',type:'circle',source:'activities',filter:['has','point_count'],paint:{'circle-color':'#171713','circle-radius':['step',['get','point_count'],20,10,24,30,29,100,34],'circle-stroke-width':2,'circle-stroke-color':'#f6c445','circle-opacity':.96}});
       map.addLayer({id:'activity-cluster-count',type:'symbol',source:'activities',filter:['has','point_count'],layout:{'text-field':['get','point_count_abbreviated'],'text-size':14},paint:{'text-color':'#f6c445'}});
       map.addLayer({id:'activity-points',type:'circle',source:'activities',filter:['!', ['has','point_count']],maxzoom:15,paint:{'circle-color':'#171713','circle-radius':7,'circle-stroke-width':2,'circle-stroke-color':'#f6c445'}});
       map.on('click','activity-clusters',(event)=>{const feature=event.features&&event.features[0];if(!feature)return;const count=Number(feature.properties.point_count||0);window.ReactNativeWebView?.postMessage(JSON.stringify({type:'join-map-cluster-select',activityCount:count}));map.getSource('activities').getClusterExpansionZoom(feature.properties.cluster_id).then((zoom)=>map.easeTo({center:feature.geometry.coordinates,zoom,duration:500})).catch(()=>{})});
-      const pins=[];
-      activities.forEach((activity)=>{
-        const card=document.createElement('button');card.type='button';card.className='activity-pin'+(activity.id===selectedActivityId?' selected':'');card.dataset.activityId=activity.id;card.setAttribute('aria-label',activity.title+' activity');
-        if(activity.coverImage){const image=document.createElement('img');image.src=activity.coverImage;image.alt='';card.appendChild(image)}
-        card.addEventListener('click',(event)=>{event.stopPropagation();notifySelection(activity.id)});
-        new maptilersdk.Marker({element:card,anchor:'bottom'}).setLngLat([activity.longitude,activity.latitude]).addTo(map);pins.push(card);
-      });
-      const syncPins=()=>pins.forEach((pin)=>pin.classList.toggle('zoom-hidden',map.getZoom()<15));map.on('zoom',syncPins);syncPins();
+      mapLoaded=true;map.on('zoom',syncPins);syncActivities();
     });
-    if(${showsUserLocation ? 'true' : 'false'}){
-      const user=document.createElement('div');user.className='user-location';
-      new maptilersdk.Marker({element:user,anchor:'center'}).setLngLat([${longitude},${latitude}]).addTo(map);
-    }
+    let userMarker=null;
+    const setUserLocation=(latitude,longitude)=>{
+      if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
+      if(!userMarker){const user=document.createElement('div');user.className='user-location';userMarker=new maptilersdk.Marker({element:user,anchor:'center'}).addTo(map)}
+      userMarker.setLngLat([longitude,latitude]);
+    };
+    ${showsUserLocation && userCoordinate ? `setUserLocation(${userCoordinate.latitude},${userCoordinate.longitude});` : ''}
+    const handleJoinMessage=(event)=>{try{const message=typeof event.data==='string'?JSON.parse(event.data):event.data;if(message?.type==='join-map-recenter'){map.easeTo({center:[message.longitude,message.latitude],zoom:12.5,duration:500})}if(message?.type==='join-map-user-location'){setUserLocation(Number(message.latitude),Number(message.longitude))}if(message?.type==='join-map-activity-highlight'){selectedActivityId=message.activityId;document.querySelectorAll('.activity-pin').forEach((pin)=>pin.classList.toggle('selected',pin.dataset.activityId===selectedActivityId))}if(message?.type==='join-map-activities-update'&&Array.isArray(message.activities)){activities=message.activities;syncActivities()}}catch{}};
+    window.addEventListener('message',handleJoinMessage);document.addEventListener('message',handleJoinMessage);
+    map.on('moveend',()=>{const center=map.getCenter();const bounds=map.getBounds();window.ReactNativeWebView?.postMessage(JSON.stringify({type:'join-map-viewport-change',latitude:center.lat,longitude:center.lng,latitudeDelta:Math.abs(bounds.getNorth()-bounds.getSouth()),longitudeDelta:Math.abs(bounds.getEast()-bounds.getWest())}))});
   </script>
 </body>
 </html>`;

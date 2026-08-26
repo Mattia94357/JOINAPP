@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Region } from 'react-native-maps';
 import { RootStackParamList } from '../../App';
@@ -25,33 +24,26 @@ import { getActivityCoverImage } from '../utils/activityAssets';
 import { curatedActivities } from '../utils/curatedActivities';
 import { getMapTilerConfig } from '../utils/mapConfig';
 import { activityCategories } from '../utils/categories';
+import {
+  getCurrentJoinLocation,
+  isValidMapRegion,
+  readLastMapViewport,
+  saveLastMapViewport,
+} from '../utils/locationService';
 
 const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 
-const INITIAL_FALLBACK_REGION: Region = {
+// Legacy Phuket center retained only as the final no-context/no-location fallback.
+const FINAL_FALLBACK_REGION: Region = {
   latitude: 7.8804,
   longitude: 98.3923,
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
 
-const LOCATION_TIMEOUT_MS = 6000;
-
-const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number) => new Promise<T>((resolve, reject) => {
-  const timeout = setTimeout(() => reject(new Error('Location request timed out')), timeoutMs);
-  promise.then(
-    (value) => {
-      clearTimeout(timeout);
-      resolve(value);
-    },
-    (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    },
-  );
-});
+let sessionMapViewport: Region | null = null;
 
 const distanceBetween = (
   from: { latitude: number; longitude: number },
@@ -89,7 +81,10 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [showsUserLocation, setShowsUserLocation] = useState(false);
+  const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
+  const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackViewportActive = useRef(false);
   const { height } = useWindowDimensions();
   const attendees = selectedActivity.attendees ?? selectedActivity.participants.length;
   const spotsLeft = selectedActivity.maxAttendees
@@ -207,51 +202,82 @@ export default function MapModeScreen({ navigation, route }: Props) {
     return 'Distance unavailable';
   }, [selectedActivity.latitude, selectedActivity.longitude, userCoordinate]);
 
+  const rememberMapViewport = useCallback((region: Region) => {
+    if (!isValidMapRegion(region)) return;
+    const isUntouchedPhuketFallback = fallbackViewportActive.current
+      && Math.abs(region.latitude - FINAL_FALLBACK_REGION.latitude) < 0.0001
+      && Math.abs(region.longitude - FINAL_FALLBACK_REGION.longitude) < 0.0001;
+    if (isUntouchedPhuketFallback) return;
+    fallbackViewportActive.current = false;
+    sessionMapViewport = region;
+    if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
+    persistViewportTimer.current = setTimeout(() => void saveLastMapViewport(region), 500);
+  }, []);
+
+  const recenterOnCurrentLocation = useCallback(async () => {
+    setLocationState('loading');
+    const coordinate = await getCurrentJoinLocation({ forceRefresh: true, retryDenied: true });
+    if (!coordinate) {
+      setLocationState('unavailable');
+      return;
+    }
+    setUserCoordinate(coordinate);
+    setLocationState('ready');
+    fallbackViewportActive.current = false;
+    const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
+    sessionMapViewport = region;
+    void saveLastMapViewport(region);
+    setRecenterRequest({ ...coordinate, requestId: Date.now() });
+  }, []);
+
   useEffect(() => {
     let active = true;
 
-    const centerOnCurrentLocation = async () => {
-      try {
-        const existingPermission = await Location.getForegroundPermissionsAsync();
-        const permission = existingPermission.granted || !existingPermission.canAskAgain
-          ? existingPermission
-          : await Location.requestForegroundPermissionsAsync();
-
-        if (!permission.granted || !active) {
-          if (active) setMapRegion(activityContextRegion || INITIAL_FALLBACK_REGION);
-          return;
-        }
-
-        const servicesEnabled = await Location.hasServicesEnabledAsync();
-        if (!servicesEnabled) throw new Error('Location services unavailable');
-
-        const currentLocation = await withTimeout(
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          LOCATION_TIMEOUT_MS,
-        );
-
-        if (!active) return;
-
-        const coordinate = {
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        };
-        setUserCoordinate(coordinate);
-        setShowsUserLocation(true);
-        setMapRegion({
-          ...coordinate,
-          latitudeDelta: 0.08,
-          longitudeDelta: 0.08,
-        });
-      } catch {
-        if (active) setMapRegion(activityContextRegion || INITIAL_FALLBACK_REGION);
+    const initializeMap = async () => {
+      if (isValidMapRegion(sessionMapViewport)) {
+        setMapRegion(sessionMapViewport);
+        setLocationState('ready');
+        return;
       }
+
+      const storedViewportPromise = readLastMapViewport();
+      const coordinate = await getCurrentJoinLocation();
+      if (!active) return;
+      if (coordinate) {
+        const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
+        setUserCoordinate(coordinate);
+        setLocationState('ready');
+        setMapRegion(region);
+        sessionMapViewport = region;
+        void saveLastMapViewport(region);
+        return;
+      }
+
+      setLocationState('unavailable');
+      if (activityContextRegion) {
+        setMapRegion(activityContextRegion);
+        sessionMapViewport = activityContextRegion;
+        void saveLastMapViewport(activityContextRegion);
+        return;
+      }
+
+      const storedViewport = await storedViewportPromise;
+      if (!active) return;
+      if (isValidMapRegion(storedViewport)) {
+        setMapRegion(storedViewport);
+        sessionMapViewport = storedViewport;
+        return;
+      }
+
+      fallbackViewportActive.current = true;
+      setMapRegion(FINAL_FALLBACK_REGION);
     };
 
-    centerOnCurrentLocation();
+    initializeMap();
 
     return () => {
       active = false;
+      if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
   }, []);
 
@@ -260,11 +286,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
       {mapRegion ? (
         <MapModeMap
           initialRegion={mapRegion}
-          showsUserLocation={showsUserLocation}
+          showsUserLocation={Boolean(userCoordinate)}
+          userCoordinate={userCoordinate}
+          recenterRequest={recenterRequest}
           activities={mapActivities}
           selectedActivityId={selectedActivity.id}
           onSelectActivity={selectMapActivity}
           onSelectCluster={setSelectedClusterCount}
+          onViewportChange={rememberMapViewport}
           mapTilerApiKey={mapTilerConfig.apiKey}
           mapStyleId={mapTilerConfig.styleId}
         />
@@ -334,6 +363,28 @@ export default function MapModeScreen({ navigation, route }: Props) {
               );
             })}
           </ScrollView>
+        </View>
+
+        <View style={styles.locationControlArea} pointerEvents="box-none">
+          {locationState === 'unavailable' ? (
+            <View style={styles.locationUnavailableBadge} pointerEvents="none">
+              <Text style={styles.locationUnavailableText}>Location unavailable</Text>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={styles.currentLocationControl}
+            onPress={recenterOnCurrentLocation}
+            disabled={locationState === 'loading'}
+            activeOpacity={0.76}
+            accessibilityRole="button"
+            accessibilityLabel="Recenter map on current location"
+          >
+            {locationState === 'loading' ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <Ionicons name="locate-outline" size={22} color={colors.primary} />
+            )}
+          </TouchableOpacity>
         </View>
 
         {selectedClusterCount ? (
@@ -436,6 +487,42 @@ const styles = StyleSheet.create({
   topOverlay: {
     zIndex: 10,
     marginTop: 0,
+  },
+  locationControlArea: {
+    position: 'absolute',
+    top: 98,
+    right: 12,
+    zIndex: 12,
+    alignItems: 'flex-end',
+    gap: 7,
+  },
+  currentLocationControl: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    backgroundColor: 'rgba(10,10,10,0.92)',
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
+  },
+  locationUnavailableBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.2)',
+    backgroundColor: 'rgba(10,10,10,0.86)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  locationUnavailableText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
   },
   topControls: {
     width: '100%',
