@@ -26,6 +26,7 @@ import { getMapTilerConfig } from '../utils/mapConfig';
 import { activityCategories } from '../utils/categories';
 import {
   getCurrentJoinLocation,
+  getCurrentJoinLocationResult,
   isValidMapRegion,
   readLastMapViewport,
   saveLastMapViewport,
@@ -67,14 +68,6 @@ export default function MapModeScreen({ navigation, route }: Props) {
     ? route.params.activities
     : curatedActivities;
   const initialActivity = route.params?.activity || initialActivities[0];
-  const activityContextRegion: Region | null = Number.isFinite(initialActivity?.latitude) && Number.isFinite(initialActivity?.longitude)
-    ? {
-      latitude: initialActivity.latitude as number,
-      longitude: initialActivity.longitude as number,
-      latitudeDelta: 0.08,
-      longitudeDelta: 0.08,
-    }
-    : null;
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivity, setSelectedActivity] = useState(initialActivity);
@@ -95,6 +88,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const creatorDisplayName = creatorName.split(/\s+/)[0];
   const compactHeight = height < 760;
   const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
+
+  const logInitialLocationSource = useCallback((
+    source: 'DEVICE_GPS' | 'SESSION_VIEWPORT' | 'FALLBACK',
+    detail?: 'memory' | 'stored' | 'final-development-fallback',
+  ) => {
+    // Temporary diagnostics for confirming device geolocation on deployed Safari.
+    console.info('MAP INITIAL LOCATION SOURCE:', source, detail || '');
+  }, []);
 
   const availableActivities = useMemo(() => {
     const requestedActivity = route.params?.activity;
@@ -234,30 +235,26 @@ export default function MapModeScreen({ navigation, route }: Props) {
     let active = true;
 
     const initializeMap = async () => {
-      if (isValidMapRegion(sessionMapViewport)) {
-        setMapRegion(sessionMapViewport);
-        setLocationState('ready');
-        return;
-      }
-
+      const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
       const storedViewportPromise = readLastMapViewport();
-      const coordinate = await getCurrentJoinLocation();
+      const locationResult = await getCurrentJoinLocationResult({ forceRefresh: true });
       if (!active) return;
-      if (coordinate) {
+      if (locationResult.status === 'success') {
+        const { coordinate } = locationResult;
         const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
         setUserCoordinate(coordinate);
         setLocationState('ready');
         setMapRegion(region);
         sessionMapViewport = region;
         void saveLastMapViewport(region);
+        logInitialLocationSource('DEVICE_GPS');
         return;
       }
 
       setLocationState('unavailable');
-      if (activityContextRegion) {
-        setMapRegion(activityContextRegion);
-        sessionMapViewport = activityContextRegion;
-        void saveLastMapViewport(activityContextRegion);
+      if (previousSessionViewport) {
+        setMapRegion(previousSessionViewport);
+        logInitialLocationSource('SESSION_VIEWPORT', 'memory');
         return;
       }
 
@@ -266,11 +263,13 @@ export default function MapModeScreen({ navigation, route }: Props) {
       if (isValidMapRegion(storedViewport)) {
         setMapRegion(storedViewport);
         sessionMapViewport = storedViewport;
+        logInitialLocationSource('SESSION_VIEWPORT', 'stored');
         return;
       }
 
       fallbackViewportActive.current = true;
       setMapRegion(FINAL_FALLBACK_REGION);
+      logInitialLocationSource('FALLBACK', 'final-development-fallback');
     };
 
     initializeMap();
@@ -279,7 +278,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
       active = false;
       if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
-  }, []);
+  }, [logInitialLocationSource]);
 
   return (
     <View style={styles.container}>
