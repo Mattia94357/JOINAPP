@@ -90,11 +90,16 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
 
   const logInitialLocationSource = useCallback((
-    source: 'DEVICE_GPS' | 'SESSION_VIEWPORT' | 'FALLBACK',
+    source: 'DEVICE_GPS' | 'SESSION_VIEWPORT' | 'SEARCH_CONTEXT' | 'FALLBACK',
+    region: Region,
     detail?: 'memory' | 'stored' | 'final-development-fallback',
   ) => {
     // Temporary diagnostics for confirming device geolocation on deployed Safari.
-    console.info('MAP INITIAL LOCATION SOURCE:', source, detail || '');
+    console.info('MAP INITIALIZATION SOURCE:', source, {
+      detail: detail || 'none',
+      latitude: region.latitude,
+      longitude: region.longitude,
+    });
   }, []);
 
   const availableActivities = useMemo(() => {
@@ -217,7 +222,11 @@ export default function MapModeScreen({ navigation, route }: Props) {
 
   const recenterOnCurrentLocation = useCallback(async () => {
     setLocationState('loading');
-    const coordinate = await getCurrentJoinLocation({ forceRefresh: true, retryDenied: true });
+    const coordinate = await getCurrentJoinLocation({
+      forceRefresh: true,
+      retryDenied: true,
+      requestSource: 'CURRENT_LOCATION_BUTTON',
+    });
     if (!coordinate) {
       setLocationState('unavailable');
       return;
@@ -237,7 +246,11 @@ export default function MapModeScreen({ navigation, route }: Props) {
     const initializeMap = async () => {
       const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
       const storedViewportPromise = readLastMapViewport();
-      const locationResult = await getCurrentJoinLocationResult({ forceRefresh: true });
+      const locationResult = await getCurrentJoinLocationResult({
+        forceRefresh: true,
+        retryDenied: true,
+        requestSource: 'INITIAL_MAP',
+      });
       if (!active) return;
       if (locationResult.status === 'success') {
         const { coordinate } = locationResult;
@@ -247,14 +260,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
         setMapRegion(region);
         sessionMapViewport = region;
         void saveLastMapViewport(region);
-        logInitialLocationSource('DEVICE_GPS');
+        logInitialLocationSource('DEVICE_GPS', region);
         return;
       }
 
       setLocationState('unavailable');
       if (previousSessionViewport) {
         setMapRegion(previousSessionViewport);
-        logInitialLocationSource('SESSION_VIEWPORT', 'memory');
+        logInitialLocationSource('SESSION_VIEWPORT', previousSessionViewport, 'memory');
         return;
       }
 
@@ -263,13 +276,13 @@ export default function MapModeScreen({ navigation, route }: Props) {
       if (isValidMapRegion(storedViewport)) {
         setMapRegion(storedViewport);
         sessionMapViewport = storedViewport;
-        logInitialLocationSource('SESSION_VIEWPORT', 'stored');
+        logInitialLocationSource('SESSION_VIEWPORT', storedViewport, 'stored');
         return;
       }
 
       fallbackViewportActive.current = true;
       setMapRegion(FINAL_FALLBACK_REGION);
-      logInitialLocationSource('FALLBACK', 'final-development-fallback');
+      logInitialLocationSource('FALLBACK', FINAL_FALLBACK_REGION, 'final-development-fallback');
     };
 
     initializeMap();
