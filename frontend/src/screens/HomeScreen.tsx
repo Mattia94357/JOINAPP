@@ -26,6 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest, updatePushTokenRequest } from '../api';
 import { curatedActivities } from '../utils/curatedActivities';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
+import { activityStartDate } from '../utils/activityFilters';
 import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
 import {
@@ -190,7 +191,16 @@ export default function HomeScreen({ navigation, route }: Props) {
       navigation.navigate('Chat', { chatId: activity.id, title: activity.title });
       return true;
     }
-    if (activity.pending || activity.declined || activity.waitlisted || activity.status === 'cancelled' || activity.status === 'completed') {
+    const startsAt = activityStartDate(activity);
+    if (
+      activity.pending
+      || activity.declined
+      || activity.waitlisted
+      || activity.status === 'cancelled'
+      || activity.status === 'completed'
+      || !startsAt
+      || startsAt.getTime() <= Date.now()
+    ) {
       return false;
     }
 

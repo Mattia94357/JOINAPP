@@ -217,6 +217,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const isCancelled = activity.status === 'cancelled';
   const hasActivityStarted = activity.status === 'completed'
     || Boolean(activity.startsAt && new Date(activity.startsAt).getTime() <= Date.now());
+  const isPastOrCompleted = activity.status === 'completed' || hasActivityStarted;
   const canCreateMoment = Boolean(token && (alreadyJoined || isHost) && !isCancelled && hasActivityStarted);
   const canOpenChat = alreadyJoined || isHost;
   const hostRating = activity.hostRating ? activity.hostRating.toFixed(1) : 'New';
@@ -230,6 +231,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
         ? 'On Waitlist'
         : isCancelled
           ? 'Cancelled'
+          : isPastOrCompleted
+            ? 'Activity completed'
           : isFull
             ? 'Join Waitlist'
             : activity.visibility === 'private'
@@ -602,7 +605,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled}>
+          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted}>
             <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
             <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
               {joinLabel}

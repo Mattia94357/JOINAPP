@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "set NODE_ENV=development&& ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
+    "test:lifecycle": "npm run build && node tests/activityLifecycle.test.js",
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",

@@ -8,6 +8,8 @@ import Activity from '../models/Activity';
 import Moment from '../models/Moment';
 import MomentComment from '../models/MomentComment';
 import { getJwtSecret } from '../config/security';
+import { hasActivityStarted } from '../utils/activityLifecycle';
+import { completeActivityIfPast } from '../services/activityCompletion';
 
 const router = express.Router();
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
@@ -121,13 +123,14 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
+    await completeActivityIfPast(req.body.activityId);
     const activity = await Activity.findById(req.body.activityId);
     if (!activity) return res.status(404).json({ message: 'Activity not found.' });
     const isHost = activity.host.toString() === req.userId;
     const participated = isHost || idInList(activity.participants, req.userId);
     if (!participated) return res.status(403).json({ message: 'Only confirmed participants can add a Moment.' });
     if (activity.status === 'cancelled') return res.status(400).json({ message: 'Moments cannot be added to a cancelled activity.' });
-    if (activity.status !== 'completed' && activity.date.getTime() > Date.now()) {
+    if (!hasActivityStarted(activity)) {
       return res.status(400).json({ message: 'Moments become available once the activity begins.' });
     }
 

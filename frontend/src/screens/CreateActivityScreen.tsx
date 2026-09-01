@@ -58,6 +58,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
     if (!date.trim() || !startTime.trim()) return showError('Date and start time are required.');
     const activityStart = combineLocalDateAndTime(date, startTime);
     if (!activityStart) return showError('Use a valid date (YYYY-MM-DD) and start time, such as 7:30 PM.');
+    if (activityStart.getTime() <= Date.now()) return showError('Activity start time must be in the future.');
     if (!Number.isInteger(capacity) || capacity < 2) return showError('Max participants must be at least 2.');
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     if (costType === 'Paid' && Number(costAmount || 0) <= 0) return showError('Enter a cost amount or choose Free.');

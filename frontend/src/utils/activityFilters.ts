@@ -203,9 +203,11 @@ export const filterAndSortActivities = (
   const bounds = dateBounds(filters, now);
   const distances = new Map(activities.map((activity) => [activity.id, activityDistanceKm(activity, userCoordinate)]));
   const filtered = activities.filter((activity) => {
+    if (activity.status === 'cancelled' || activity.status === 'completed') return false;
+    const start = activityStartDate(activity, now);
+    if (!start || start.getTime() <= now.getTime()) return false;
     if (filters.category !== 'All' && activity.category !== filters.category) return false;
     if (filters.ageGroup !== 'any' && activity.ageGroup !== filters.ageGroup) return false;
-    const start = activityStartDate(activity, now);
     if (bounds && (!start || start < bounds.start || start >= bounds.end)) return false;
     if (filters.time !== 'any' && (!start || !matchesTime(start, filters.time))) return false;
     if (filters.distanceKm !== null) {

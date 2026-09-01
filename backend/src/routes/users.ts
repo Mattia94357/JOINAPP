@@ -11,6 +11,8 @@ import { rateLimit } from 'express-rate-limit';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../config/security';
+import { effectiveActivityStatus } from '../utils/activityLifecycle';
+import { completePastActivities } from '../services/activityCompletion';
 
 const router = express.Router();
 
@@ -85,7 +87,7 @@ const historyActivityPayload = (activity: any, viewerId?: string) => {
   location: activity.locationPrivacy === 'private' && !isMember ? undefined : activity.location,
   date: activity.date,
   visibility: activity.visibility,
-  status: activity.status,
+  status: effectiveActivityStatus(activity),
   coverImage: activity.coverImage,
   });
 };
@@ -214,6 +216,7 @@ router.get('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
 });
 
 router.get('/me/history', auth, async (req: AuthRequest, res: ApiResponse) => {
+  await completePastActivities(new Date(), { $or: [{ host: req.userId }, { participants: req.userId }] });
   const [hostedActivities, joinedActivities, hostedCount, joinedCount] = await Promise.all([
     Activity.find({ host: req.userId, status: { $ne: 'cancelled' } }).sort({ date: -1 }).limit(100).select(historyActivityFields),
     Activity.find({ participants: req.userId, host: { $ne: req.userId }, status: { $ne: 'cancelled' } }).sort({ date: -1 }).limit(100).select(historyActivityFields),

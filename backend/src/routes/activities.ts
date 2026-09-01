@@ -7,6 +7,13 @@ import Activity from '../models/Activity';
 import User from '../models/User';
 import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
+import {
+  effectiveActivityStatus,
+  isScheduledStartInFuture,
+  participationClosureReason,
+  upcomingActivityFilter,
+} from '../utils/activityLifecycle';
+import { completeActivityIfPast, completePastActivities } from '../services/activityCompletion';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -141,6 +148,7 @@ const activityPayload = (activity: any, viewerId?: string) => {
   const viewerWaitlisted = idInList(waitlist, viewerId);
   const safePayload: any = {
     ...activity.toObject(),
+    status: effectiveActivityStatus(activity),
     host: publicPersonPayload(activity.host),
     participants: participants.map(publicPersonPayload),
     participantCount: participants.length,
@@ -175,11 +183,13 @@ const activityPayload = (activity: any, viewerId?: string) => {
 };
 
 router.get('/', async (req, res) => {
+  const now = new Date();
+  await completePastActivities(now, { visibility: 'public' });
   const userId = getRequesterId(req);
   const hostGender = typeof req.query.hostGender === 'string' ? req.query.hostGender : undefined;
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
   const page = Math.max(Number(req.query.page) || 1, 1);
-  const activities = await Activity.find({ visibility: 'public' })
+  const activities = await Activity.find({ visibility: 'public', ...upcomingActivityFilter(now) })
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
@@ -248,6 +258,10 @@ router.post(
     }
     const normalizedLatitude = hasLatitude ? Number(latitude) : undefined;
     const normalizedLongitude = hasLongitude ? Number(longitude) : undefined;
+    const scheduledDate = new Date(date as string);
+    if (!isScheduledStartInFuture(scheduledDate)) {
+      return res.status(400).json({ message: 'Activity start time must be in the future.' });
+    }
     const gallery = Array.isArray(galleryImages) ? galleryImages.map((image) => String(image).trim()).filter(Boolean).slice(0, 5) : [];
     if (coverImage && !imageUrlPattern.test(String(coverImage))) {
       return res.status(400).json({ message: 'Use a valid JPEG, PNG, or WEBP cover image URL.' });
@@ -268,7 +282,7 @@ router.post(
         ? locationPrivacy
         : 'public',
       description: cleanText(description, 3000),
-      date: date ? new Date(date) : new Date(),
+      date: scheduledDate,
       ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
       vibe: cleanText(vibe, 80),
       coverImage,
@@ -305,6 +319,7 @@ router.get('/:id', async (req, res) => {
   }
 
   const userId = getRequesterId(req);
+  await completeActivityIfPast(req.params.id);
   const activity = await Activity.findById(req.params.id)
     .populate('host', `${participantFields} gender publicGender`)
     .populate('participants', participantFields)
@@ -342,8 +357,12 @@ router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest<Act
   if (currentMembers.some((member) => member.id !== req.userId && isBlockedBetween(user, member))) {
     return res.status(403).json({ message: 'You cannot join this activity.' });
   }
-  if (activity.status === 'cancelled') {
-    return res.status(400).json({ message: 'This activity has been cancelled.' });
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'This activity has been cancelled.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'This activity has been completed and can no longer be joined.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'This activity has already started and can no longer be joined.' });
   }
 
   if (activity.participants.some((participant) => participant.toString() === req.userId)) {
@@ -403,6 +422,13 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can approve requests.' });
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'Join requests cannot be approved for a cancelled activity.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'Join requests cannot be approved for a completed activity.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'Join requests cannot be approved after the activity has started.' });
+  }
   if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return res.status(400).json({ message: 'Activity is full.' });
 
   activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
