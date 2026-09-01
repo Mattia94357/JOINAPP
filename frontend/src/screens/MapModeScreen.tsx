@@ -25,8 +25,8 @@ import { curatedActivities } from '../utils/curatedActivities';
 import { getMapTilerConfig } from '../utils/mapConfig';
 import { activityCategories } from '../utils/categories';
 import {
-  getCurrentJoinLocation,
   getCurrentJoinLocationResult,
+  isValidCoordinate,
   isValidMapRegion,
   readLastMapViewport,
   saveLastMapViewport,
@@ -35,6 +35,23 @@ import {
 const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
+
+type GeolocationDebugState = {
+  secureContext: boolean;
+  geolocationAvailable: boolean;
+  permissionState: 'granted' | 'prompt' | 'denied' | 'unknown';
+  requestStarted: boolean;
+  result: 'idle' | 'pending' | 'success' | 'error';
+  errorCode: number | null;
+  errorMessage: string;
+  locationSource: 'GPS' | 'FALLBACK' | 'SAVED VIEWPORT' | 'SEARCH' | 'PENDING';
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+};
+
+// Temporary production-visible diagnostics for resolving iPhone Safari permission behavior.
+const SHOW_GEOLOCATION_DEBUG = true;
 
 // Legacy Phuket center retained only as the final no-context/no-location fallback.
 const FINAL_FALLBACK_REGION: Region = {
@@ -76,6 +93,19 @@ export default function MapModeScreen({ navigation, route }: Props) {
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
   const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [geolocationDebug, setGeolocationDebug] = useState<GeolocationDebugState>({
+    secureContext: Platform.OS !== 'web' || (typeof window !== 'undefined' && window.isSecureContext),
+    geolocationAvailable: Platform.OS !== 'web' || (typeof navigator !== 'undefined' && Boolean(navigator.geolocation)),
+    permissionState: 'unknown',
+    requestStarted: false,
+    result: 'idle',
+    errorCode: null,
+    errorMessage: '',
+    locationSource: 'PENDING',
+    latitude: null,
+    longitude: null,
+    accuracy: null,
+  });
   const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackViewportActive = useRef(false);
   const { height } = useWindowDimensions();
@@ -100,6 +130,26 @@ export default function MapModeScreen({ navigation, route }: Props) {
       latitude: region.latitude,
       longitude: region.longitude,
     });
+  }, []);
+
+  const refreshBrowserPermissionState = useCallback(() => {
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.permissions) {
+      setGeolocationDebug((current) => ({ ...current, permissionState: 'unknown' }));
+      return;
+    }
+
+    void navigator.permissions.query({ name: 'geolocation' })
+      .then((permission) => {
+        const permissionState = permission.state === 'granted'
+          || permission.state === 'prompt'
+          || permission.state === 'denied'
+          ? permission.state
+          : 'unknown';
+        setGeolocationDebug((current) => ({ ...current, permissionState }));
+      })
+      .catch(() => {
+        setGeolocationDebug((current) => ({ ...current, permissionState: 'unknown' }));
+      });
   }, []);
 
   const availableActivities = useMemo(() => {
@@ -220,17 +270,21 @@ export default function MapModeScreen({ navigation, route }: Props) {
     persistViewportTimer.current = setTimeout(() => void saveLastMapViewport(region), 500);
   }, []);
 
-  const recenterOnCurrentLocation = useCallback(async () => {
-    setLocationState('loading');
-    const coordinate = await getCurrentJoinLocation({
-      forceRefresh: true,
-      retryDenied: true,
-      requestSource: 'CURRENT_LOCATION_BUTTON',
-    });
-    if (!coordinate) {
+  const applyCurrentCoordinate = useCallback((
+    coordinate: { latitude: number; longitude: number },
+    accuracy: number | null,
+  ) => {
+    if (!isValidCoordinate(coordinate)) {
       setLocationState('unavailable');
+      setGeolocationDebug((current) => ({
+        ...current,
+        result: 'error',
+        errorCode: 0,
+        errorMessage: 'Browser returned invalid coordinates',
+      }));
       return;
     }
+
     setUserCoordinate(coordinate);
     setLocationState('ready');
     fallbackViewportActive.current = false;
@@ -238,7 +292,92 @@ export default function MapModeScreen({ navigation, route }: Props) {
     sessionMapViewport = region;
     void saveLastMapViewport(region);
     setRecenterRequest({ ...coordinate, requestId: Date.now() });
+    setGeolocationDebug((current) => ({
+      ...current,
+      result: 'success',
+      errorCode: null,
+      errorMessage: '',
+      locationSource: 'GPS',
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      accuracy,
+    }));
   }, []);
+
+  const recenterOnCurrentLocation = useCallback(() => {
+    setLocationState('loading');
+    const secureContext = Platform.OS !== 'web' || (typeof window !== 'undefined' && window.isSecureContext);
+    const geolocationAvailable = Platform.OS !== 'web'
+      || (typeof navigator !== 'undefined' && Boolean(navigator.geolocation));
+    setGeolocationDebug((current) => ({
+      ...current,
+      secureContext,
+      geolocationAvailable,
+      requestStarted: true,
+      result: 'pending',
+      errorCode: null,
+      errorMessage: '',
+    }));
+    refreshBrowserPermissionState();
+
+    if (Platform.OS === 'web') {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        console.info('JOIN GEO ERROR', { code: 0, message: 'navigator.geolocation is unavailable' });
+        setLocationState('unavailable');
+        setGeolocationDebug((current) => ({
+          ...current,
+          result: 'error',
+          errorCode: 0,
+          errorMessage: 'navigator.geolocation is unavailable',
+        }));
+        return;
+      }
+
+      // Keep this direct call synchronous with the user tap so Safari can show its native prompt.
+      console.info('JOIN GEO: request started', { requestSource: 'CURRENT_LOCATION_BUTTON' });
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const coordinate = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null;
+          console.info('JOIN GEO SUCCESS', { ...coordinate, accuracy });
+          applyCurrentCoordinate(coordinate, accuracy);
+        },
+        (error) => {
+          console.info('JOIN GEO ERROR', { code: error.code, message: error.message });
+          setLocationState('unavailable');
+          setGeolocationDebug((current) => ({
+            ...current,
+            result: 'error',
+            errorCode: error.code,
+            errorMessage: error.message || 'Unknown geolocation error',
+          }));
+        },
+        { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+      );
+      return;
+    }
+
+    void getCurrentJoinLocationResult({
+      forceRefresh: true,
+      retryDenied: true,
+      requestSource: 'CURRENT_LOCATION_BUTTON',
+    }).then((result) => {
+      if (result.status === 'success') {
+        applyCurrentCoordinate(result.coordinate, result.accuracy);
+        return;
+      }
+      setLocationState('unavailable');
+      setGeolocationDebug((current) => ({
+        ...current,
+        result: 'error',
+        errorCode: result.errorCode ?? null,
+        errorMessage: result.errorMessage || result.reason,
+      }));
+    });
+  }, [applyCurrentCoordinate, refreshBrowserPermissionState]);
 
   useEffect(() => {
     let active = true;
@@ -246,6 +385,18 @@ export default function MapModeScreen({ navigation, route }: Props) {
     const initializeMap = async () => {
       const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
       const storedViewportPromise = readLastMapViewport();
+      setGeolocationDebug((current) => ({
+        ...current,
+        secureContext: Platform.OS !== 'web' || (typeof window !== 'undefined' && window.isSecureContext),
+        geolocationAvailable: Platform.OS !== 'web'
+          || (typeof navigator !== 'undefined' && Boolean(navigator.geolocation)),
+        requestStarted: true,
+        result: 'pending',
+        errorCode: null,
+        errorMessage: '',
+        locationSource: 'PENDING',
+      }));
+      refreshBrowserPermissionState();
       const locationResult = await getCurrentJoinLocationResult({
         forceRefresh: true,
         retryDenied: true,
@@ -261,13 +412,33 @@ export default function MapModeScreen({ navigation, route }: Props) {
         sessionMapViewport = region;
         void saveLastMapViewport(region);
         logInitialLocationSource('DEVICE_GPS', region);
+        setGeolocationDebug((current) => ({
+          ...current,
+          result: 'success',
+          errorCode: null,
+          errorMessage: '',
+          locationSource: 'GPS',
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          accuracy: locationResult.accuracy,
+        }));
         return;
       }
 
       setLocationState('unavailable');
+      setGeolocationDebug((current) => ({
+        ...current,
+        result: 'error',
+        errorCode: locationResult.errorCode ?? null,
+        errorMessage: locationResult.errorMessage || locationResult.reason,
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+      }));
       if (previousSessionViewport) {
         setMapRegion(previousSessionViewport);
         logInitialLocationSource('SESSION_VIEWPORT', previousSessionViewport, 'memory');
+        setGeolocationDebug((current) => ({ ...current, locationSource: 'SAVED VIEWPORT' }));
         return;
       }
 
@@ -277,12 +448,14 @@ export default function MapModeScreen({ navigation, route }: Props) {
         setMapRegion(storedViewport);
         sessionMapViewport = storedViewport;
         logInitialLocationSource('SESSION_VIEWPORT', storedViewport, 'stored');
+        setGeolocationDebug((current) => ({ ...current, locationSource: 'SAVED VIEWPORT' }));
         return;
       }
 
       fallbackViewportActive.current = true;
       setMapRegion(FINAL_FALLBACK_REGION);
       logInitialLocationSource('FALLBACK', FINAL_FALLBACK_REGION, 'final-development-fallback');
+      setGeolocationDebug((current) => ({ ...current, locationSource: 'FALLBACK' }));
     };
 
     initializeMap();
@@ -291,7 +464,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
       active = false;
       if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
-  }, [logInitialLocationSource]);
+  }, [logInitialLocationSource, refreshBrowserPermissionState]);
 
   return (
     <View style={styles.container}>
@@ -378,6 +551,24 @@ export default function MapModeScreen({ navigation, route }: Props) {
         </View>
 
         <View style={styles.locationControlArea} pointerEvents="box-none">
+          {SHOW_GEOLOCATION_DEBUG && Platform.OS === 'web' ? (
+            <View style={styles.geolocationDebugPanel} pointerEvents="none">
+              <Text style={styles.geolocationDebugTitle}>TEMP GEO DEBUG</Text>
+              <Text style={styles.geolocationDebugText}>Secure context: {String(geolocationDebug.secureContext)}</Text>
+              <Text style={styles.geolocationDebugText}>Geolocation API: {geolocationDebug.geolocationAvailable ? 'available' : 'unavailable'}</Text>
+              <Text style={styles.geolocationDebugText}>Permission state: {geolocationDebug.permissionState}</Text>
+              <Text style={styles.geolocationDebugText}>Request started: {geolocationDebug.requestStarted ? 'yes' : 'no'}</Text>
+              <Text style={styles.geolocationDebugText}>Result: {geolocationDebug.result}</Text>
+              <Text style={styles.geolocationDebugText}>Error code: {geolocationDebug.errorCode ?? '—'}</Text>
+              <Text style={styles.geolocationDebugText}>Error message: {geolocationDebug.errorMessage || '—'}</Text>
+              <Text style={styles.geolocationDebugText}>Location source: {geolocationDebug.locationSource}</Text>
+              {geolocationDebug.result === 'success' ? (
+                <Text style={styles.geolocationDebugText}>
+                  GPS: {geolocationDebug.latitude}, {geolocationDebug.longitude} (±{geolocationDebug.accuracy ?? '?'}m)
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           {locationState === 'unavailable' ? (
             <View style={styles.locationUnavailableBadge} pointerEvents="none">
               <Text style={styles.locationUnavailableText}>Location unavailable</Text>
@@ -522,6 +713,29 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 8,
+  },
+  geolocationDebugPanel: {
+    width: 252,
+    maxWidth: '78vw' as any,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(246,196,69,0.38)',
+    backgroundColor: 'rgba(5,5,5,0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  geolocationDebugTitle: {
+    marginBottom: 4,
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  geolocationDebugText: {
+    color: colors.text,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '700',
   },
   locationUnavailableBadge: {
     borderRadius: 999,

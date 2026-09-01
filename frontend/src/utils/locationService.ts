@@ -50,7 +50,7 @@ const browserCurrentPosition = async (requestSource: 'INITIAL_MAP' | 'CURRENT_LO
   const secureContext = typeof window !== 'undefined' && window.isSecureContext;
   const geolocationAvailable = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
   const inIframe = typeof window !== 'undefined' && window.self !== window.top;
-  developmentLog('GEOLOCATION ENVIRONMENT', {
+  developmentLog('JOIN GEO ENVIRONMENT', {
     requestSource,
     secureContext,
     geolocationAvailable,
@@ -59,7 +59,7 @@ const browserCurrentPosition = async (requestSource: 'INITIAL_MAP' | 'CURRENT_LO
   });
 
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
-    developmentLog('GEOLOCATION ERROR', {
+    developmentLog('JOIN GEO ERROR', {
       code: 0,
       message: 'navigator.geolocation is unavailable',
     });
@@ -72,14 +72,14 @@ const browserCurrentPosition = async (requestSource: 'INITIAL_MAP' | 'CURRENT_LO
 
   try {
     const permission = await navigator.permissions?.query({ name: 'geolocation' });
-    developmentLog('GEOLOCATION PERMISSION STATE', permission?.state || 'query-unavailable');
+    developmentLog('JOIN GEO PERMISSION STATE', permission?.state || 'unknown');
   } catch {
     // Safari does not consistently expose geolocation through Permissions API.
     // getCurrentPosition below remains the source of truth and triggers PROMPT.
-    developmentLog('GEOLOCATION PERMISSION STATE', 'query-unavailable');
+    developmentLog('JOIN GEO PERMISSION STATE', 'unknown');
   }
 
-  developmentLog('GEOLOCATION: starting request', { requestSource });
+  developmentLog('JOIN GEO: request started', { requestSource });
   return new Promise<JoinLocationResult>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -91,7 +91,7 @@ const browserCurrentPosition = async (requestSource: 'INITIAL_MAP' | 'CURRENT_LO
           },
           accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
         };
-        developmentLog('GEOLOCATION SUCCESS', {
+        developmentLog('JOIN GEO SUCCESS', {
           latitude: result.coordinate.latitude,
           longitude: result.coordinate.longitude,
           accuracy: result.accuracy,
@@ -107,7 +107,7 @@ const browserCurrentPosition = async (requestSource: 'INITIAL_MAP' | 'CURRENT_LO
             : error.code === error.TIMEOUT
               ? 'timeout'
               : 'unknown';
-        developmentLog('GEOLOCATION ERROR', { code: error.code, message: error.message });
+        developmentLog('JOIN GEO ERROR', { code: error.code, message: error.message });
         resolve({
           status: 'failure',
           reason,
@@ -160,7 +160,7 @@ export const getCurrentJoinLocationResult = async (options?: {
     && now - cachedCurrentLocation.capturedAt <= CURRENT_LOCATION_MAX_AGE_MS
   ) return cachedCurrentLocation.result;
   if (permissionDeniedThisSession && !options?.retryDenied) {
-    developmentLog('GEOLOCATION ERROR', {
+    developmentLog('JOIN GEO ERROR', {
       code: 1,
       message: 'Location permission was already denied this session; automatic retry suppressed',
     });
@@ -174,7 +174,7 @@ export const getCurrentJoinLocationResult = async (options?: {
       : await nativeCurrentPosition();
     if (result.status === 'failure') return result;
     if (!isValidCoordinate(result.coordinate)) {
-      developmentLog('GEOLOCATION ERROR', { code: 0, message: 'Browser returned invalid coordinates' });
+      developmentLog('JOIN GEO ERROR', { code: 0, message: 'Browser returned invalid coordinates' });
       return {
         status: 'failure',
         reason: 'unknown',
