@@ -49,7 +49,7 @@ export type RootStackParamList = {
       completedAt: number;
     };
   } | undefined;
-  Activity: { activityId: string };
+  Activity: { activityId: string; inviteCode?: string };
   CreateActivity: undefined;
   Chat: { chatId: string; title: string };
   Messages: undefined;
@@ -104,6 +104,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             ForgotPassword: 'forgot-password',
             ResetPassword: 'reset-password',
             PublicProfile: 'users/:userId',
+            Activity: 'activities/:activityId',
           },
         },
       }}

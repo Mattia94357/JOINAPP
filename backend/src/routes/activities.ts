@@ -14,6 +14,11 @@ import {
   upcomingActivityFilter,
 } from '../utils/activityLifecycle';
 import { completeActivityIfPast, completePastActivities } from '../services/activityCompletion';
+import {
+  canAccessActivity,
+  idInActivityList,
+  sanitizeActivityPrivacy,
+} from '../utils/activityPrivacy';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -48,6 +53,9 @@ type CreateActivityBody = {
 };
 type CancelActivityBody = {
   reason?: unknown;
+};
+type PrivateAccessBody = {
+  inviteCode?: string;
 };
 const allowedCategories = [
   'Wellness',
@@ -92,26 +100,12 @@ const getRequesterId = (req: express.Request) => {
   }
 };
 
-const idInList = (list: any[] | undefined, id?: string) =>
-  Boolean(id && (list || []).some((item) => (item?._id?.toString?.() || item?.toString?.()) === id));
+const idInList = idInActivityList;
 
 const isBlockedBetween = (first: any, second: any) => {
   const firstBlocked = (first?.blockedUsers || []).some((id: any) => id.toString() === second?.id);
   const secondBlocked = (second?.blockedUsers || []).some((id: any) => id.toString() === first?.id);
   return firstBlocked || secondBlocked;
-};
-
-const canAccessActivity = (activity: any, userId?: string, inviteCode?: string) => {
-  if (activity.visibility !== 'private') return true;
-  if (!userId && !inviteCode) return false;
-  if (inviteCode && activity.inviteCode && inviteCode === activity.inviteCode) return true;
-  return (
-    idInList([activity.host], userId) ||
-    idInList(activity.participants, userId) ||
-    idInList(activity.pendingParticipants, userId) ||
-    idInList(activity.declinedParticipants, userId) ||
-    idInList(activity.invitedUsers, userId)
-  );
 };
 
 const updateCapacityStatus = (activity: any) => {
@@ -137,7 +131,7 @@ const publicPersonPayload = (user: any) => ({
   reviewCount: user?.reviewCount,
 });
 
-const activityPayload = (activity: any, viewerId?: string) => {
+const activityPayload = (activity: any, viewerId?: string, options: { includeHostInviteCode?: boolean } = {}) => {
   const isHost = activity.host?._id?.toString?.() === viewerId || activity.host?.toString?.() === viewerId;
   const participants = activity.participants || [];
   const pendingParticipants = activity.pendingParticipants || [];
@@ -146,24 +140,14 @@ const activityPayload = (activity: any, viewerId?: string) => {
   const viewerPending = idInList(pendingParticipants, viewerId);
   const viewerDeclined = idInList(declinedParticipants, viewerId);
   const viewerWaitlisted = idInList(waitlist, viewerId);
-  const safePayload: any = {
+  const safePayload: any = sanitizeActivityPrivacy({
     ...activity.toObject(),
     status: effectiveActivityStatus(activity),
     host: publicPersonPayload(activity.host),
     participants: participants.map(publicPersonPayload),
     participantCount: participants.length,
     spotsLeft: activity.maxAttendees ? Math.max(activity.maxAttendees - participants.length, 0) : undefined,
-  };
-
-  delete safePayload.pendingParticipants;
-  delete safePayload.declinedParticipants;
-  delete safePayload.waitlist;
-  delete safePayload.invitedUsers;
-  delete safePayload.inviteCode;
-
-  if (!isHost && !idInList(participants, viewerId)) {
-    delete safePayload.exactAddress;
-  }
+  }, activity, viewerId, options);
 
   if (isHost) {
     safePayload.pendingParticipants = pendingParticipants.map(publicPersonPayload);
@@ -309,7 +293,7 @@ router.post(
     const populated = await Activity.findById(activity.id)
       .populate('host', `${participantFields} gender publicGender`)
       .populate('participants', participantFields);
-    res.status(201).json(activityPayload(populated || activity, req.userId));
+    res.status(201).json(activityPayload(populated || activity, req.userId, { includeHostInviteCode: true }));
   }
 );
 
@@ -330,25 +314,35 @@ router.get('/:id', async (req, res) => {
   if (!canAccessActivity(activity, userId, req.query.inviteCode as string | undefined)) {
     return res.status(403).json({ message: 'This private activity is invite-only.' });
   }
-  res.json(activityPayload(activity, userId));
+  res.json(activityPayload(activity, userId, { includeHostInviteCode: true }));
 });
 
-router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.post(
+  '/:id/join',
+  auth,
+  activityWriteLimiter,
+  body('inviteCode').optional().isString().isLength({ min: 1, max: 128 }),
+  async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid private activity invite code.' });
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
 
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  if (!canAccessActivity(activity, req.userId, req.body.inviteCode)) {
+    return res.status(403).json({ message: 'A valid invitation is required to join this private activity.' });
+  }
   if (!user.profileCompleted || !user.profilePictureUrl) {
     return res.status(403).json({
       code: 'PROFILE_PHOTO_REQUIRED',
       message: 'Profile photos are required before joining activities so everyone can see who is attending.',
     });
   }
-
-  const activity = await Activity.findById(req.params.id);
-  if (!activity) return res.status(404).json({ message: 'Activity not found' });
   const host = await User.findById(activity.host);
   if (host && isBlockedBetween(user, host)) {
     return res.status(403).json({ message: 'You cannot join this activity.' });
@@ -391,11 +385,23 @@ router.post('/:id/join', auth, activityWriteLimiter, async (req: AuthRequest<Act
   activity.participants.push(req.userId as any);
   updateCapacityStatus(activity);
   await activity.save();
-  res.json(activity);
+  const populated = await Activity.findById(activity.id)
+    .populate('host', `${participantFields} gender publicGender`)
+    .populate('participants', participantFields)
+    .populate('pendingParticipants', participantFields)
+    .populate('declinedParticipants', participantFields)
+    .populate('waitlist', participantFields);
+  res.json(activityPayload(populated || activity, req.userId));
 });
 
 // Lets a signed-in user explicitly save an activity without joining it.
-router.post('/:id/save', auth, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.post(
+  '/:id/save',
+  auth,
+  body('inviteCode').optional().isString().isLength({ min: 1, max: 128 }),
+  async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid private activity invite code.' });
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -404,6 +410,9 @@ router.post('/:id/save', auth, async (req: AuthRequest<ActivityIdParams>, res) =
   const activity = await Activity.findById(req.params.id);
   if (!user) return res.status(404).json({ message: 'User not found' });
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  if (!canAccessActivity(activity, req.userId, req.body.inviteCode)) {
+    return res.status(403).json({ message: 'You do not have access to save this private activity.' });
+  }
 
   const saved = idInList(user.savedActivities, req.params.id);
   user.savedActivities = saved
@@ -432,6 +441,7 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
   if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return res.status(400).json({ message: 'Activity is full.' });
 
   activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
+  activity.invitedUsers = (activity.invitedUsers || []).filter((id) => id.toString() !== req.params.userId);
   activity.declinedParticipants = (activity.declinedParticipants || []).filter((id) => id.toString() !== req.params.userId);
   if (!idInList(activity.participants, req.params.userId)) {
     activity.participants.push(req.params.userId as any);
@@ -452,6 +462,7 @@ router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: Auth
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can decline requests.' });
 
   activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
+  activity.invitedUsers = (activity.invitedUsers || []).filter((id) => id.toString() !== req.params.userId);
   if (!idInList(activity.declinedParticipants, req.params.userId)) {
     activity.declinedParticipants = [...(activity.declinedParticipants || []), req.params.userId as any];
   }

@@ -10,6 +10,10 @@ import MomentComment from '../models/MomentComment';
 import { getJwtSecret } from '../config/security';
 import { hasActivityStarted } from '../utils/activityLifecycle';
 import { completeActivityIfPast } from '../services/activityCompletion';
+import {
+  canAccessPrivateParticipantContent,
+  canViewPreciseActivityLocation,
+} from '../utils/activityPrivacy';
 
 const router = express.Router();
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
@@ -40,12 +44,7 @@ const idInList = (list: any[] | undefined, id?: string) => Boolean(
   id && (list || []).some((item) => (item?._id?.toString?.() || item?.toString?.()) === id),
 );
 
-const canViewActivity = (activity: any, viewerId?: string) => (
-  activity?.visibility !== 'private'
-  || activity?.host?._id?.toString?.() === viewerId
-  || activity?.host?.toString?.() === viewerId
-  || idInList(activity?.participants, viewerId)
-);
+const canViewActivity = canAccessPrivateParticipantContent;
 
 const imageByteSize = (value: string) => Math.ceil(((value.split(',')[1] || '').length * 3) / 4);
 const validImage = (value: unknown) => {
@@ -75,10 +74,7 @@ const commentPayload = (comment: any, viewerId?: string) => ({
 
 const visibleActivityLocation = (activity: any, viewerId?: string) => {
   if (activity?.locationPrivacy !== 'private') return activity?.location;
-  const isMember = activity?.host?._id?.toString?.() === viewerId
-    || activity?.host?.toString?.() === viewerId
-    || idInList(activity?.participants, viewerId);
-  return isMember ? activity?.location : undefined;
+  return canViewPreciseActivityLocation(activity, viewerId) ? activity?.location : undefined;
 };
 
 const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = []) => ({

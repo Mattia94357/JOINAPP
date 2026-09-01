@@ -74,10 +74,11 @@ type ActivityDetails = {
   pendingParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   declinedParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   waitlist?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
+  inviteCode?: string;
 };
 
 export default function ActivityScreen({ route, navigation }: Props) {
-  const { activityId } = route.params;
+  const { activityId, inviteCode } = route.params;
   const { token, user } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 380;
@@ -106,7 +107,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
       }
 
       try {
-        const result = await fetchActivity(activityId, token || undefined);
+        const result = await fetchActivity(activityId, token || undefined, inviteCode);
         setActivity(result);
       } catch (error) {
         setActivity(null);
@@ -117,7 +118,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
     };
 
     loadActivity();
-  }, [activityId, token]);
+  }, [activityId, inviteCode, token]);
 
   useEffect(() => {
     let active = true;
@@ -159,7 +160,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
     }
 
     try {
-      const status = (await joinActivityRequest(activityId, token)).data?.status;
+      const status = (await joinActivityRequest(activityId, token, inviteCode)).data?.status;
       if (status === 'pending') {
         Alert.alert('Request sent', 'The host will review your request.');
       } else if (status === 'declined') {
@@ -169,7 +170,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
       } else {
         Alert.alert('Joined', 'You are now part of this activity.');
       }
-      const result = await fetchActivity(activityId, token);
+      const result = await fetchActivity(activityId, token, inviteCode);
       setActivity(result);
     } catch (error: any) {
       console.warn(error);
@@ -241,14 +242,20 @@ export default function ActivityScreen({ route, navigation }: Props) {
                 ? 'Ask to Join'
               : 'Join activity';
 
-  const getShareMessage = (prefix: string) => {
+  const getShareMessage = (prefix: string, includePrivateInvite = false) => {
     const timeText = activity.time || activity.date || 'Anytime';
-    const activityUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
+    let activityUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
+    if (activityUrl && includePrivateInvite && activity.inviteCode) {
+      const inviteUrl = new URL(activityUrl);
+      inviteUrl.searchParams.set('inviteCode', activity.inviteCode);
+      activityUrl = inviteUrl.toString();
+    }
     return [
       prefix,
       `${activity.title}`,
       `${activity.location} · ${timeText}`,
       activity.description,
+      includePrivateInvite && activity.inviteCode ? `Private invite code: ${activity.inviteCode}` : '',
       activityUrl,
     ].filter(Boolean).join('\n\n');
   };
@@ -259,6 +266,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
       mode === 'invite'
         ? 'I found this plan on JOIN — want to come?'
         : 'Check out this plan on JOIN.',
+      mode === 'invite' && isHost && activity.visibility === 'private',
     );
 
     try {
@@ -293,7 +301,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   };
 
   const refreshActivity = async () => {
-    const result = await fetchActivity(activityId, token || undefined);
+    const result = await fetchActivity(activityId, token || undefined, inviteCode);
     setActivity(result);
   };
 

@@ -239,6 +239,7 @@ export type RawActivity = {
   activityRating?: number;
   reviewCount?: number;
   viewerJoinStatus?: 'pending' | 'declined' | 'waitlisted';
+  inviteCode?: string;
   pendingParticipants?: RawAvatarUser[];
   declinedParticipants?: RawAvatarUser[];
   waitlist?: RawAvatarUser[];
@@ -302,6 +303,7 @@ export type ActivityResponse = {
   waitlisted?: boolean;
   saved?: boolean;
   chatId?: string;
+  inviteCode?: string;
 };
 
 export type ConversationSummary = {
@@ -471,9 +473,10 @@ export const fetchActivities = async (token?: string) => {
   }));
 };
 
-export const fetchActivity = async (activityId: string, token?: string) => {
+export const fetchActivity = async (activityId: string, token?: string, inviteCode?: string) => {
   const response = await api.get<RawActivity>(`/api/activities/${activityId}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    params: inviteCode ? { inviteCode } : undefined,
   });
   const activity = response.data;
   return {
@@ -522,6 +525,7 @@ export const fetchActivity = async (activityId: string, token?: string) => {
     pending: activity.viewerJoinStatus === 'pending',
     declined: activity.viewerJoinStatus === 'declined',
     waitlisted: activity.viewerJoinStatus === 'waitlisted',
+    inviteCode: activity.inviteCode,
   };
 };
 
@@ -560,13 +564,13 @@ export const createActivityRequest = async (
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const joinActivityRequest = async (activityId: string, token: string) =>
-  api.post(`/api/activities/${activityId}/join`, {}, {
+export const joinActivityRequest = async (activityId: string, token: string, inviteCode?: string) =>
+  api.post(`/api/activities/${activityId}/join`, inviteCode ? { inviteCode } : {}, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const saveActivityRequest = async (activityId: string, token: string) =>
-  api.post(`/api/activities/${activityId}/save`, {}, {
+export const saveActivityRequest = async (activityId: string, token: string, inviteCode?: string) =>
+  api.post(`/api/activities/${activityId}/save`, inviteCode ? { inviteCode } : {}, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
