@@ -28,7 +28,9 @@ import {
   confirmDirectJoin,
   declinePendingJoin,
   hasAvailableCapacity,
+  leaveUpcomingActivity,
   membershipState,
+  withdrawPendingJoin,
 } from '../services/activityMembership';
 
 const router = express.Router();
@@ -460,6 +462,90 @@ router.post(
     : [...(user.savedActivities || []), activity._id];
   await user.save();
   res.json({ saved: !saved, savedActivities: user.savedActivities });
+});
+
+// A confirmed non-host participant may leave only before the activity starts.
+router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  const requesterId = req.userId as string;
+  if (!canAccessActivity(activity, requesterId)) {
+    return res.status(403).json({ message: 'You do not have access to this private activity.' });
+  }
+  if (activity.host.toString() === requesterId) {
+    return res.status(403).json({ message: 'Hosts cannot leave their own activity.' });
+  }
+
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'You cannot leave a cancelled activity.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'You cannot leave a completed activity.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'You cannot leave after the activity has started.' });
+  }
+  if (membershipState(activity, requesterId) !== 'participant') {
+    return res.status(409).json({ message: 'You are not a confirmed participant in this activity.' });
+  }
+
+  const now = new Date();
+  const updated = await leaveUpcomingActivity(activity.id, requesterId, now);
+  if (updated) {
+    return res.json({
+      status: 'left',
+      message: 'You left the activity.',
+      activityStatus: effectiveActivityStatus(updated, now),
+      participantCount: updated.participants.length,
+    });
+  }
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'You cannot leave a cancelled activity.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'You cannot leave a completed activity.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot leave after the activity has started.' });
+  if (latest.host.toString() === requesterId) return res.status(403).json({ message: 'Hosts cannot leave their own activity.' });
+  return res.status(409).json({ message: 'You are no longer a confirmed participant in this activity.' });
+});
+
+// A requester may atomically withdraw only their own still-pending request.
+router.post('/:id/withdraw', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  const requesterId = req.userId as string;
+  if (!canAccessActivity(activity, requesterId)) {
+    return res.status(403).json({ message: 'You do not have access to this private activity.' });
+  }
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'You cannot withdraw a request from a cancelled activity.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'You cannot withdraw a request from a completed activity.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'You cannot withdraw a request after the activity has started.' });
+  }
+  if (membershipState(activity, requesterId) !== 'pending') {
+    return res.status(409).json({ message: 'You do not have a pending request for this activity.' });
+  }
+
+  const now = new Date();
+  const updated = await withdrawPendingJoin(activity.id, requesterId, now);
+  if (updated) return res.json({ status: 'withdrawn', message: 'Join request withdrawn.' });
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'You cannot withdraw a request from a cancelled activity.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'You cannot withdraw a request from a completed activity.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot withdraw a request after the activity has started.' });
+  return res.status(409).json({ message: 'This join request is no longer pending.' });
 });
 
 // Host-only endpoint for approving a manual join request.

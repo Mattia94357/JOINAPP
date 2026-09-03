@@ -7,6 +7,10 @@ export type AtomicAccessFilter = FilterQuery<IActivity>;
 const objectId = (value: string) => new Types.ObjectId(value);
 const ids = (values: any[] | undefined) => (values || []).map((value) => value?._id?.toString?.() || value?.toString?.());
 
+export const confirmedActivityMemberIds = (activity: Partial<IActivity>) => Array.from(new Set([
+  activity.host?._id?.toString?.() || activity.host?.toString?.(),
+  ...ids(activity.participants),
+].filter(Boolean) as string[]));
 
 export const membershipState = (activity: Partial<IActivity>, userId: string): MembershipState => {
   if (ids(activity.participants).includes(userId)) return 'participant';
@@ -194,6 +198,66 @@ export const declinePendingJoin = (
         declinedParticipants: { $setUnion: [{ $ifNull: ['$declinedParticipants', []] }, [userObjectId]] },
         waitlist: withoutUser('waitlist', userObjectId),
         invitedUsers: withoutUser('invitedUsers', userObjectId),
+      },
+    }],
+    { new: true },
+  );
+};
+
+export const leaveUpcomingActivity = (
+  activityId: string,
+  userId: string,
+  now = new Date(),
+) => {
+  const userObjectId = objectId(userId);
+  const remainingParticipants = withoutUser('participants', userObjectId);
+  return Activity.findOneAndUpdate(
+    {
+      _id: activityId,
+      host: { $ne: userObjectId },
+      ...lifecycleFilter(now),
+      participants: userObjectId,
+    },
+    [{
+      $set: {
+        participants: remainingParticipants,
+        pendingParticipants: withoutUser('pendingParticipants', userObjectId),
+        declinedParticipants: withoutUser('declinedParticipants', userObjectId),
+        waitlist: withoutUser('waitlist', userObjectId),
+        status: {
+          $cond: [
+            {
+              $and: [
+                hasCapacityLimit,
+                { $gte: [{ $size: remainingParticipants }, '$maxAttendees'] },
+              ],
+            },
+            'full',
+            'active',
+          ],
+        },
+      },
+    }],
+    { new: true },
+  );
+};
+
+export const withdrawPendingJoin = (
+  activityId: string,
+  userId: string,
+  now = new Date(),
+) => {
+  const userObjectId = objectId(userId);
+  return Activity.findOneAndUpdate(
+    {
+      _id: activityId,
+      ...lifecycleFilter(now),
+      participants: { $ne: userObjectId },
+      pendingParticipants: userObjectId,
+    },
+    [{
+      $set: {
+        pendingParticipants: withoutUser('pendingParticipants', userObjectId),
       },
     }],
     { new: true },

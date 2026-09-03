@@ -6,6 +6,7 @@ import auth, { AuthRequest } from '../middleware/auth';
 import Chat from '../models/Chat';
 import Activity from '../models/Activity';
 import User from '../models/User';
+import { confirmedActivityMemberIds } from '../services/activityMembership';
 
 const router = express.Router();
 type ChatIdParams = { id: string };
@@ -32,8 +33,7 @@ const isBlockedBetween = (first: any, second: any) => {
   return firstBlocked || secondBlocked;
 };
 
-const activityMemberIds = (activity: any) =>
-  Array.from(new Set([toId(activity.host), ...(activity.participants || []).map(toId)].filter(Boolean)));
+const activityMemberIds = confirmedActivityMemberIds;
 
 const usersShareActivity = async (firstId: string, secondId: string) =>
   Boolean(await Activity.exists({

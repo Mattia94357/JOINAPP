@@ -27,9 +27,11 @@ import {
   fetchActivity,
   fetchActivityMomentsRequest,
   joinActivityRequest,
+  leaveActivityRequest,
   likeMomentRequest,
   MomentResponse,
   unlikeMomentRequest,
+  withdrawJoinRequest,
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import ParticipantsModal from '../components/ParticipantsModal';
@@ -75,6 +77,9 @@ type ActivityDetails = {
   declinedParticipants?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   waitlist?: Array<{ id?: string; name: string; avatar?: string; profilePictureUrl?: string; profileThumbnailUrl?: string }>;
   inviteCode?: string;
+  pending?: boolean;
+  declined?: boolean;
+  waitlisted?: boolean;
 };
 
 export default function ActivityScreen({ route, navigation }: Props) {
@@ -95,6 +100,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const [commentMomentId, setCommentMomentId] = useState<string>();
   const [joining, setJoining] = useState(false);
   const joiningRef = useRef(false);
+  const [membershipBusy, setMembershipBusy] = useState(false);
+  const membershipBusyRef = useRef(false);
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -214,14 +221,14 @@ export default function ActivityScreen({ route, navigation }: Props) {
 
   const attendees = activity.attendees ?? activity.participants.length;
   const alreadyJoined = user
-    ? activity.participants.some((participant) => participant.id === user.id || participant.name === user.name)
+    ? activity.participants.some((participant) => participant.id === user.id)
     : false;
   const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
   const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
   const isHost = user?.id === activity.hostId;
-  const pendingApproval = user ? activity.pendingParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
-  const requestDeclined = user ? activity.declinedParticipants?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
-  const waitlisted = user ? activity.waitlist?.some((participant) => participant.id === user.id || participant.name === user.name) : false;
+  const pendingApproval = Boolean(activity.pending || (user && activity.pendingParticipants?.some((participant) => participant.id === user.id)));
+  const requestDeclined = Boolean(activity.declined || (user && activity.declinedParticipants?.some((participant) => participant.id === user.id)));
+  const waitlisted = Boolean(activity.waitlisted || (user && activity.waitlist?.some((participant) => participant.id === user.id)));
   const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
   const isCancelled = activity.status === 'cancelled';
   const hasActivityStarted = activity.status === 'completed'
@@ -231,11 +238,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const canOpenChat = alreadyJoined || isHost;
   const hostRating = activity.hostRating ? activity.hostRating.toFixed(1) : 'New';
   const joinLabel = alreadyJoined
-    ? 'Already joined'
+    ? (isHost ? 'Already joined' : 'Leave Activity')
     : requestDeclined
       ? 'Request Declined'
     : pendingApproval
-      ? 'Request Pending'
+      ? 'Withdraw Request'
       : waitlisted
         ? 'On Waitlist'
         : isCancelled
@@ -311,6 +318,63 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const refreshActivity = async () => {
     const result = await fetchActivity(activityId, token || undefined, inviteCode);
     setActivity(result);
+  };
+
+  const refreshAfterMembershipChange = async () => {
+    try {
+      await refreshActivity();
+    } catch (error: any) {
+      if (error?.response?.status === 403) navigation.goBack();
+      else throw error;
+    }
+  };
+
+  const performLeave = async () => {
+    if (!token) return;
+    setMembershipBusy(true);
+    try {
+      await leaveActivityRequest(activity.id, token);
+      Alert.alert('Activity left', 'You are no longer attending this activity.');
+      await refreshAfterMembershipChange();
+    } catch (error: any) {
+      Alert.alert('Could not leave activity', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      membershipBusyRef.current = false;
+      setMembershipBusy(false);
+    }
+  };
+
+  const handleLeave = () => {
+    if (membershipBusyRef.current) return;
+    membershipBusyRef.current = true;
+    Alert.alert('Leave activity?', 'You will lose access to the activity chat.', [
+      {
+        text: 'Keep activity',
+        style: 'cancel',
+        onPress: () => { membershipBusyRef.current = false; },
+      },
+      {
+        text: 'Leave activity',
+        style: 'destructive',
+        onPress: performLeave,
+      },
+    ], { cancelable: false });
+  };
+
+  const handleWithdraw = async () => {
+    if (!token || membershipBusyRef.current) return;
+    membershipBusyRef.current = true;
+    setMembershipBusy(true);
+    try {
+      await withdrawJoinRequest(activity.id, token);
+      Alert.alert('Request withdrawn', 'You can ask to join again later.');
+      await refreshAfterMembershipChange();
+    } catch (error: any) {
+      Alert.alert('Could not withdraw request', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      membershipBusyRef.current = false;
+      setMembershipBusy(false);
+    }
   };
 
   const handleApprove = async (participantId?: string) => {
@@ -621,9 +685,15 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining}>
-            <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
-            <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
+          <TouchableOpacity
+            style={[styles.joinButton, ((alreadyJoined && isHost) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy) && styles.joinedButton]}
+            onPress={alreadyJoined && !isHost ? handleLeave : pendingApproval ? handleWithdraw : handleJoin}
+            disabled={(alreadyJoined && isHost) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy}
+          >
+            {membershipBusy
+              ? <ActivityIndicator size="small" color="#050505" />
+              : <Ionicons name={alreadyJoined ? 'exit-outline' : pendingApproval ? 'close-circle-outline' : 'add-circle-outline'} size={18} color={(alreadyJoined && isHost) ? '#888888' : '#050505'} />}
+            <Text style={[styles.joinButtonText, alreadyJoined && isHost && styles.joinedButtonText]}>
               {joinLabel}
             </Text>
           </TouchableOpacity>
