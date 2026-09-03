@@ -3,6 +3,7 @@ const {
   canAccessPrivateParticipantContent,
   canAccessActivity,
   canViewPreciseActivityLocation,
+  generateActivityInviteCode,
   privateActivityAccess,
   sanitizeActivityPrivacy,
 } = require('../dist/utils/activityPrivacy');
@@ -70,6 +71,14 @@ assert.equal(privateActivityAccess(privateActivity, ids.invited), 'invited');
 assert.equal(canAccessActivity(privateActivity, ids.invited), true);
 assert.equal(privateActivityAccess(privateActivity, undefined, 'valid-code'), 'inviteCode');
 assert.equal(canAccessActivity(privateActivity, ids.stranger, 'valid-code'), true);
+assert.equal(canAccessActivity(privateActivity, ids.stranger, 'valid-code-extra'), false);
+assert.equal(canAccessActivity(privateActivity, ids.stranger, ''), false);
+
+const generatedCodes = Array.from({ length: 100 }, generateActivityInviteCode);
+assert.equal(new Set(generatedCodes).size, generatedCodes.length);
+for (const code of generatedCodes) {
+  assert.match(code, /^[A-Za-z0-9_-]{32}$/);
+}
 
 assert.equal(privateActivityAccess(privateActivity, ids.pending), 'pending');
 assert.equal(canAccessPrivateParticipantContent(privateActivity, ids.pending), false);

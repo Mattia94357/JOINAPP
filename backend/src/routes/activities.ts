@@ -16,6 +16,7 @@ import {
 import { completeActivityIfPast, completePastActivities } from '../services/activityCompletion';
 import {
   canAccessActivity,
+  generateActivityInviteCode,
   idInActivityList,
   sanitizeActivityPrivacy,
 } from '../utils/activityPrivacy';
@@ -275,7 +276,7 @@ router.post(
       visibility: visibility === 'private' ? 'private' : 'public',
       joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
       status: 'active',
-      inviteCode: Math.random().toString(36).slice(2, 12),
+      inviteCode: visibility === 'private' ? generateActivityInviteCode() : undefined,
       venueName: cleanText(venueName, 120),
       exactAddress: cleanText(exactAddress, 240),
       startTime: cleanText(startTime, 40),

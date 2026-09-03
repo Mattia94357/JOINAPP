@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export type PrivateActivityAccess = 'public' | 'host' | 'participant' | 'pending' | 'invited' | 'inviteCode';
 
 type ActivityPrivacyInput = {
@@ -13,6 +15,16 @@ type ActivityPrivacyInput = {
 
 const toId = (value: any) => value?._id?.toString?.() || value?.id?.toString?.() || value?.toString?.() || '';
 
+export const generateActivityInviteCode = () => crypto.randomBytes(24).toString('base64url');
+
+const inviteCodesMatch = (provided?: string, stored?: string) => {
+  if (!provided || !stored) return false;
+  const providedBytes = Buffer.from(provided);
+  const storedBytes = Buffer.from(stored);
+  return providedBytes.length === storedBytes.length
+    && crypto.timingSafeEqual(providedBytes, storedBytes);
+};
+
 export const idInActivityList = (list: unknown[] | undefined, userId?: string) => Boolean(
   userId && (list || []).some((item) => toId(item) === userId),
 );
@@ -27,7 +39,7 @@ export const privateActivityAccess = (
   if (idInActivityList(activity.participants, userId)) return 'participant';
   if (idInActivityList(activity.pendingParticipants, userId)) return 'pending';
   if (idInActivityList(activity.invitedUsers, userId)) return 'invited';
-  if (inviteCode && activity.inviteCode && inviteCode === activity.inviteCode) return 'inviteCode';
+  if (inviteCodesMatch(inviteCode, activity.inviteCode)) return 'inviteCode';
   return undefined;
 };
 
