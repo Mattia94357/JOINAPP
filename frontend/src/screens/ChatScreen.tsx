@@ -37,6 +37,16 @@ type ChatMessage = {
   reactions?: Array<{ label: string; count: number }>;
 };
 
+const mapChatMessages = (chatData: any): ChatMessage[] => (chatData?.messages || []).map((message: any, index: number) => ({
+  id: message._id || String(index),
+  author: message.author?.name || 'Member',
+  text: message.message,
+  time: message.sentAt
+    ? new Date(message.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : 'Now',
+  reactions: [],
+}));
+
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
   const { token, user } = useAuth();
@@ -51,6 +61,7 @@ export default function ChatScreen({ route }: Props) {
   const [lockedMessage, setLockedMessage] = useState('');
   const [chatTitle, setChatTitle] = useState(route.params.title);
   const [chatKind, setChatKind] = useState<'activity' | 'direct'>('activity');
+  const [readOnly, setReadOnly] = useState(false);
 
   useEffect(() => {
     if (chatId !== 'general' && token) {
@@ -67,15 +78,8 @@ export default function ChatScreen({ route }: Props) {
               : null;
             setChatKind(isDirect ? 'direct' : 'activity');
             setChatTitle(isDirect ? otherMember?.name || route.params.title : chatData.activity?.title || route.params.title);
-            setMessages(chatData.messages.map((message: any, index: number) => ({
-              id: message._id || String(index),
-              author: message.author?.name || 'Member',
-              text: message.message,
-              time: message.sentAt
-                ? new Date(message.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                : 'Now',
-              reactions: [],
-            })));
+            setReadOnly(!isDirect && Boolean(chatData.readOnly || chatData.activity?.status === 'cancelled'));
+            setMessages(mapChatMessages(chatData));
             await refreshUnreadConversations();
           }
         } catch (error) {
@@ -92,7 +96,7 @@ export default function ChatScreen({ route }: Props) {
   }, [chatId, refreshUnreadConversations, route.params.title, token, user?.id]);
 
   const sendMessage = async () => {
-    if (!draft.trim() || lockedMessage) return;
+    if (!draft.trim() || lockedMessage || readOnly) return;
     const nextMessage = draft.trim();
     const tempId = `local-${Date.now()}`;
     setMessages((prev) => [
@@ -113,7 +117,18 @@ export default function ChatScreen({ route }: Props) {
         setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'sent' } : message));
         await refreshUnreadConversations();
       } catch (error: any) {
-        setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
+        if (error?.response?.data?.code === 'ACTIVITY_CHAT_READ_ONLY') {
+          setReadOnly(true);
+          setMessages((prev) => prev.filter((message) => message.id !== tempId));
+          try {
+            const refreshed = await fetchChatRequest(chatId, token);
+            setMessages(mapChatMessages(refreshed.data));
+          } catch {
+            // Keep the already loaded historical messages if the refresh fails.
+          }
+        } else {
+          setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
+        }
         Alert.alert('Message not sent', error?.response?.data?.message || 'You need to join this activity to access the chat.');
       }
     }
@@ -160,7 +175,7 @@ export default function ChatScreen({ route }: Props) {
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.headerTitle}>{chatTitle}</Text>
-          <Text style={styles.headerMeta}>{chatKind === 'activity' ? 'Activity group chat' : 'Direct conversation'}</Text>
+          <Text style={styles.headerMeta}>{readOnly ? 'Cancelled · Read-only' : chatKind === 'activity' ? 'Activity group chat' : 'Direct conversation'}</Text>
         </View>
       </View>
 
@@ -212,7 +227,12 @@ export default function ChatScreen({ route }: Props) {
         }}
       />
 
-      <View style={styles.inputRow}>
+      {readOnly ? (
+        <View style={styles.readOnlyRow}>
+          <Ionicons name="lock-closed-outline" size={17} color={colors.primary} />
+          <Text style={styles.readOnlyText}>This activity was cancelled. This chat is now read-only.</Text>
+        </View>
+      ) : <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder={chatKind === 'activity' ? 'Message the group...' : 'Write a message...'}
@@ -223,7 +243,7 @@ export default function ChatScreen({ route }: Props) {
         <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
           <Ionicons name="send" size={17} color={colors.primaryText} />
         </TouchableOpacity>
-      </View>
+      </View>}
       </View>
       <BottomNavigation />
     </KeyboardAvoidingView>
@@ -440,6 +460,23 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 11,
     fontWeight: '800',
+  },
+  readOnlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    backgroundColor: colors.surface,
+  },
+  readOnlyText: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    marginLeft: spacing.sm,
   },
   inputRow: {
     flexDirection: 'row',

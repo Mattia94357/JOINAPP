@@ -92,7 +92,9 @@ function ConversationRow({
             style={[styles.preview, conversation.unread && styles.previewUnread]}
             numberOfLines={1}
           >
-            {conversation.latestMessage || (conversation.type === 'activity' ? 'Activity group chat' : 'Start the conversation')}
+            {conversation.readOnly
+              ? 'Cancelled · Read-only'
+              : conversation.latestMessage || (conversation.type === 'activity' ? 'Activity group chat' : 'Start the conversation')}
           </Text>
           {conversation.unread ? (
             <View style={styles.unreadDot}>

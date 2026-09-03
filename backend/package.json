@@ -10,6 +10,7 @@
     "test:privacy": "npm run build && node tests/activityPrivacy.test.js",
     "test:capacity": "npm run build && node tests/activityMembership.test.js",
     "test:membership-exit": "npm run build && node tests/activityExit.test.js",
+    "test:cancelled-chat": "npm run build && node tests/cancelledActivityChat.test.js",
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",

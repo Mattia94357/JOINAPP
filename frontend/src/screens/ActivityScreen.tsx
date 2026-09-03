@@ -666,9 +666,9 @@ export default function ActivityScreen({ route, navigation }: Props) {
 
         {canOpenChat ? <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Discussion</Text>
+            <Text style={styles.sectionTitle}>{isCancelled ? 'Discussion · Cancelled' : 'Discussion'}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
-              <Text style={styles.sectionAction}>Open chat</Text>
+              <Text style={styles.sectionAction}>{isCancelled ? 'Open read-only chat' : 'Open chat'}</Text>
             </TouchableOpacity>
           </View>
         </View> : null}

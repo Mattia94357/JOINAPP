@@ -7,6 +7,12 @@ import Chat from '../models/Chat';
 import Activity from '../models/Activity';
 import User from '../models/User';
 import { confirmedActivityMemberIds } from '../services/activityMembership';
+import {
+  appendActivityChatMessage,
+  CANCELLED_ACTIVITY_CHAT_MESSAGE,
+  canAccessActivityChat,
+  isActivityChatReadOnly,
+} from '../services/activityChat';
 
 const router = express.Router();
 type ChatIdParams = { id: string };
@@ -46,21 +52,23 @@ const usersShareActivity = async (firstId: string, secondId: string) =>
 
 const ensureActivityChats = async (userId: string) => {
   const activities = await Activity.find({
-    status: { $ne: 'cancelled' },
     $or: [{ host: userId }, { participants: userId }],
-  }).select('_id host participants visibility');
+  }).select('_id host participants visibility status');
 
   await Promise.all(activities.map(async (activity) => {
     const members = activityMemberIds(activity);
+    const cancelled = activity.status === 'cancelled';
     await Chat.findOneAndUpdate(
       { activity: activity._id },
       {
         $set: {
           members,
           chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+          ...(cancelled ? { activityReadOnly: true } : {}),
         },
         $setOnInsert: {
           activity: activity._id,
+          ...(!cancelled ? { activityReadOnly: false } : {}),
           messages: [],
           readStates: members.map((member) => ({ user: member, lastReadAt: new Date() })),
         },
@@ -71,13 +79,23 @@ const ensureActivityChats = async (userId: string) => {
 };
 
 const markChatRead = async (chat: any, userId: string) => {
-  const existingState = (chat.readStates || []).find((state: any) => toId(state.user) === userId);
-  if (existingState) {
-    existingState.lastReadAt = new Date();
-  } else {
-    chat.readStates.push({ user: userId, lastReadAt: new Date() });
-  }
-  await chat.save();
+  const userObjectId = new Types.ObjectId(userId);
+  await Chat.findByIdAndUpdate(chat._id, [{
+    $set: {
+      readStates: {
+        $concatArrays: [
+          {
+            $filter: {
+              input: { $ifNull: ['$readStates', []] },
+              as: 'readState',
+              cond: { $ne: ['$$readState.user', userObjectId] },
+            },
+          },
+          [{ user: userObjectId, lastReadAt: new Date() }],
+        ],
+      },
+    },
+  }]);
 };
 
 const unreadCountFor = (chat: any, userId: string) => {
@@ -108,6 +126,7 @@ const conversationSummary = (chat: any, userId: string) => {
       id: toId(chat.activity),
       title: chat.activity.title,
       coverImage: chat.activity.coverImage,
+      status: chat.activity.status,
     } : undefined,
     user: otherUser ? {
       id: toId(otherUser),
@@ -118,6 +137,7 @@ const conversationSummary = (chat: any, userId: string) => {
     latestMessageAt: latest?.sentAt || chat.updatedAt,
     unread: unreadCount > 0,
     unreadCount,
+    readOnly: isActivity && isActivityChatReadOnly(chat.activity, chat),
   };
 };
 
@@ -145,7 +165,7 @@ const getConversationLists = async (userId: string) => {
   const visibleChats = chats.filter((chat: any) => {
     if (chat.chatType === 'directPrivateChat') return true;
     const activity = chat.activity;
-    return activity && activity.status !== 'cancelled' && activityMemberIds(activity).includes(userId);
+    return activity && canAccessActivityChat(activity, userId);
   });
 
   const summaries = visibleChats.map((chat: any) => conversationSummary(chat, userId));
@@ -184,7 +204,7 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
     activity = await Activity.findById(id);
     if (!activity) return null;
     const members = activityMemberIds(activity);
-    if (!members.includes(userId)) {
+    if (!canAccessActivityChat(activity, userId)) {
       return { error: 'You need to join this activity to access the chat.' };
     }
     chat = await Chat.findOneAndUpdate(
@@ -193,9 +213,11 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
         $set: {
           members,
           chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+          ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}),
         },
         $setOnInsert: {
           activity: activity._id,
+          ...(activity.status !== 'cancelled' ? { activityReadOnly: false } : {}),
           messages: [],
           readStates: members.map((member) => ({ user: member, lastReadAt: new Date() })),
         },
@@ -216,7 +238,7 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
   }
 
   if (!activity && chat.activity) activity = await Activity.findById(chat.activity);
-  if (!activity || !activityMemberIds(activity).includes(userId)) {
+  if (!activity || !canAccessActivityChat(activity, userId)) {
     return { error: 'You need to join this activity to access the chat.' };
   }
 
@@ -225,11 +247,20 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
   const blockedMember = members.some((member) => member.id !== userId && user && isBlockedBetween(user, member));
   if (user && blockedMember) return { error: 'Chat is unavailable for this activity.' };
 
-  chat.members = activityMemberIds(activity) as any;
-  chat.chatType = activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat';
-  await chat.save();
+  const synchronizedChat = await Chat.findByIdAndUpdate(
+    chat._id,
+    {
+      $set: {
+        members: activityMemberIds(activity),
+        chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+        ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}),
+      },
+    },
+    { new: true },
+  );
+  if (!synchronizedChat) return null;
 
-  return { chat };
+  return { chat: synchronizedChat, activity };
 };
 
 router.get('/', auth, async (req: AuthRequest, res) => {
@@ -319,7 +350,7 @@ router.get('/:id', auth, async (req: AuthRequest<ChatIdParams>, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
   const before = req.query.before ? new Date(String(req.query.before)) : null;
   const chat = await Chat.findById(result.chat._id)
-    .populate('activity', 'title coverImage')
+    .populate('activity', 'title coverImage status')
     .populate('members', 'name profilePictureUrl profileThumbnailUrl avatar')
     .populate('messages.author', 'name profilePictureUrl profileThumbnailUrl avatar');
   if (chat) {
@@ -328,7 +359,11 @@ router.get('/:id', auth, async (req: AuthRequest<ChatIdParams>, res) => {
       : chat.messages;
     chat.messages = messages.slice(-limit) as any;
   }
-  return res.json(chat);
+  if (!chat) return res.status(404).json({ message: 'Chat not found' });
+  return res.json({
+    ...chat.toObject(),
+    readOnly: isActivityChatReadOnly(chat.activity, chat),
+  });
 });
 
 router.post(
@@ -345,6 +380,10 @@ router.post(
     if ('error' in result) return res.status(403).json({ message: result.error });
     const chat = result.chat;
 
+    if (chat.chatType !== 'directPrivateChat' && isActivityChatReadOnly(result.activity, chat)) {
+      return res.status(409).json({ code: 'ACTIVITY_CHAT_READ_ONLY', message: CANCELLED_ACTIVITY_CHAT_MESSAGE });
+    }
+
     const message = cleanMessage(req.body.message);
     if (!message) return res.status(400).json({ message: 'Message cannot be empty.' });
     const previous = chat.messages[chat.messages.length - 1];
@@ -354,6 +393,14 @@ router.post(
       && Date.now() - new Date(previous.sentAt).getTime() < 10_000
     ) {
       return res.status(429).json({ message: 'Please avoid sending duplicate messages.' });
+    }
+
+    if (chat.chatType !== 'directPrivateChat') {
+      const updated = await appendActivityChatMessage(chat.id, req.userId as string, message);
+      if (!updated) {
+        return res.status(409).json({ code: 'ACTIVITY_CHAT_READ_ONLY', message: CANCELLED_ACTIVITY_CHAT_MESSAGE });
+      }
+      return res.json(updated);
     }
 
     chat.messages.push({ author: req.userId as any, message, sentAt: new Date() });

@@ -19,6 +19,7 @@ export interface IChat extends Document {
   directState?: 'active' | 'request';
   initiatedBy?: Types.ObjectId;
   requestRecipient?: Types.ObjectId;
+  activityReadOnly?: boolean;
   readStates: IChatReadState[];
   messages: IMessage[];
 }
@@ -46,6 +47,7 @@ const ChatSchema = new Schema<IChat>({
   directState: { type: String, enum: ['active', 'request'] },
   initiatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   requestRecipient: { type: Schema.Types.ObjectId, ref: 'User' },
+  activityReadOnly: { type: Boolean, default: false },
   readStates: { type: [ChatReadStateSchema], default: [] },
   messages: [MessageSchema],
 }, { timestamps: true });

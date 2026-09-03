@@ -310,9 +310,10 @@ export type ConversationSummary = {
   id: string;
   type: 'activity' | 'direct';
   state: 'active' | 'request';
+  readOnly?: boolean;
   title: string;
   image?: string;
-  activity?: { id: string; title: string; coverImage?: string };
+  activity?: { id: string; title: string; coverImage?: string; status?: 'active' | 'full' | 'cancelled' | 'completed' };
   user?: { id: string; name: string; avatar?: string };
   latestMessage: string;
   latestMessageAt: string;

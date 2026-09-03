@@ -5,6 +5,7 @@ import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import Activity from '../models/Activity';
 import User from '../models/User';
+import { lockActivityChatForCancellation } from '../services/activityChat';
 import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
 import {
@@ -623,6 +624,7 @@ router.post('/:id/cancel', auth, async (req: AuthRequest<ActivityIdParams, unkno
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can cancel this activity.' });
 
+  await lockActivityChatForCancellation(activity);
   activity.status = 'cancelled';
   activity.cancellationReason = typeof req.body.reason === 'string' ? req.body.reason.slice(0, 500) : undefined;
   await activity.save();
