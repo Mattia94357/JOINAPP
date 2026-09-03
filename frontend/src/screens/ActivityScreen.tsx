@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -93,6 +93,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const [createMomentVisible, setCreateMomentVisible] = useState(false);
   const [busyMomentId, setBusyMomentId] = useState<string>();
   const [commentMomentId, setCommentMomentId] = useState<string>();
+  const [joining, setJoining] = useState(false);
+  const joiningRef = useRef(false);
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -143,6 +145,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   }, [activityId, token]);
 
   const handleJoin = async () => {
+    if (joiningRef.current) return;
     if (getCuratedActivity(activityId)) {
       Alert.alert('Joined', 'You joined this curated activity.');
       return;
@@ -159,6 +162,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
       return;
     }
 
+    joiningRef.current = true;
+    setJoining(true);
     try {
       const status = (await joinActivityRequest(activityId, token, inviteCode)).data?.status;
       if (status === 'pending') {
@@ -179,6 +184,9 @@ export default function ActivityScreen({ route, navigation }: Props) {
         return;
       }
       Alert.alert('Could not join', error?.response?.data?.message || 'You may already be joined or there was a network issue.');
+    } finally {
+      joiningRef.current = false;
+      setJoining(false);
     }
   };
 
@@ -613,7 +621,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted}>
+          <TouchableOpacity style={[styles.joinButton, (alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining) && styles.joinedButton]} onPress={handleJoin} disabled={alreadyJoined || pendingApproval || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining}>
             <Ionicons name={alreadyJoined ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={alreadyJoined ? '#888888' : '#050505'} />
             <Text style={[styles.joinButtonText, alreadyJoined && styles.joinedButtonText]}>
               {joinLabel}

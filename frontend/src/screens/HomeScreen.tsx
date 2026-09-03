@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -56,6 +56,7 @@ const quickFilterChips = categories.slice(0, 8).map((category) => ({ label: cate
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation, route }: Props) {
+  const joiningActivityIdsRef = useRef(new Set<string>());
   const { user, token, updateUser } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 520;
@@ -187,6 +188,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     activity: ActivityResponse,
     onCompleted?: (status: 'joined' | 'pending' | 'declined' | 'waitlisted') => void,
   ) => {
+    if (joiningActivityIdsRef.current.has(activity.id)) return false;
     if (hasCurrentUserJoined(activity)) {
       navigation.navigate('Chat', { chatId: activity.id, title: activity.title });
       return true;
@@ -215,6 +217,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       return false;
     }
 
+    joiningActivityIdsRef.current.add(activity.id);
     try {
       const response = await joinActivityRequest(activity.id, token);
       const status = response.data?.status;
@@ -281,6 +284,8 @@ export default function HomeScreen({ navigation, route }: Props) {
       }
       Alert.alert('Unable to join', error?.response?.data?.message || 'There was an issue joining this activity.');
       return false;
+    } finally {
+      joiningActivityIdsRef.current.delete(activity.id);
     }
   };
 

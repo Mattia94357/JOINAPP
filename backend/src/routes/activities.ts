@@ -20,6 +20,16 @@ import {
   idInActivityList,
   sanitizeActivityPrivacy,
 } from '../utils/activityPrivacy';
+import {
+  addPendingJoin,
+  addWaitlistedJoin,
+  approvalMembershipIssue,
+  approvePendingJoin,
+  confirmDirectJoin,
+  declinePendingJoin,
+  hasAvailableCapacity,
+  membershipState,
+} from '../services/activityMembership';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -109,14 +119,26 @@ const isBlockedBetween = (first: any, second: any) => {
   return firstBlocked || secondBlocked;
 };
 
-const updateCapacityStatus = (activity: any) => {
-  if (activity.status === 'cancelled' || activity.status === 'completed') return;
-  if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) {
-    activity.status = 'full';
-  } else {
-    activity.status = 'active';
-  }
+const privateMutationAccessFilter = (activity: any, userId: string, inviteCode?: string) => {
+  if (activity.visibility !== 'private') return {};
+  const userObjectId = new Types.ObjectId(userId);
+  return {
+    $or: [
+      { host: userObjectId },
+      { participants: userObjectId },
+      { pendingParticipants: userObjectId },
+      { invitedUsers: userObjectId },
+      ...(inviteCode ? [{ inviteCode }] : []),
+    ],
+  };
 };
+
+const populatedActivity = (activityId: string) => Activity.findById(activityId)
+  .populate('host', `${participantFields} gender publicGender`)
+  .populate('participants', participantFields)
+  .populate('pendingParticipants', participantFields)
+  .populate('declinedParticipants', participantFields)
+  .populate('waitlist', participantFields);
 
 const publicPersonPayload = (user: any) => ({
   id: user?.id || user?._id?.toString(),
@@ -332,6 +354,7 @@ router.post(
 
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
+  const requesterId = req.userId as string;
 
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
@@ -360,39 +383,55 @@ router.post(
     return res.status(400).json({ message: 'This activity has already started and can no longer be joined.' });
   }
 
-  if (activity.participants.some((participant) => participant.toString() === req.userId)) {
-    return res.status(400).json({ message: 'Already joined' });
+  const currentState = membershipState(activity, requesterId);
+  if (currentState === 'participant') return res.status(409).json({ message: 'Already joined.' });
+  if (currentState === 'pending') return res.json({ status: 'pending', message: 'Pending approval.' });
+  if (currentState === 'declined') return res.json({ status: 'declined', message: 'Request declined.' });
+  if (currentState === 'waitlisted') return res.json({ status: 'waitlisted', message: 'Already on the waitlist.' });
+
+  const now = new Date();
+  const accessFilter = privateMutationAccessFilter(activity, requesterId, req.body.inviteCode);
+  const requiresApproval = (activity.joinApproval === 'manual' || activity.visibility === 'private')
+    && activity.host.toString() !== req.userId;
+  const updated = requiresApproval
+    ? await addPendingJoin(activity.id, requesterId, accessFilter, now)
+    : await confirmDirectJoin(activity.id, requesterId, accessFilter, now);
+
+  if (updated) {
+    if (requiresApproval) return res.json({ status: 'pending', message: 'Join request sent.' });
+    const populated = await populatedActivity(updated.id);
+    return res.json(activityPayload(populated || updated, req.userId));
   }
-  if (activity.pendingParticipants?.some((participant) => participant.toString() === req.userId)) {
-    return res.json({ status: 'pending', message: 'Pending approval.' });
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  if (!canAccessActivity(latest, req.userId, req.body.inviteCode)) {
+    return res.status(403).json({ message: 'A valid invitation is required to join this private activity.' });
   }
-  if (activity.declinedParticipants?.some((participant) => participant.toString() === req.userId)) {
-    return res.json({ status: 'declined', message: 'Request declined.' });
-  }
-  if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) {
-    if (!activity.waitlist?.some((participant) => participant.toString() === req.userId)) {
-      activity.waitlist = [...(activity.waitlist || []), req.userId as any];
-      await activity.save();
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'This activity has been cancelled.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'This activity has been completed and can no longer be joined.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'This activity has already started and can no longer be joined.' });
+
+  const latestState = membershipState(latest, requesterId);
+  if (latestState === 'participant') return res.status(409).json({ message: 'Already joined.' });
+  if (latestState === 'pending') return res.json({ status: 'pending', message: 'Pending approval.' });
+  if (latestState === 'declined') return res.json({ status: 'declined', message: 'Request declined.' });
+  if (latestState === 'waitlisted') return res.json({ status: 'waitlisted', message: 'Already on the waitlist.' });
+
+  if (!hasAvailableCapacity(latest)) {
+    const waitlisted = await addWaitlistedJoin(activity.id, requesterId, accessFilter, now);
+    if (waitlisted) return res.json({ status: 'waitlisted', message: 'Activity full. You joined the waitlist.' });
+    const finalState = await Activity.findById(activity.id);
+    if (finalState && membershipState(finalState, requesterId) === 'participant') {
+      return res.status(409).json({ message: 'Already joined.' });
     }
-    return res.json({ status: 'waitlisted', message: 'Activity full. You joined the waitlist.' });
+    if (finalState && membershipState(finalState, requesterId) === 'waitlisted') {
+      return res.json({ status: 'waitlisted', message: 'Already on the waitlist.' });
+    }
   }
 
-  if ((activity.joinApproval === 'manual' || activity.visibility === 'private') && activity.host.toString() !== req.userId) {
-    activity.pendingParticipants = [...(activity.pendingParticipants || []), req.userId as any];
-    await activity.save();
-    return res.json({ status: 'pending', message: 'Join request sent.' });
-  }
-
-  activity.participants.push(req.userId as any);
-  updateCapacityStatus(activity);
-  await activity.save();
-  const populated = await Activity.findById(activity.id)
-    .populate('host', `${participantFields} gender publicGender`)
-    .populate('participants', participantFields)
-    .populate('pendingParticipants', participantFields)
-    .populate('declinedParticipants', participantFields)
-    .populate('waitlist', participantFields);
-  res.json(activityPayload(populated || activity, req.userId));
+  return res.status(409).json({ message: 'Activity membership changed. Please try again.' });
 });
 
 // Lets a signed-in user explicitly save an activity without joining it.
@@ -439,17 +478,29 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
     await completeActivityIfPast(activity.id);
     return res.status(400).json({ message: 'Join requests cannot be approved after the activity has started.' });
   }
-  if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return res.status(400).json({ message: 'Activity is full.' });
+  const targetExists = await User.exists({ _id: req.params.userId });
+  const approvalIssue = approvalMembershipIssue(activity, req.params.userId, Boolean(targetExists));
+  if (approvalIssue === 'user_not_found') return res.status(404).json({ message: 'User not found.' });
+  if (approvalIssue === 'already_confirmed') return res.status(409).json({ message: 'This user is already confirmed.' });
+  if (approvalIssue === 'not_pending') return res.status(409).json({ message: 'This join request is no longer pending.' });
+  if (approvalIssue === 'full') return res.status(409).json({ message: 'Activity is full.' });
 
-  activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
-  activity.invitedUsers = (activity.invitedUsers || []).filter((id) => id.toString() !== req.params.userId);
-  activity.declinedParticipants = (activity.declinedParticipants || []).filter((id) => id.toString() !== req.params.userId);
-  if (!idInList(activity.participants, req.params.userId)) {
-    activity.participants.push(req.params.userId as any);
-  }
-  updateCapacityStatus(activity);
-  await activity.save();
-  res.json({ message: 'Join request approved.' });
+  const now = new Date();
+  const approved = await approvePendingJoin(activity.id, req.params.userId, req.userId, now);
+  if (approved) return res.json({ message: 'Join request approved.' });
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'Join requests cannot be approved for a cancelled activity.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'Join requests cannot be approved for a completed activity.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'Join requests cannot be approved after the activity has started.' });
+
+  const latestState = membershipState(latest, req.params.userId);
+  if (latestState === 'participant') return res.status(409).json({ message: 'This user is already confirmed.' });
+  if (latestState !== 'pending') return res.status(409).json({ message: 'This join request is no longer pending.' });
+  if (!hasAvailableCapacity(latest)) return res.status(409).json({ message: 'Activity is full.' });
+  return res.status(409).json({ message: 'Join request changed. Please refresh and try again.' });
 });
 
 // Host-only endpoint for declining a manual join request.
@@ -461,14 +512,19 @@ router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: Auth
   const activity = await Activity.findById(req.params.id);
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can decline requests.' });
+  const targetExists = await User.exists({ _id: req.params.userId });
+  if (!targetExists) return res.status(404).json({ message: 'User not found.' });
+  const state = membershipState(activity, req.params.userId);
+  if (state === 'participant') return res.status(409).json({ message: 'This user is already confirmed.' });
+  if (state !== 'pending') return res.status(409).json({ message: 'This join request is no longer pending.' });
 
-  activity.pendingParticipants = (activity.pendingParticipants || []).filter((id) => id.toString() !== req.params.userId);
-  activity.invitedUsers = (activity.invitedUsers || []).filter((id) => id.toString() !== req.params.userId);
-  if (!idInList(activity.declinedParticipants, req.params.userId)) {
-    activity.declinedParticipants = [...(activity.declinedParticipants || []), req.params.userId as any];
+  const declined = await declinePendingJoin(activity.id, req.params.userId, req.userId as string);
+  if (declined) return res.json({ message: 'Join request declined.' });
+  const latest = await Activity.findById(activity.id);
+  if (latest && membershipState(latest, req.params.userId) === 'participant') {
+    return res.status(409).json({ message: 'This user is already confirmed.' });
   }
-  await activity.save();
-  res.json({ message: 'Join request declined.' });
+  return res.status(409).json({ message: 'This join request is no longer pending.' });
 });
 
 // Host-only cancellation endpoint. Cancelled activities remain readable but cannot be joined.
