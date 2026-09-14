@@ -242,6 +242,44 @@ export const leaveUpcomingActivity = (
   );
 };
 
+export const removeConfirmedParticipant = (
+  activityId: string,
+  targetUserId: string,
+  hostId: string,
+  now = new Date(),
+) => {
+  const targetObjectId = objectId(targetUserId);
+  const hostObjectId = objectId(hostId);
+  const remainingParticipants = withoutUser('participants', targetObjectId);
+  return Activity.findOneAndUpdate(
+    {
+      _id: activityId,
+      host: hostObjectId,
+      ...lifecycleFilter(now),
+      participants: targetObjectId,
+      $expr: { $ne: ['$host', targetObjectId] },
+    },
+    [{
+      $set: {
+        participants: remainingParticipants,
+        status: {
+          $cond: [
+            {
+              $and: [
+                hasCapacityLimit,
+                { $gte: [{ $size: remainingParticipants }, '$maxAttendees'] },
+              ],
+            },
+            'full',
+            'active',
+          ],
+        },
+      },
+    }],
+    { new: true },
+  );
+};
+
 export const withdrawPendingJoin = (
   activityId: string,
   userId: string,

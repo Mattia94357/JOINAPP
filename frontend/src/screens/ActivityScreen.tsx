@@ -30,6 +30,7 @@ import {
   leaveActivityRequest,
   likeMomentRequest,
   MomentResponse,
+  removeActivityParticipantRequest,
   unlikeMomentRequest,
   withdrawJoinRequest,
 } from '../api';
@@ -102,6 +103,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const joiningRef = useRef(false);
   const [membershipBusy, setMembershipBusy] = useState(false);
   const membershipBusyRef = useRef(false);
+  const [removingParticipantId, setRemovingParticipantId] = useState<string>();
+  const removingParticipantRef = useRef(false);
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -387,6 +390,34 @@ export default function ActivityScreen({ route, navigation }: Props) {
     if (!token || !participantId) return;
     await declineJoinRequest(activity.id, participantId, token);
     await refreshActivity();
+  };
+
+  const removeParticipant = async (participant: ActivityDetails['participants'][number]) => {
+    if (!token || !participant.id || removingParticipantRef.current) return;
+    removingParticipantRef.current = true;
+    setRemovingParticipantId(participant.id);
+    try {
+      await removeActivityParticipantRequest(activity.id, participant.id, token);
+      await refreshActivity();
+    } catch (error: any) {
+      Alert.alert('Could not remove participant', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      removingParticipantRef.current = false;
+      setRemovingParticipantId(undefined);
+    }
+  };
+
+  const handleRemoveParticipant = (participant: ActivityDetails['participants'][number]) => {
+    if (!participant.id || removingParticipantRef.current) return;
+    const firstName = participant.name.trim().split(/\s+/)[0] || participant.name;
+    Alert.alert(
+      `Remove ${firstName} from this activity?`,
+      'They will no longer be confirmed and will lose access to the activity chat.',
+      [
+        { text: 'Keep participant', style: 'cancel' },
+        { text: 'Remove participant', style: 'destructive', onPress: () => removeParticipant(participant) },
+      ],
+    );
   };
 
   const handleCancelActivity = async () => {
@@ -717,6 +748,10 @@ export default function ActivityScreen({ route, navigation }: Props) {
       <ParticipantsModal
         visible={participantsVisible}
         participants={activity.participants}
+        hostId={activity.hostId}
+        canManage={isHost && !isCancelled && !isPastOrCompleted && !getCuratedActivity(activity.id)}
+        removingParticipantId={removingParticipantId}
+        onRemoveParticipant={handleRemoveParticipant}
         onClose={() => setParticipantsVisible(false)}
         onOpenProfile={(participant) => {
           setParticipantsVisible(false);

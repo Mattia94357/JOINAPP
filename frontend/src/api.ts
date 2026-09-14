@@ -598,6 +598,11 @@ export const leaveActivityRequest = async (activityId: string, token: string) =>
     headers: { Authorization: `Bearer ${token}` },
   });
 
+export const removeActivityParticipantRequest = async (activityId: string, userId: string, token: string) =>
+  api.post<RawActivity>(`/api/activities/${activityId}/remove-participant/${userId}`, {}, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
 export const withdrawJoinRequest = async (activityId: string, token: string) =>
   api.post(`/api/activities/${activityId}/withdraw`, {}, {
     headers: { Authorization: `Bearer ${token}` },

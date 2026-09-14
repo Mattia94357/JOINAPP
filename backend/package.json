@@ -12,6 +12,7 @@
     "test:membership-exit": "npm run build && node tests/activityExit.test.js",
     "test:cancelled-chat": "npm run build && node tests/cancelledActivityChat.test.js",
     "test:activity-edit": "npm run build && node tests/activityEditing.test.js",
+    "test:participant-removal": "npm run build && node tests/participantRemoval.test.js",
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",

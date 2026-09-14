@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { colors, spacing } from '../theme';
@@ -17,9 +17,16 @@ type Props = {
   participants: ParticipantSummary[];
   onClose: () => void;
   onOpenProfile: (participant: ParticipantSummary) => void;
+  hostId?: string;
+  canManage?: boolean;
+  removingParticipantId?: string;
+  onRemoveParticipant?: (participant: ParticipantSummary) => void;
 };
 
-export default function ParticipantsModal({ visible, participants, onClose, onOpenProfile }: Props) {
+export default function ParticipantsModal({
+  visible, participants, onClose, onOpenProfile, hostId, canManage = false,
+  removingParticipantId, onRemoveParticipant,
+}: Props) {
   const [query, setQuery] = useState('');
   const visibleParticipants = useMemo(
     () => participants.filter((participant) => participant.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 50),
@@ -52,10 +59,23 @@ export default function ParticipantsModal({ visible, participants, onClose, onOp
             {visibleParticipants.map((participant, index) => {
               const image = participant.profileThumbnailUrl || participant.profilePictureUrl || participant.avatar;
               return (
-                <TouchableOpacity key={`${participant.name}-${participant.id || index}`} style={styles.person} onPress={() => onOpenProfile(participant)}>
-                  <AvatarBadge name={participant.name} avatarUrl={image} size={64} />
-                  <Text style={styles.name} numberOfLines={1}>{participant.name}</Text>
-                </TouchableOpacity>
+                <View key={`${participant.name}-${participant.id || index}`} style={styles.person}>
+                  <TouchableOpacity style={styles.profileButton} onPress={() => onOpenProfile(participant)}>
+                    <AvatarBadge name={participant.name} avatarUrl={image} size={64} />
+                    <Text style={styles.name} numberOfLines={1}>{participant.name}</Text>
+                  </TouchableOpacity>
+                  {canManage && participant.id && participant.id !== hostId && onRemoveParticipant ? (
+                    <TouchableOpacity
+                      style={[styles.removeButton, removingParticipantId === participant.id && styles.removeButtonBusy]}
+                      disabled={Boolean(removingParticipantId)}
+                      onPress={() => onRemoveParticipant(participant)}
+                    >
+                      {removingParticipantId === participant.id
+                        ? <ActivityIndicator size="small" color={colors.danger} />
+                        : <Text style={styles.removeText}>Remove</Text>}
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               );
             })}
           </ScrollView>
@@ -128,6 +148,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
+  profileButton: {
+    width: '100%',
+    alignItems: 'center',
+  },
   name: {
     color: colors.text,
     fontSize: 12,
@@ -135,4 +159,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: 'center',
   },
+  removeButton: {
+    minHeight: 32,
+    marginTop: spacing.sm,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButtonBusy: { opacity: 0.65 },
+  removeText: { color: colors.danger, fontSize: 12, fontWeight: '800' },
 });

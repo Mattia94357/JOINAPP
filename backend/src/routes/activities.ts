@@ -31,6 +31,7 @@ import {
   hasAvailableCapacity,
   leaveUpcomingActivity,
   membershipState,
+  removeConfirmedParticipant,
   withdrawPendingJoin,
 } from '../services/activityMembership';
 import {
@@ -41,6 +42,7 @@ import {
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
+type ActivityParticipantParams = ActivityIdParams & { userId: string };
 type ActivityApprovalParams = { id: string; userId: string };
 type CreateActivityBody = {
   title: string;
@@ -549,6 +551,51 @@ router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<Ac
   if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot leave after the activity has started.' });
   if (latest.host.toString() === requesterId) return res.status(403).json({ message: 'Hosts cannot leave their own activity.' });
   return res.status(409).json({ message: 'You are no longer a confirmed participant in this activity.' });
+});
+
+// A host may atomically remove another confirmed participant before the activity starts.
+router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityParticipantParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
+    return res.status(404).json({ message: 'Activity or user not found' });
+  }
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  const requesterId = req.userId as string;
+  if (activity.host.toString() !== requesterId) {
+    return res.status(403).json({ message: 'Only the host can remove participants.' });
+  }
+  if (req.params.userId === requesterId) {
+    return res.status(403).json({ message: 'Hosts cannot remove themselves.' });
+  }
+
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'Participants cannot be removed from a cancelled activity.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'Participants cannot be removed from a completed activity.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'Participants cannot be removed after the activity has started.' });
+  }
+  if (membershipState(activity, req.params.userId) !== 'participant') {
+    return res.status(409).json({ message: 'This user is not a confirmed participant.' });
+  }
+
+  const now = new Date();
+  const updated = await removeConfirmedParticipant(activity.id, req.params.userId, requesterId, now);
+  if (updated) {
+    const populated = await populatedActivity(updated.id);
+    return res.json(activityPayload(populated || updated, requesterId, { includeHostInviteCode: true }));
+  }
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  if (latest.host.toString() !== requesterId) return res.status(403).json({ message: 'Only the host can remove participants.' });
+  if (req.params.userId === requesterId) return res.status(403).json({ message: 'Hosts cannot remove themselves.' });
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'Participants cannot be removed from a cancelled activity.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'Participants cannot be removed from a completed activity.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'Participants cannot be removed after the activity has started.' });
+  return res.status(409).json({ message: 'This user is no longer a confirmed participant.' });
 });
 
 // A requester may atomically withdraw only their own still-pending request.
