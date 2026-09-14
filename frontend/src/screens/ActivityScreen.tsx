@@ -629,6 +629,16 @@ export default function ActivityScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
+        {isHost && !isCancelled && !isPastOrCompleted && !getCuratedActivity(activity.id) ? (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => navigation.navigate('EditActivity', { activityId: activity.id })}
+          >
+            <Ionicons name="create-outline" size={18} color="#F6C445" />
+            <Text style={styles.editButtonText}>Edit activity</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {isHost && !isCancelled ? (
           <TouchableOpacity style={styles.cancelButton} onPress={handleCancelActivity}>
             <Text style={styles.cancelButtonText}>Cancel activity</Text>
@@ -1171,6 +1181,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 16,
+  },
+  editButton: {
+    minHeight: 48,
+    marginHorizontal: 16,
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(246, 196, 69, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: 'rgba(246, 196, 69, 0.08)',
+  },
+  editButtonText: {
+    color: '#F6C445',
+    fontSize: 15,
+    fontWeight: '800',
   },
   cancelButtonText: {
     color: '#EF4444',

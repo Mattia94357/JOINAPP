@@ -33,6 +33,11 @@ import {
   membershipState,
   withdrawPendingJoin,
 } from '../services/activityMembership';
+import {
+  activityEditEligibilityIssue,
+  editUpcomingActivityAtomically,
+  parseActivityEdit,
+} from '../services/activityEditing';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -341,6 +346,39 @@ router.get('/:id', async (req, res) => {
     return res.status(403).json({ message: 'This private activity is invite-only.' });
   }
   res.json(activityPayload(activity, userId, { includeHostInviteCode: true }));
+});
+
+router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Activity not found' });
+  const now = new Date();
+  const parsed = parseActivityEdit(req.body, now);
+  if (parsed.error) return res.status(400).json({ message: parsed.error });
+  const edit = parsed.update!;
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  const issue = activityEditEligibilityIssue(activity, req.userId as string, edit, now);
+  if (issue === 'not_host') return res.status(403).json({ message: 'Only the host can edit this activity.' });
+  if (issue === 'cancelled') return res.status(400).json({ message: 'Cancelled activities cannot be edited.' });
+  if (issue === 'completed') return res.status(400).json({ message: 'Completed activities cannot be edited.' });
+  if (issue === 'started') return res.status(400).json({ message: 'Activities cannot be edited after their start time.' });
+  if (issue === 'capacity_below_members') {
+    return res.status(409).json({ message: 'Max participants cannot be lower than the current participant count.' });
+  }
+
+  const updated = await editUpcomingActivityAtomically(req.params.id, req.userId as string, edit, now);
+  if (!updated) {
+    const latest = await Activity.findById(req.params.id);
+    if (!latest) return res.status(404).json({ message: 'Activity not found' });
+    const latestIssue = activityEditEligibilityIssue(latest, req.userId as string, edit, now);
+    if (latestIssue === 'capacity_below_members') {
+      return res.status(409).json({ message: 'The activity filled while you were editing. Max participants cannot be lower than the current participant count.' });
+    }
+    return res.status(409).json({ message: 'This activity changed and can no longer be edited. Refresh and try again.' });
+  }
+
+  const populated = await populatedActivity(updated.id);
+  return res.json(activityPayload(populated || updated, req.userId, { includeHostInviteCode: true }));
 });
 
 router.post(

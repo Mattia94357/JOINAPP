@@ -565,6 +565,29 @@ export const createActivityRequest = async (
     headers: { Authorization: `Bearer ${token}` },
   });
 
+export type ActivityEditPayload = Partial<Pick<RawActivity,
+  | 'title'
+  | 'category'
+  | 'location'
+  | 'locationName'
+  | 'latitude'
+  | 'longitude'
+  | 'isApproximateLocation'
+  | 'locationPrivacy'
+  | 'description'
+  | 'date'
+  | 'ageGroup'
+  | 'coverImage'
+  | 'galleryImages'
+  | 'vibe'
+  | 'maxAttendees'
+>>;
+
+export const updateActivityRequest = (activityId: string, payload: ActivityEditPayload, token: string) =>
+  api.patch<RawActivity>(`/api/activities/${activityId}`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
 export const joinActivityRequest = async (activityId: string, token: string, inviteCode?: string) =>
   api.post(`/api/activities/${activityId}/join`, inviteCode ? { inviteCode } : {}, {
     headers: { Authorization: `Bearer ${token}` },

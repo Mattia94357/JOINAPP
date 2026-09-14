@@ -10,6 +10,7 @@ import ActivityScreen from './src/screens/ActivityScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import CreateActivityScreen from './src/screens/CreateActivityScreen';
+import EditActivityScreen from './src/screens/EditActivityScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -51,6 +52,7 @@ export type RootStackParamList = {
   } | undefined;
   Activity: { activityId: string; inviteCode?: string };
   CreateActivity: undefined;
+  EditActivity: { activityId: string };
   Chat: { chatId: string; title: string };
   Messages: undefined;
   MessageRequests: undefined;
@@ -129,6 +131,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
             <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
+            <Stack.Screen name="EditActivity" component={EditActivityScreen} options={{ title: 'Edit Activity' }} />
             <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
             <Stack.Screen name="MessageRequests" component={MessageRequestsScreen} options={{ title: 'Message Requests' }} />
             <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.title })} />
