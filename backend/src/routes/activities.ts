@@ -32,6 +32,7 @@ import {
   hasAvailableCapacity,
   leaveUpcomingActivity,
   membershipState,
+  promoteActivityWaitlist,
   removeConfirmedParticipant,
   withdrawPendingJoin,
 } from '../services/activityMembership';
@@ -371,8 +372,14 @@ router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<Activit
     return res.status(409).json({ message: 'This activity changed and can no longer be edited. Refresh and try again.' });
   }
 
-  const populated = await populatedActivity(updated.id);
-  return res.json(activityPayload(populated || updated, req.userId, { includeHostInviteCode: true }));
+  const capacityIncreased = edit.maxAttendees !== undefined
+    && activity.maxAttendees !== undefined
+    && edit.maxAttendees > activity.maxAttendees;
+  const finalActivity = capacityIncreased
+    ? (await promoteActivityWaitlist(updated.id, now)).activity || updated
+    : updated;
+  const populated = await populatedActivity(finalActivity.id);
+  return res.json(activityPayload(populated || finalActivity, req.userId, { includeHostInviteCode: true }));
 });
 
 router.post(
@@ -527,11 +534,12 @@ router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<Ac
   const now = new Date();
   const updated = await leaveUpcomingActivity(activity.id, requesterId, now);
   if (updated) {
+    const finalActivity = (await promoteActivityWaitlist(updated.id, now)).activity || updated;
     return res.json({
       status: 'left',
       message: 'You left the activity.',
-      activityStatus: effectiveActivityStatus(updated, now),
-      participantCount: updated.participants.length,
+      activityStatus: effectiveActivityStatus(finalActivity, now),
+      participantCount: finalActivity.participants.length,
     });
   }
 
@@ -575,8 +583,9 @@ router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, async
   const now = new Date();
   const updated = await removeConfirmedParticipant(activity.id, req.params.userId, requesterId, now);
   if (updated) {
-    const populated = await populatedActivity(updated.id);
-    return res.json(activityPayload(populated || updated, requesterId, { includeHostInviteCode: true }));
+    const finalActivity = (await promoteActivityWaitlist(updated.id, now)).activity || updated;
+    const populated = await populatedActivity(finalActivity.id);
+    return res.json(activityPayload(populated || finalActivity, requesterId, { includeHostInviteCode: true }));
   }
 
   const latest = await Activity.findById(activity.id);

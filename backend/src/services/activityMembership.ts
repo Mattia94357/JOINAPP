@@ -1,5 +1,7 @@
 import { FilterQuery, Types } from 'mongoose';
 import Activity, { IActivity } from '../models/Activity';
+import User from '../models/User';
+import { participationClosureReason, upcomingActivityFilter } from '../utils/activityLifecycle';
 
 export type MembershipState = 'participant' | 'pending' | 'declined' | 'waitlisted' | 'none';
 export type ViewerJoinStatus = 'host' | MembershipState | 'invited';
@@ -53,10 +55,7 @@ export const approvalMembershipIssue = (
   return undefined;
 };
 
-const lifecycleFilter = (now: Date) => ({
-  status: { $in: ['active', 'full'] },
-  date: { $gt: now },
-});
+const lifecycleFilter = (now: Date) => upcomingActivityFilter(now);
 
 const noConflictingMembership = (userId: Types.ObjectId) => ({
   participants: { $ne: userId },
@@ -292,6 +291,91 @@ export const removeConfirmedParticipant = (
     }],
     { new: true },
   );
+};
+
+export type WaitlistPromotionResult = {
+  activity: IActivity | null;
+  promotedUserIds: string[];
+};
+
+// Claims the current queue head with a conditional single-document update.
+// Repeating that claim fills every available place while preserving FIFO order.
+export const promoteActivityWaitlist = async (
+  activityId: string,
+  now = new Date(),
+): Promise<WaitlistPromotionResult> => {
+  let activity = await Activity.findById(activityId);
+  const promotedUserIds: string[] = [];
+
+  while (
+    activity
+    && !participationClosureReason(activity, now)
+    && hasAvailableCapacity(activity)
+    && (activity.waitlist || []).length > 0
+  ) {
+    const candidateId = activity.waitlist![0].toString();
+    const candidateObjectId = objectId(candidateId);
+    const hostId = activity.host.toString();
+    const state = membershipState(activity, candidateId);
+    const candidateExists = await User.exists({ _id: candidateObjectId });
+    const isEligible = candidateId !== hostId && state === 'waitlisted' && Boolean(candidateExists);
+
+    if (!isEligible) {
+      const cleaned = await Activity.findOneAndUpdate(
+        {
+          _id: activityId,
+          ...lifecycleFilter(now),
+          'waitlist.0': candidateObjectId,
+        },
+        { $pull: { waitlist: candidateObjectId } },
+        { new: true },
+      );
+      if (cleaned) {
+        activity = cleaned;
+        continue;
+      }
+      const latest = await Activity.findById(activityId);
+      if (!latest || latest.waitlist?.[0]?.toString() === candidateId) {
+        activity = latest;
+        break;
+      }
+      activity = latest;
+      continue;
+    }
+
+    const promoted = await Activity.findOneAndUpdate(
+      {
+        _id: activityId,
+        ...lifecycleFilter(now),
+        host: { $ne: candidateObjectId },
+        'waitlist.0': candidateObjectId,
+        participants: { $ne: candidateObjectId },
+        pendingParticipants: { $ne: candidateObjectId },
+        declinedParticipants: { $ne: candidateObjectId },
+        $expr: capacityAvailableExpression,
+      },
+      confirmPipeline(candidateObjectId),
+      { new: true },
+    );
+    if (promoted) {
+      promotedUserIds.push(candidateId);
+      activity = promoted;
+      continue;
+    }
+
+    const latest = await Activity.findById(activityId);
+    if (!latest || (
+      latest.waitlist?.[0]?.toString() === candidateId
+      && hasAvailableCapacity(latest)
+      && !participationClosureReason(latest, now)
+    )) {
+      activity = latest;
+      break;
+    }
+    activity = latest;
+  }
+
+  return { activity, promotedUserIds };
 };
 
 export const withdrawPendingJoin = (
