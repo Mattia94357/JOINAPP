@@ -645,6 +645,11 @@ export const withdrawJoinRequest = async (activityId: string, token: string) =>
     headers: { Authorization: `Bearer ${token}` },
   });
 
+export const leaveActivityWaitlistRequest = async (activityId: string, token: string) =>
+  api.post(`/api/activities/${activityId}/leave-waitlist`, {}, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
 export const saveActivityRequest = async (activityId: string, token: string, inviteCode?: string) =>
   api.post(`/api/activities/${activityId}/save`, inviteCode ? { inviteCode } : {}, {
     headers: { Authorization: `Bearer ${token}` },

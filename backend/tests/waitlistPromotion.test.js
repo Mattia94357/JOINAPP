@@ -9,6 +9,7 @@ const {
   leaveUpcomingActivity,
   promoteActivityWaitlist,
   removeConfirmedParticipant,
+  withdrawWaitlistedJoin,
 } = require('../dist/services/activityMembership');
 const { editUpcomingActivityAtomically } = require('../dist/services/activityEditing');
 const { canAccessActivityChat } = require('../dist/services/activityChat');
@@ -59,6 +60,7 @@ class WaitlistHarness {
     if (filter.pendingParticipants instanceof Types.ObjectId && !contains(activity.pendingParticipants, filter.pendingParticipants)) return false;
     if (filter.pendingParticipants?.$ne && contains(activity.pendingParticipants, filter.pendingParticipants.$ne)) return false;
     if (filter.declinedParticipants?.$ne && contains(activity.declinedParticipants, filter.declinedParticipants.$ne)) return false;
+    if (filter.waitlist instanceof Types.ObjectId && !contains(activity.waitlist, filter.waitlist)) return false;
     if (filter.$expr) {
       if (filter.$expr.$lte && activity.participants.length > filter.$expr.$lte[1]) return false;
       if ((filter.$expr.$or || filter.$expr.$and) && activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return false;
@@ -72,6 +74,11 @@ class WaitlistHarness {
 
     if (!Array.isArray(update) && update.$pull?.waitlist) {
       activity.waitlist = remove(activity.waitlist, update.$pull.waitlist);
+      return activity;
+    }
+
+    if (filter.waitlist instanceof Types.ObjectId) {
+      activity.waitlist = remove(activity.waitlist, filter.waitlist);
       return activity;
     }
 
@@ -282,7 +289,81 @@ const withHarness = async (activity, test, missingUsers = []) => {
     assert.equal(activity.waitlist.length, 0);
   });
 
-  console.log('FIFO waitlist promotion, access, lifecycle, and concurrency tests passed.');
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first, second, third], capacity: 2, status: 'full' }), async (activity) => {
+    const participantIds = activity.participants.map(String);
+    assert.ok(await withdrawWaitlistedJoin(activity._id.toString(), second.toString(), now));
+    assert.deepEqual(activity.waitlist.map(String), [first.toString(), third.toString()]);
+    assert.deepEqual(activity.participants.map(String), participantIds);
+    assert.equal(activity.status, 'full');
+    assert.equal(activityViewerJoinStatus(activity, second.toString()), 'none');
+    assert.equal(canAccessActivityChat(activity, second.toString()), false);
+  });
+
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 2, status: 'full' }), async (activity) => {
+    const results = await Promise.all([
+      withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now),
+      withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now),
+    ]);
+    assert.equal(results.filter(Boolean).length, 1);
+    assert.equal(activity.waitlist.length, 0);
+    assert.equal(activity.participants.length, 2);
+  });
+
+  await withHarness(makeActivity({ host, participants: [host, other], pending: [third], declined: [second], waitlist: [first], capacity: 2, status: 'full' }), async (activity) => {
+    for (const ineligible of [host, other, third, second, id()]) {
+      assert.equal(await withdrawWaitlistedJoin(activity._id.toString(), ineligible.toString(), now), null);
+    }
+    assert.deepEqual(activity.waitlist.map(String), [first.toString()]);
+  });
+
+  for (const closed of [
+    makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 2, status: 'cancelled' }),
+    makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 2, status: 'completed' }),
+    makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 2, date: now }),
+  ]) {
+    await withHarness(closed, async (activity) => {
+      assert.equal(await withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now), null);
+      assert.equal(contains(activity.waitlist, first), true);
+    });
+  }
+
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 2, status: 'full', visibility: 'private' }), async (activity) => {
+    assert.equal(canAccessActivity(activity, first.toString()), false);
+    assert.equal(canAccessActivityChat(activity, first.toString()), false);
+    await withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now);
+    assert.equal(canAccessActivity(activity, first.toString()), false);
+    assert.equal(canAccessActivityChat(activity, first.toString()), false);
+  });
+
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first], invited: [first], capacity: 2, status: 'full', visibility: 'private' }), async (activity) => {
+    assert.equal(canAccessActivity(activity, first.toString()), true);
+    await withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now);
+    assert.equal(canAccessActivity(activity, first.toString()), true);
+    assert.equal(activityViewerJoinStatus(activity, first.toString()), 'invited');
+    assert.equal(contains(activity.invitedUsers, first), true);
+  });
+
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first, second], capacity: 3 }), async (activity) => {
+    await Promise.all([
+      promoteActivityWaitlist(activity._id.toString(), now),
+      withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now),
+    ]);
+    assert.equal(contains(activity.waitlist, first), false);
+    assert.equal(contains(activity.participants, first) && contains(activity.waitlist, first), false);
+    assert.ok(activity.participants.length <= activity.maxAttendees);
+    assert.ok(
+      contains(activity.participants, first)
+      || activityViewerJoinStatus(activity, first.toString()) === 'none',
+    );
+  });
+
+  await withHarness(makeActivity({ host, participants: [host, other], waitlist: [first], capacity: 3 }), async (activity) => {
+    await promoteActivityWaitlist(activity._id.toString(), now);
+    assert.equal(await withdrawWaitlistedJoin(activity._id.toString(), first.toString(), now), null);
+    assert.equal(contains(activity.participants, first), true);
+  });
+
+  console.log('FIFO waitlist promotion/withdrawal, access, lifecycle, and concurrency tests passed.');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

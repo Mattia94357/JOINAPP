@@ -35,6 +35,7 @@ import {
   promoteActivityWaitlist,
   removeConfirmedParticipant,
   withdrawPendingJoin,
+  withdrawWaitlistedJoin,
 } from '../services/activityMembership';
 import {
   activityEditEligibilityIssue,
@@ -658,6 +659,41 @@ router.post('/:id/withdraw', auth, activityWriteLimiter, async (req: AuthRequest
   if (latestClosure === 'completed') return res.status(400).json({ message: 'You cannot withdraw a request from a completed activity.' });
   if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot withdraw a request after the activity has started.' });
   return res.status(409).json({ message: 'This join request is no longer pending.' });
+});
+
+// A requester may atomically give up only their own current waitlist place.
+router.post('/:id/leave-waitlist', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ message: 'Activity not found' });
+  }
+
+  const activity = await Activity.findById(req.params.id);
+  if (!activity) return res.status(404).json({ message: 'Activity not found' });
+  const requesterId = req.userId as string;
+  if (activity.host.toString() === requesterId || membershipState(activity, requesterId) !== 'waitlisted') {
+    return res.status(409).json({ message: 'You are not on the waitlist for this activity.' });
+  }
+  const closureReason = participationClosureReason(activity);
+  if (closureReason === 'cancelled') return res.status(400).json({ message: 'You cannot leave the waitlist for a cancelled activity.' });
+  if (closureReason === 'completed') return res.status(400).json({ message: 'You cannot leave the waitlist for a completed activity.' });
+  if (closureReason === 'started') {
+    await completeActivityIfPast(activity.id);
+    return res.status(400).json({ message: 'You cannot leave the waitlist after the activity has started.' });
+  }
+  const now = new Date();
+  const updated = await withdrawWaitlistedJoin(activity.id, requesterId, now);
+  if (updated) return res.json({ status: 'withdrawn', message: 'You left the activity waitlist.' });
+
+  const latest = await Activity.findById(activity.id);
+  if (!latest) return res.status(404).json({ message: 'Activity not found' });
+  const latestClosure = participationClosureReason(latest, now);
+  if (latestClosure === 'cancelled') return res.status(400).json({ message: 'You cannot leave the waitlist for a cancelled activity.' });
+  if (latestClosure === 'completed') return res.status(400).json({ message: 'You cannot leave the waitlist for a completed activity.' });
+  if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot leave the waitlist after the activity has started.' });
+  if (membershipState(latest, requesterId) === 'participant') {
+    return res.status(409).json({ message: 'You are now a confirmed participant and are no longer on the waitlist.' });
+  }
+  return res.status(409).json({ message: 'You are no longer on the waitlist for this activity.' });
 });
 
 // Host-only endpoint for approving a manual join request.

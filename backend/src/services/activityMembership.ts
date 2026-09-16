@@ -399,3 +399,31 @@ export const withdrawPendingJoin = (
     { new: true },
   );
 };
+
+// Removes only the authenticated user's current queue entry. The conflicting
+// membership checks make this safe against a simultaneous FIFO promotion: if
+// promotion wins, this update cannot remove the newly confirmed participant.
+export const withdrawWaitlistedJoin = (
+  activityId: string,
+  userId: string,
+  now = new Date(),
+) => {
+  const userObjectId = objectId(userId);
+  return Activity.findOneAndUpdate(
+    {
+      _id: activityId,
+      ...lifecycleFilter(now),
+      host: { $ne: userObjectId },
+      participants: { $ne: userObjectId },
+      pendingParticipants: { $ne: userObjectId },
+      declinedParticipants: { $ne: userObjectId },
+      waitlist: userObjectId,
+    },
+    [{
+      $set: {
+        waitlist: withoutUser('waitlist', userObjectId),
+      },
+    }],
+    { new: true },
+  );
+};

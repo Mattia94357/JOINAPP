@@ -28,6 +28,7 @@ import {
   fetchActivityMomentsRequest,
   joinActivityRequest,
   leaveActivityRequest,
+  leaveActivityWaitlistRequest,
   likeMomentRequest,
   MomentResponse,
   removeActivityParticipantRequest,
@@ -258,7 +259,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
     : pendingApproval
       ? 'Withdraw Request'
       : waitlisted
-        ? 'On Waitlist'
+        ? 'Leave Waitlist'
         : isCancelled
           ? 'Cancelled'
           : isPastOrCompleted
@@ -390,6 +391,38 @@ export default function ActivityScreen({ route, navigation }: Props) {
       membershipBusyRef.current = false;
       setMembershipBusy(false);
     }
+  };
+
+  const performLeaveWaitlist = async () => {
+    if (!token) return;
+    setMembershipBusy(true);
+    try {
+      await leaveActivityWaitlistRequest(activity.id, token);
+      Alert.alert('Waitlist left', 'You have given up your place in the queue.');
+      await refreshAfterMembershipChange();
+    } catch (error: any) {
+      Alert.alert('Could not leave waitlist', error?.response?.data?.message || 'Please try again.');
+    } finally {
+      membershipBusyRef.current = false;
+      setMembershipBusy(false);
+    }
+  };
+
+  const handleLeaveWaitlist = () => {
+    if (membershipBusyRef.current) return;
+    membershipBusyRef.current = true;
+    Alert.alert('Leave waitlist?', 'You will give up your current place in the queue.', [
+      {
+        text: 'Keep my place',
+        style: 'cancel',
+        onPress: () => { membershipBusyRef.current = false; },
+      },
+      {
+        text: 'Leave waitlist',
+        style: 'destructive',
+        onPress: performLeaveWaitlist,
+      },
+    ], { cancelable: false });
   };
 
   const handleApprove = async (participantId?: string) => {
@@ -751,12 +784,12 @@ export default function ActivityScreen({ route, navigation }: Props) {
           {!isHost ? (
           <TouchableOpacity
             style={[styles.joinButton, ((alreadyJoined && isHost) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy) && styles.joinedButton]}
-            onPress={alreadyJoined ? handleLeave : pendingApproval ? handleWithdraw : handleJoin}
-            disabled={(!alreadyJoined && !pendingApproval && !canStartJoin) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy}
+            onPress={alreadyJoined ? handleLeave : pendingApproval ? handleWithdraw : waitlisted ? handleLeaveWaitlist : handleJoin}
+            disabled={(!alreadyJoined && !pendingApproval && !waitlisted && !canStartJoin) || requestDeclined || isCancelled || isPastOrCompleted || joining || membershipBusy}
           >
             {membershipBusy
               ? <ActivityIndicator size="small" color="#050505" />
-              : <Ionicons name={alreadyJoined ? 'exit-outline' : pendingApproval ? 'close-circle-outline' : 'add-circle-outline'} size={18} color={(alreadyJoined && isHost) ? '#888888' : '#050505'} />}
+              : <Ionicons name={alreadyJoined ? 'exit-outline' : (pendingApproval || waitlisted) ? 'close-circle-outline' : 'add-circle-outline'} size={18} color={(alreadyJoined && isHost) ? '#888888' : '#050505'} />}
             <Text style={[styles.joinButtonText, alreadyJoined && isHost && styles.joinedButtonText]}>
               {joinLabel}
             </Text>
