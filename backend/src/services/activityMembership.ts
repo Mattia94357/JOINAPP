@@ -2,6 +2,7 @@ import { FilterQuery, Types } from 'mongoose';
 import Activity, { IActivity } from '../models/Activity';
 
 export type MembershipState = 'participant' | 'pending' | 'declined' | 'waitlisted' | 'none';
+export type ViewerJoinStatus = 'host' | MembershipState | 'invited';
 export type AtomicAccessFilter = FilterQuery<IActivity>;
 
 const objectId = (value: string) => new Types.ObjectId(value);
@@ -17,6 +18,19 @@ export const membershipState = (activity: Partial<IActivity>, userId: string): M
   if (ids(activity.pendingParticipants).includes(userId)) return 'pending';
   if (ids(activity.declinedParticipants).includes(userId)) return 'declined';
   if (ids(activity.waitlist).includes(userId)) return 'waitlisted';
+  return 'none';
+};
+
+export const activityViewerJoinStatus = (
+  activity: Partial<IActivity>,
+  userId?: string,
+): ViewerJoinStatus | undefined => {
+  if (!userId) return undefined;
+  const hostId = activity.host?._id?.toString?.() || activity.host?.toString?.();
+  if (hostId === userId) return 'host';
+  const state = membershipState(activity, userId);
+  if (state !== 'none') return state;
+  if (ids(activity.invitedUsers).includes(userId)) return 'invited';
   return 'none';
 };
 

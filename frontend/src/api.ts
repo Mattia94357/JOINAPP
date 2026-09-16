@@ -210,6 +210,8 @@ export type RawAvatarUser = {
   joinedCount?: number;
 };
 
+export type ViewerJoinStatus = 'host' | 'participant' | 'pending' | 'declined' | 'waitlisted' | 'invited' | 'none';
+
 export type RawActivity = {
   _id: string;
   title: string;
@@ -238,7 +240,7 @@ export type RawActivity = {
   galleryImages?: string[];
   activityRating?: number;
   reviewCount?: number;
-  viewerJoinStatus?: 'pending' | 'declined' | 'waitlisted';
+  viewerJoinStatus?: ViewerJoinStatus;
   inviteCode?: string;
   pendingParticipants?: RawAvatarUser[];
   declinedParticipants?: RawAvatarUser[];
@@ -304,6 +306,7 @@ export type ActivityResponse = {
   saved?: boolean;
   chatId?: string;
   inviteCode?: string;
+  viewerJoinStatus?: ViewerJoinStatus;
 };
 
 export type ConversationSummary = {
@@ -468,6 +471,8 @@ export const fetchActivities = async (token?: string) => {
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
     declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
+    viewerJoinStatus: activity.viewerJoinStatus,
+    joined: activity.viewerJoinStatus === 'host' || activity.viewerJoinStatus === 'participant',
     pending: activity.viewerJoinStatus === 'pending',
     declined: activity.viewerJoinStatus === 'declined',
     waitlisted: activity.viewerJoinStatus === 'waitlisted',
@@ -523,6 +528,8 @@ export const fetchActivity = async (activityId: string, token?: string, inviteCo
     pendingParticipants: activity.pendingParticipants?.map(mapParticipant) || [],
     declinedParticipants: activity.declinedParticipants?.map(mapParticipant) || [],
     waitlist: activity.waitlist?.map(mapParticipant) || [],
+    viewerJoinStatus: activity.viewerJoinStatus,
+    joined: activity.viewerJoinStatus === 'host' || activity.viewerJoinStatus === 'participant',
     pending: activity.viewerJoinStatus === 'pending',
     declined: activity.viewerJoinStatus === 'declined',
     waitlisted: activity.viewerJoinStatus === 'waitlisted',

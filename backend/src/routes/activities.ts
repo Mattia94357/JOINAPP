@@ -24,6 +24,7 @@ import {
 import {
   addPendingJoin,
   addWaitlistedJoin,
+  activityViewerJoinStatus,
   approvalMembershipIssue,
   approvePendingJoin,
   confirmDirectJoin,
@@ -170,9 +171,6 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
   const pendingParticipants = activity.pendingParticipants || [];
   const declinedParticipants = activity.declinedParticipants || [];
   const waitlist = activity.waitlist || [];
-  const viewerPending = idInList(pendingParticipants, viewerId);
-  const viewerDeclined = idInList(declinedParticipants, viewerId);
-  const viewerWaitlisted = idInList(waitlist, viewerId);
   const safePayload: any = sanitizeActivityPrivacy({
     ...activity.toObject(),
     status: effectiveActivityStatus(activity),
@@ -182,18 +180,12 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
     spotsLeft: activity.maxAttendees ? Math.max(activity.maxAttendees - participants.length, 0) : undefined,
   }, activity, viewerId, options);
 
+  if (viewerId) safePayload.viewerJoinStatus = activityViewerJoinStatus(activity, viewerId);
+
   if (isHost) {
     safePayload.pendingParticipants = pendingParticipants.map(publicPersonPayload);
     safePayload.declinedParticipants = declinedParticipants.map(publicPersonPayload);
     safePayload.waitlist = waitlist.map(publicPersonPayload);
-  } else {
-    safePayload.viewerJoinStatus = viewerPending
-      ? 'pending'
-      : viewerDeclined
-        ? 'declined'
-        : viewerWaitlisted
-          ? 'waitlisted'
-          : undefined;
   }
 
   return safePayload;

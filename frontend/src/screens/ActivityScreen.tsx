@@ -32,6 +32,7 @@ import {
   MomentResponse,
   removeActivityParticipantRequest,
   unlikeMomentRequest,
+  ViewerJoinStatus,
   withdrawJoinRequest,
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
@@ -41,6 +42,7 @@ import { getCuratedActivity } from '../utils/curatedActivities';
 import MomentCard from '../components/MomentCard';
 import CreateMomentModal from '../components/CreateMomentModal';
 import MomentCommentsSection from '../components/MomentCommentsSection';
+import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -81,6 +83,7 @@ type ActivityDetails = {
   pending?: boolean;
   declined?: boolean;
   waitlisted?: boolean;
+  viewerJoinStatus?: ViewerJoinStatus;
 };
 
 export default function ActivityScreen({ route, navigation }: Props) {
@@ -223,15 +226,14 @@ export default function ActivityScreen({ route, navigation }: Props) {
   }
 
   const attendees = activity.attendees ?? activity.participants.length;
-  const alreadyJoined = user
-    ? activity.participants.some((participant) => participant.id === user.id)
-    : false;
+  const viewerFlags = activityViewerFlags(activity.viewerJoinStatus);
+  const isHost = viewerFlags.isHost;
+  const alreadyJoined = viewerFlags.isConfirmed || isHost;
   const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
   const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
-  const isHost = user?.id === activity.hostId;
-  const pendingApproval = Boolean(activity.pending || (user && activity.pendingParticipants?.some((participant) => participant.id === user.id)));
-  const requestDeclined = Boolean(activity.declined || (user && activity.declinedParticipants?.some((participant) => participant.id === user.id)));
-  const waitlisted = Boolean(activity.waitlisted || (user && activity.waitlist?.some((participant) => participant.id === user.id)));
+  const pendingApproval = viewerFlags.isPending;
+  const requestDeclined = viewerFlags.isDeclined;
+  const waitlisted = viewerFlags.isWaitlisted;
   const isFull = activity.status === 'full' || Boolean(activity.maxAttendees && attendees >= activity.maxAttendees);
   const isCancelled = activity.status === 'cancelled';
   const hasActivityStarted = activity.status === 'completed'
@@ -259,6 +261,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
               : activity.joinApproval === 'manual'
                 ? 'Ask to Join'
               : 'Join activity';
+  const canStartJoin = viewerCanStartJoin(activity.viewerJoinStatus);
 
   const getShareMessage = (prefix: string, includePrivateInvite = false) => {
     const timeText = activity.time || activity.date || 'Anytime';
@@ -725,11 +728,15 @@ export default function ActivityScreen({ route, navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {pendingApproval ? <Text style={styles.membershipStateText}>Request Pending</Text> : null}
+        {waitlisted ? <Text style={styles.membershipStateText}>Waitlisted</Text> : null}
+        {requestDeclined ? <Text style={styles.membershipStateText}>Request Declined</Text> : null}
         <View style={styles.actions}>
+          {!isHost ? (
           <TouchableOpacity
             style={[styles.joinButton, ((alreadyJoined && isHost) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy) && styles.joinedButton]}
-            onPress={alreadyJoined && !isHost ? handleLeave : pendingApproval ? handleWithdraw : handleJoin}
-            disabled={(alreadyJoined && isHost) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy}
+            onPress={alreadyJoined ? handleLeave : pendingApproval ? handleWithdraw : handleJoin}
+            disabled={(!alreadyJoined && !pendingApproval && !canStartJoin) || requestDeclined || waitlisted || isCancelled || isPastOrCompleted || joining || membershipBusy}
           >
             {membershipBusy
               ? <ActivityIndicator size="small" color="#050505" />
@@ -738,6 +745,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
               {joinLabel}
             </Text>
           </TouchableOpacity>
+          ) : null}
 
           {canOpenChat ? <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { chatId: activity.id, title: activity.title })}>
             <Ionicons name="chatbubbles-outline" size={18} color="#f5c12d" />
@@ -1318,6 +1326,12 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    marginTop: 12,
+  },
+  membershipStateText: {
+    color: '#f5c12d',
+    fontSize: 13,
+    fontWeight: '800',
     marginTop: 12,
   },
   shareActions: {

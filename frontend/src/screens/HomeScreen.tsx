@@ -24,6 +24,7 @@ import BottomNavigation, {
 } from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest, updatePushTokenRequest } from '../api';
+import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
 import { curatedActivities } from '../utils/curatedActivities';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
 import { activityStartDate } from '../utils/activityFilters';
@@ -135,17 +136,18 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   const matchesCurrentUserId = (id?: string) => Boolean(user?.id && id && String(id) === String(user.id));
 
-  const hasCurrentUserJoined = (activity: ActivityResponse) =>
-    matchesCurrentUserId(activity.hostId) || activity.participants.some((participant) => matchesCurrentUserId(participant.id));
+  const hasCurrentUserJoined = (activity: ActivityResponse) => {
+    const viewer = activityViewerFlags(activity.viewerJoinStatus);
+    return viewer.isHost || viewer.isConfirmed;
+  };
 
   const markJoinedActivities = (items: ActivityResponse[]) =>
     items.map((activity) => ({
       ...activity,
-      // Membership is intentionally ID-only. A matching display name must never unlock chat.
       joined: hasCurrentUserJoined(activity),
-      pending: activity.pending || Boolean(user && activity.pendingParticipants?.some((participant) => matchesCurrentUserId(participant.id))),
-      declined: activity.declined || Boolean(user && activity.declinedParticipants?.some((participant) => matchesCurrentUserId(participant.id))),
-      waitlisted: activity.waitlisted || Boolean(user && activity.waitlist?.some((participant) => matchesCurrentUserId(participant.id))),
+      pending: activityViewerFlags(activity.viewerJoinStatus).isPending,
+      declined: activityViewerFlags(activity.viewerJoinStatus).isDeclined,
+      waitlisted: activityViewerFlags(activity.viewerJoinStatus).isWaitlisted,
       saved: user ? user.savedActivities?.some((id) => id === activity.id) : false,
     }));
 
@@ -198,6 +200,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       activity.pending
       || activity.declined
       || activity.waitlisted
+      || !viewerCanStartJoin(activity.viewerJoinStatus)
       || activity.status === 'cancelled'
       || activity.status === 'completed'
       || !startsAt
