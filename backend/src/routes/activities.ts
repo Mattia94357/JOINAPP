@@ -41,6 +41,7 @@ import {
   editUpcomingActivityAtomically,
   parseActivityEdit,
 } from '../services/activityEditing';
+import { activityCreateConsistencyIssue, unsupportedActivityCreateFields } from '../services/activityCreation';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -57,14 +58,13 @@ type CreateActivityBody = {
   locationPrivacy?: string;
   description: string;
   date?: string;
+  endDate?: string;
   ageGroup?: string;
   vibe?: string;
   coverImage?: string;
   maxAttendees: number;
   venueName?: string;
   exactAddress?: string;
-  startTime?: string;
-  endTime?: string;
   costType?: string;
   costAmount?: number | string;
   currency?: string;
@@ -225,13 +225,26 @@ router.post(
   body('locationPrivacy').optional().isIn(['public', 'approximate', 'private']),
   body('description').isString().trim().isLength({ min: 20, max: 3000 }),
   body('date').isISO8601(),
+  body('endDate').optional({ checkFalsy: true }).isISO8601(),
   body('ageGroup').optional().isIn(['any', '18-24', '25-34', '35-44', '45+']),
   body('maxAttendees').isInt({ min: 2 }),
   body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
   body('galleryImages').optional().isArray({ max: 5 }),
+  body('vibe').optional().isString().trim().isLength({ max: 80 }),
+  body('venueName').optional({ checkFalsy: true }).isString().trim().isLength({ max: 120 }),
+  body('exactAddress').optional({ checkFalsy: true }).isString().trim().isLength({ max: 240 }),
+  body('costType').optional().isIn(['Free', 'Paid']),
+  body('costAmount').optional().isFloat({ min: 0 }),
+  body('currency').optional().isIn(['AUD']),
+  body('hostNote').optional({ checkFalsy: true }).isString().trim().isLength({ max: 500 }),
+  body('cancellationPolicy').optional({ checkFalsy: true }).isString().trim().isLength({ max: 500 }),
+  body('visibility').optional().isIn(['public', 'private']),
+  body('joinApproval').optional().isIn(['auto', 'manual']),
   async (req: AuthRequest<Record<string, never>, unknown, CreateActivityBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const unsupported = unsupportedActivityCreateFields(req.body);
+    if (unsupported.length) return res.status(400).json({ message: `These activity fields cannot be set: ${unsupported.join(', ')}.` });
 
     const {
       title,
@@ -244,14 +257,13 @@ router.post(
       locationPrivacy,
       description,
       date,
+      endDate,
       ageGroup,
       vibe,
       coverImage,
       maxAttendees,
       venueName,
       exactAddress,
-      startTime,
-      endTime,
       costType,
       costAmount,
       currency,
@@ -271,6 +283,16 @@ router.post(
     const scheduledDate = new Date(date as string);
     if (!isScheduledStartInFuture(scheduledDate)) {
       return res.status(400).json({ message: 'Activity start time must be in the future.' });
+    }
+    const scheduledEnd = endDate ? new Date(endDate) : undefined;
+    const consistencyIssue = activityCreateConsistencyIssue({ date: scheduledDate, endDate: scheduledEnd, costType, costAmount });
+    if (consistencyIssue === 'end_before_start') {
+      return res.status(400).json({ message: 'Activity end time must be after its start time.' });
+    }
+    const normalizedCostType = costType === 'Paid' ? 'Paid' : 'Free';
+    const normalizedCostAmount = normalizedCostType === 'Paid' ? Number(costAmount) : 0;
+    if (consistencyIssue === 'paid_cost_required') {
+      return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
     }
     const gallery = Array.isArray(galleryImages) ? galleryImages.map((image) => String(image).trim()).filter(Boolean).slice(0, 5) : [];
     if (coverImage && !imageUrlPattern.test(String(coverImage))) {
@@ -293,6 +315,7 @@ router.post(
         : 'public',
       description: cleanText(description, 3000),
       date: scheduledDate,
+      endDate: scheduledEnd,
       ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
       vibe: cleanText(vibe, 80),
       coverImage,
@@ -304,11 +327,9 @@ router.post(
       inviteCode: visibility === 'private' ? generateActivityInviteCode() : undefined,
       venueName: cleanText(venueName, 120),
       exactAddress: cleanText(exactAddress, 240),
-      startTime: cleanText(startTime, 40),
-      endTime: cleanText(endTime, 40),
-      costType: costType === 'Paid' ? 'Paid' : 'Free',
-      costAmount: costType === 'Paid' ? Number(costAmount || 0) : 0,
-      currency: currency || 'AUD',
+      costType: normalizedCostType,
+      costAmount: normalizedCostAmount,
+      currency: 'AUD',
       hostNote: cleanText(hostNote, 500),
       cancellationPolicy: cleanText(cancellationPolicy, 500),
       host: req.userId,
@@ -360,6 +381,8 @@ router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<Activit
   if (issue === 'capacity_below_members') {
     return res.status(409).json({ message: 'Max participants cannot be lower than the current participant count.' });
   }
+  if (issue === 'end_before_start') return res.status(400).json({ message: 'Activity end time must be after its start time.' });
+  if (issue === 'paid_cost_required') return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
 
   const updated = await editUpcomingActivityAtomically(req.params.id, req.userId as string, edit, now);
   if (!updated) {
@@ -369,6 +392,8 @@ router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<Activit
     if (latestIssue === 'capacity_below_members') {
       return res.status(409).json({ message: 'The activity filled while you were editing. Max participants cannot be lower than the current participant count.' });
     }
+    if (latestIssue === 'end_before_start') return res.status(400).json({ message: 'Activity end time must be after its start time.' });
+    if (latestIssue === 'paid_cost_required') return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
     return res.status(409).json({ message: 'This activity changed and can no longer be edited. Refresh and try again.' });
   }
 

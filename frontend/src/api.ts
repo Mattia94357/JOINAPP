@@ -226,6 +226,7 @@ export type RawActivity = {
   locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   date?: string;
+  endDate?: string | null;
   startsAt?: string;
   createdAt?: string;
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
@@ -238,6 +239,11 @@ export type RawActivity = {
   status?: 'active' | 'full' | 'cancelled' | 'completed';
   cancellationReason?: string;
   galleryImages?: string[];
+  costType?: 'Free' | 'Paid';
+  costAmount?: number;
+  currency?: 'AUD';
+  hostNote?: string;
+  cancellationPolicy?: string;
   activityRating?: number;
   reviewCount?: number;
   viewerJoinStatus?: ViewerJoinStatus;
@@ -262,6 +268,7 @@ export type ActivityResponse = {
   description: string;
   date?: string;
   startsAt?: string;
+  endsAt?: string;
   createdAt?: string;
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   time?: string;
@@ -277,6 +284,8 @@ export type ActivityResponse = {
   exactAddress?: string;
   startTime?: string;
   endTime?: string;
+  hostNote?: string;
+  cancellationPolicy?: string;
   hostRating?: number;
   hostHostedCount?: number;
   hostJoinedCount?: number;
@@ -443,12 +452,19 @@ export const fetchActivities = async (token?: string) => {
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     startsAt: activity.date,
+    endsAt: activity.endDate || undefined,
+    endTime: activity.endDate ? new Date(activity.endDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : undefined,
     createdAt: activity.createdAt,
     ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
+    costType: activity.costType || 'Free',
+    costAmount: activity.costAmount || 0,
+    currency: activity.currency || 'AUD',
+    hostNote: activity.hostNote,
+    cancellationPolicy: activity.cancellationPolicy,
     visibility: activity.visibility || 'public',
     joinApproval: activity.joinApproval || 'auto',
     status: activity.status || 'active',
@@ -500,12 +516,19 @@ export const fetchActivity = async (activityId: string, token?: string, inviteCo
     description: activity.description,
     date: activity.date ? new Date(activity.date).toLocaleDateString() : undefined,
     startsAt: activity.date,
+    endsAt: activity.endDate || undefined,
+    endTime: activity.endDate ? new Date(activity.endDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : undefined,
     createdAt: activity.createdAt,
     ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
     attendees: activity.participants?.length || 0,
     maxAttendees: activity.maxAttendees,
+    costType: activity.costType || 'Free',
+    costAmount: activity.costAmount || 0,
+    currency: activity.currency || 'AUD',
+    hostNote: activity.hostNote,
+    cancellationPolicy: activity.cancellationPolicy,
     visibility: activity.visibility || 'public',
     joinApproval: activity.joinApproval || 'auto',
     status: activity.status || 'active',
@@ -549,13 +572,12 @@ export const createActivityRequest = async (
     locationPrivacy?: 'public' | 'approximate' | 'private';
     description: string;
     date?: string;
+    endDate?: string;
     vibe?: string;
     coverImage?: string;
     maxAttendees?: number;
     venueName?: string;
     exactAddress?: string;
-    startTime?: string;
-    endTime?: string;
     costType?: 'Free' | 'Paid';
     costAmount?: number;
     currency?: string;
@@ -583,11 +605,19 @@ export type ActivityEditPayload = Partial<Pick<RawActivity,
   | 'locationPrivacy'
   | 'description'
   | 'date'
+  | 'endDate'
   | 'ageGroup'
   | 'coverImage'
   | 'galleryImages'
   | 'vibe'
   | 'maxAttendees'
+  | 'venueName'
+  | 'exactAddress'
+  | 'costType'
+  | 'costAmount'
+  | 'currency'
+  | 'hostNote'
+  | 'cancellationPolicy'
 >>;
 
 export const updateActivityRequest = (activityId: string, payload: ActivityEditPayload, token: string) =>

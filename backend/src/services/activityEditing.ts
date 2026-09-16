@@ -14,11 +14,12 @@ const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 export const editableActivityFields = [
   'title', 'category', 'location', 'locationName', 'latitude', 'longitude',
   'isApproximateLocation', 'locationPrivacy', 'description', 'date', 'ageGroup',
-  'coverImage', 'galleryImages', 'vibe', 'maxAttendees',
+  'endDate', 'coverImage', 'galleryImages', 'vibe', 'maxAttendees', 'venueName',
+  'exactAddress', 'costType', 'costAmount', 'currency', 'hostNote', 'cancellationPolicy',
 ] as const;
 
 type EditableActivityField = typeof editableActivityFields[number];
-export type ActivityEdit = Partial<Pick<IActivity, EditableActivityField>>;
+export type ActivityEdit = Partial<Omit<Pick<IActivity, EditableActivityField>, 'endDate'>> & { endDate?: Date | null };
 export type ActivityEditParseResult = { update: ActivityEdit; error?: never } | { update?: never; error: string };
 
 const cleanText = (value: string) => value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
@@ -68,6 +69,15 @@ export const parseActivityEdit = (value: unknown, now = new Date()): ActivityEdi
     if (!isScheduledStartInFuture(date, now)) return { error: 'Activity start time must be in the future.' };
     update.date = date;
   }
+  if (own(body, 'endDate')) {
+    if (body.endDate === null || body.endDate === '') update.endDate = null;
+    else {
+      if (typeof body.endDate !== 'string') return { error: 'Activity end time must be an ISO date and time.' };
+      const endDate = new Date(body.endDate);
+      if (!Number.isFinite(endDate.getTime())) return { error: 'Activity end time must be an ISO date and time.' };
+      update.endDate = endDate;
+    }
+  }
   if (own(body, 'maxAttendees')) {
     if (!Number.isInteger(body.maxAttendees) || Number(body.maxAttendees) < 2) return { error: 'Max participants must be an integer of at least 2.' };
     update.maxAttendees = Number(body.maxAttendees);
@@ -83,6 +93,27 @@ export const parseActivityEdit = (value: unknown, now = new Date()): ActivityEdi
   if (own(body, 'isApproximateLocation')) {
     if (typeof body.isApproximateLocation !== 'boolean') return { error: 'isApproximateLocation must be true or false.' };
     update.isApproximateLocation = body.isApproximateLocation;
+  }
+
+  for (const [key, max] of [['venueName', 120], ['exactAddress', 240], ['hostNote', 500], ['cancellationPolicy', 500]] as const) {
+    if (!own(body, key)) continue;
+    if (typeof body[key] !== 'string') return { error: `${key} must be text.` };
+    update[key] = cleanText(body[key] as string).slice(0, max);
+  }
+  if (own(body, 'costType')) {
+    if (body.costType !== 'Free' && body.costType !== 'Paid') return { error: 'Choose Free or Paid for activity cost.' };
+    update.costType = body.costType;
+    if (body.costType === 'Free') update.costAmount = 0;
+  }
+  if (own(body, 'costAmount')) {
+    if (typeof body.costAmount !== 'number' || !Number.isFinite(body.costAmount) || body.costAmount < 0) {
+      return { error: 'Activity cost must be a non-negative number.' };
+    }
+    update.costAmount = body.costAmount;
+  }
+  if (own(body, 'currency')) {
+    if (body.currency !== 'AUD') return { error: 'Activity currency must be AUD.' };
+    update.currency = 'AUD';
   }
 
   const hasLatitude = own(body, 'latitude');
@@ -114,7 +145,7 @@ export const parseActivityEdit = (value: unknown, now = new Date()): ActivityEdi
   return { update };
 };
 
-export type ActivityEditEligibilityIssue = 'not_host' | 'cancelled' | 'completed' | 'started' | 'capacity_below_members';
+export type ActivityEditEligibilityIssue = 'not_host' | 'cancelled' | 'completed' | 'started' | 'capacity_below_members' | 'end_before_start' | 'paid_cost_required';
 
 export const activityEditEligibilityIssue = (
   activity: Partial<IActivity>,
@@ -126,6 +157,12 @@ export const activityEditEligibilityIssue = (
   const closure = participationClosureReason(activity as Pick<IActivity, 'date' | 'status'>, now);
   if (closure) return closure;
   if (update.maxAttendees !== undefined && update.maxAttendees < (activity.participants || []).length) return 'capacity_below_members';
+  const effectiveStart = update.date || activity.date;
+  const effectiveEnd = update.endDate !== undefined ? update.endDate : activity.endDate;
+  if (effectiveEnd && effectiveStart && effectiveEnd.getTime() <= new Date(effectiveStart).getTime()) return 'end_before_start';
+  const effectiveCostType = update.costType || activity.costType || 'Free';
+  const effectiveCostAmount = update.costAmount !== undefined ? update.costAmount : activity.costAmount || 0;
+  if (effectiveCostType === 'Paid' && effectiveCostAmount <= 0) return 'paid_cost_required';
   return undefined;
 };
 

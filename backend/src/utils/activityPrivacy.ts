@@ -34,9 +34,9 @@ export const privateActivityAccess = (
   userId?: string,
   inviteCode?: string,
 ): PrivateActivityAccess | undefined => {
-  if (activity.visibility !== 'private') return 'public';
   if (userId && toId(activity.host) === userId) return 'host';
   if (idInActivityList(activity.participants, userId)) return 'participant';
+  if (activity.visibility !== 'private') return 'public';
   if (idInActivityList(activity.pendingParticipants, userId)) return 'pending';
   if (idInActivityList(activity.invitedUsers, userId)) return 'invited';
   if (inviteCodesMatch(inviteCode, activity.inviteCode)) return 'inviteCode';
@@ -104,6 +104,7 @@ export const sanitizeActivityPrivacy = <T extends Record<string, any>>(
     delete safePayload.exactAddress;
     delete safePayload.address;
     delete safePayload.venueName;
+    delete safePayload.hostNote;
   }
 
   if (!canSeeCoordinates) {

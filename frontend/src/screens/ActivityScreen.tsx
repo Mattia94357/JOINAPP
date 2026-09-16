@@ -54,12 +54,21 @@ type ActivityDetails = {
   description: string;
   date?: string;
   startsAt?: string;
+  endsAt?: string;
   time?: string;
+  endTime?: string;
   distance?: string;
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   vibe?: string;
   attendees?: number;
   maxAttendees?: number;
+  venueName?: string;
+  exactAddress?: string;
+  costType?: 'Free' | 'Paid';
+  costAmount?: number;
+  currency?: string;
+  hostNote?: string;
+  cancellationPolicy?: string;
   coverImage?: string;
   availabilityTag?: string;
   visibility?: 'public' | 'private';
@@ -315,7 +324,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   };
 
   const openActivityLocation = () => {
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.location)}`;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.exactAddress || activity.venueName || activity.location)}`;
     Linking.openURL(mapsUrl).catch(() => {
       Alert.alert('Could not open maps', 'Please try again in a moment.');
     });
@@ -537,7 +546,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="time-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Time</Text>
-            <Text style={styles.metadataValue}>{activity.time || 'Anytime'}</Text>
+            <Text style={styles.metadataValue}>{activity.endTime ? `${activity.time || 'Anytime'} – ${activity.endTime}` : activity.time || 'Anytime'}</Text>
           </View>
           <TouchableOpacity
             style={[styles.metadataCard, compact && styles.metadataCardCompact]}
@@ -546,7 +555,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
           >
             <Ionicons name="location-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Place</Text>
-            <Text style={styles.metadataValue} numberOfLines={1}>{activity.location}</Text>
+            <Text style={styles.metadataValue} numberOfLines={1}>{activity.venueName || activity.location}</Text>
           </TouchableOpacity>
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="navigate-outline" size={18} color="#f5c12d" />
@@ -557,6 +566,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
             <Ionicons name="star-outline" size={18} color="#f5c12d" />
             <Text style={styles.metadataLabel}>Vibe</Text>
             <Text style={styles.metadataValue}>{activity.vibe || 'Social'}</Text>
+          </View>
+          <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
+            <Ionicons name="cash-outline" size={18} color="#f5c12d" />
+            <Text style={styles.metadataLabel}>Cost</Text>
+            <Text style={styles.metadataValue}>{activity.costType === 'Paid' ? `${activity.currency || 'AUD'} ${activity.costAmount || 0}` : 'Free'}</Text>
           </View>
         </View>
 
@@ -591,6 +605,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
             </View>
           ) : null}
           <Text style={styles.descriptionText}>{activity.description}</Text>
+          {activity.cancellationPolicy ? <Text style={styles.detailNote}>Cancellation: {activity.cancellationPolicy}</Text> : null}
+          {activity.hostNote ? <Text style={styles.detailNote}>Host note: {activity.hostNote}</Text> : null}
           {isCancelled && activity.cancellationReason ? <Text style={styles.cancelReason}>{activity.cancellationReason}</Text> : null}
         </View>
 
@@ -1119,6 +1135,12 @@ const styles = StyleSheet.create({
     color: '#d1d1d1',
     fontSize: 14,
     lineHeight: 21,
+  },
+  detailNote: {
+    color: '#b9b9b9',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
   },
   cancelReason: {
     color: '#fca5a5',

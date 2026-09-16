@@ -59,10 +59,15 @@ export default function CreateActivityScreen({ navigation }: Props) {
     const activityStart = combineLocalDateAndTime(date, startTime);
     if (!activityStart) return showError('Use a valid date (YYYY-MM-DD) and start time, such as 7:30 PM.');
     if (activityStart.getTime() <= Date.now()) return showError('Activity start time must be in the future.');
+    const activityEnd = endTime.trim() ? combineLocalDateAndTime(date, endTime) : undefined;
+    if (endTime.trim() && !activityEnd) return showError('Use a valid end time, such as 9:30 PM.');
+    if (activityEnd && activityEnd.getTime() <= activityStart.getTime()) return showError('End time must be after start time.');
     if (!Number.isInteger(capacity) || capacity < 2) return showError('Max participants must be at least 2.');
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
-    if (costType === 'Paid' && Number(costAmount || 0) <= 0) return showError('Enter a cost amount or choose Free.');
-    const galleryImages = galleryImagesText.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 5);
+    const normalizedCost = Number(costAmount);
+    if (costType === 'Paid' && (!Number.isFinite(normalizedCost) || normalizedCost <= 0)) return showError('Enter a cost amount or choose Free.');
+    const galleryImages = galleryImagesText.split('\n').map((item) => item.trim()).filter(Boolean);
+    if (galleryImages.length > 5) return showError('Use up to 5 gallery image URLs.');
     if (coverImage.trim() && !imageUrlPattern.test(coverImage.trim())) {
       return showError('Use a valid JPEG, PNG, or WEBP cover image URL.');
     }
@@ -94,11 +99,10 @@ export default function CreateActivityScreen({ navigation }: Props) {
           category: category.trim(),
           description: description.trim(),
           date: activityStart.toISOString(),
-          startTime: startTime.trim(),
-          endTime: endTime.trim(),
+          endDate: activityEnd?.toISOString(),
           maxAttendees: capacity,
           costType,
-          costAmount: costType === 'Paid' ? Number(costAmount) : 0,
+          costAmount: costType === 'Paid' ? normalizedCost : 0,
           currency: 'AUD',
           coverImage: coverImage.trim(),
           hostNote: hostNote.trim(),

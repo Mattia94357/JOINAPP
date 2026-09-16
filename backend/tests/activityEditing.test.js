@@ -82,10 +82,20 @@ const withHarness = async (activity, test) => {
   assert.equal(parsed.update.title, 'Updated activity');
   assert.equal(parsed.update.date.toISOString(), future.toISOString());
 
+  const persistedDetails = parseActivityEdit({
+    endDate: new Date(future.getTime() + 60 * 60 * 1000).toISOString(),
+    venueName: 'Updated venue', exactAddress: 'Updated meeting point',
+    costType: 'Paid', costAmount: 20, currency: 'AUD',
+    hostNote: 'Bring a jacket', cancellationPolicy: 'Cancelled if raining',
+  }, now);
+  assert.equal(persistedDetails.error, undefined);
+  assert.equal(persistedDetails.update.venueName, 'Updated venue');
+  assert.equal(persistedDetails.update.costAmount, 20);
+
   for (const protectedField of ['host', 'participants', 'pendingParticipants', 'status', 'visibility', 'joinApproval', 'inviteCode', 'activityRating', 'reviewCount']) {
     assert.match(parseActivityEdit({ [protectedField]: 'changed' }, now).error, /cannot be edited/);
   }
-  for (const unsupportedCreationField of ['venueName', 'exactAddress', 'startTime', 'endTime', 'costType', 'hostNote', 'cancellationPolicy']) {
+  for (const unsupportedCreationField of ['startTime', 'endTime']) {
     assert.match(parseActivityEdit({ [unsupportedCreationField]: 'changed' }, now).error, /cannot be edited/);
   }
   assert.match(parseActivityEdit({ date: now.toISOString() }, now).error, /future/);

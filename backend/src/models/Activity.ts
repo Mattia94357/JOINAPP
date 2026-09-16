@@ -17,12 +17,20 @@ export interface IActivity extends Document {
   waitlist?: Types.ObjectId[];
   invitedUsers?: Types.ObjectId[];
   date: Date;
+  endDate?: Date;
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   coverImage?: string;
   galleryImages?: string[];
   vibe?: string;
   availabilityTag?: string;
   maxAttendees?: number;
+  venueName?: string;
+  exactAddress?: string;
+  costType?: 'Free' | 'Paid';
+  costAmount?: number;
+  currency?: 'AUD';
+  hostNote?: string;
+  cancellationPolicy?: string;
   visibility?: 'public' | 'private';
   joinApproval?: 'auto' | 'manual';
   status?: 'active' | 'full' | 'cancelled' | 'completed';
@@ -49,12 +57,20 @@ const ActivitySchema = new Schema<IActivity>({
   waitlist: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   invitedUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   date: { type: Date, default: Date.now },
+  endDate: { type: Date },
   ageGroup: { type: String, enum: ['any', '18-24', '25-34', '35-44', '45+'], default: 'any' },
   coverImage: { type: String },
   galleryImages: [{ type: String }],
   vibe: { type: String },
   availabilityTag: { type: String },
   maxAttendees: { type: Number },
+  venueName: { type: String, maxlength: 120 },
+  exactAddress: { type: String, maxlength: 240 },
+  costType: { type: String, enum: ['Free', 'Paid'], default: 'Free' },
+  costAmount: { type: Number, min: 0, default: 0 },
+  currency: { type: String, enum: ['AUD'], default: 'AUD' },
+  hostNote: { type: String, maxlength: 500 },
+  cancellationPolicy: { type: String, maxlength: 500 },
   visibility: { type: String, enum: ['public', 'private'], default: 'public' },
   joinApproval: { type: String, enum: ['auto', 'manual'], default: 'auto' },
   status: { type: String, enum: ['active', 'full', 'cancelled', 'completed'], default: 'active' },
