@@ -1,3 +1,5 @@
+import { activeUserFilter, isBlockedBetween } from '../services/blocking';
+import { asyncHandler } from '../middleware/asyncHandler';
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { rateLimit } from 'express-rate-limit';
@@ -33,11 +35,6 @@ const idInList = (list: any[] | undefined, id?: string) =>
   Boolean(id && (list || []).some((item) => toId(item) === id));
 const directKeyFor = (firstId: string, secondId: string) => [firstId, secondId].sort().join(':');
 
-const isBlockedBetween = (first: any, second: any) => {
-  const firstBlocked = (first?.blockedUsers || []).some((id: any) => toId(id) === second?.id);
-  const secondBlocked = (second?.blockedUsers || []).some((id: any) => toId(id) === first?.id);
-  return firstBlocked || secondBlocked;
-};
 
 const activityMemberIds = confirmedActivityMemberIds;
 
@@ -53,7 +50,7 @@ const usersShareActivity = async (firstId: string, secondId: string) =>
 const ensureActivityChats = async (userId: string) => {
   const activities = await Activity.find({
     $or: [{ host: userId }, { participants: userId }],
-  }).select('_id host participants visibility status');
+  }).select('_id host hostDeleted participants visibility status');
 
   await Promise.all(activities.map(async (activity) => {
     const members = activityMemberIds(activity);
@@ -145,8 +142,8 @@ const getConversationLists = async (userId: string) => {
   await ensureActivityChats(userId);
 
   const chats = await Chat.find({ members: userId })
-    .populate('activity', 'title coverImage host participants status')
-    .populate('members', 'name avatar profilePictureUrl profileThumbnailUrl blockedUsers')
+    .populate('activity', 'title coverImage host hostDeleted participants status')
+    .populate('members', 'name avatar profilePictureUrl profileThumbnailUrl blockedUsers deletionStartedAt deletedAt')
     .sort({ updatedAt: -1 });
 
   await Promise.all(chats.map(async (chat: any) => {
@@ -154,6 +151,8 @@ const getConversationLists = async (userId: string) => {
       chat.chatType === 'directPrivateChat'
       && chat.directState === 'request'
       && chat.members?.length === 2
+      && chat.members.every((member: any) => member && !member.deletionStartedAt && !member.deletedAt)
+      && !isBlockedBetween(chat.members[0], chat.members[1])
       && await usersShareActivity(toId(chat.members[0]), toId(chat.members[1]))
     ) {
       chat.directState = 'active';
@@ -163,7 +162,10 @@ const getConversationLists = async (userId: string) => {
   }));
 
   const visibleChats = chats.filter((chat: any) => {
-    if (chat.chatType === 'directPrivateChat') return true;
+    if (chat.chatType === 'directPrivateChat') {
+      return chat.members.length === 2 && chat.members.every((user: any) => user && !user.deletionStartedAt && !user.deletedAt)
+        && !isBlockedBetween(chat.members[0], chat.members[1]);
+    }
     const activity = chat.activity;
     return activity && canAccessActivityChat(activity, userId);
   });
@@ -230,8 +232,8 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
 
   if (chat.chatType === 'directPrivateChat') {
     if (!idInList(chat.members, userId)) return { error: 'You do not have access to this conversation.' };
-    const members = await User.find({ _id: { $in: chat.members } }).select('blockedUsers');
-    if (members.length === 2 && isBlockedBetween(members[0], members[1])) {
+    const members = await User.find({ _id: { $in: chat.members }, ...activeUserFilter }).select('blockedUsers');
+    if (members.length !== 2 || isBlockedBetween(members[0], members[1])) {
       return { error: 'This conversation is unavailable.' };
     }
     return { chat };
@@ -242,11 +244,7 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
     return { error: 'You need to join this activity to access the chat.' };
   }
 
-  const user = await User.findById(userId);
-  const members = await User.find({ _id: { $in: activityMemberIds(activity) } }).select('blockedUsers');
-  const blockedMember = members.some((member) => member.id !== userId && user && isBlockedBetween(user, member));
-  if (user && blockedMember) return { error: 'Chat is unavailable for this activity.' };
-
+  // Group access follows activity membership; pairwise blocks affect direct chats only.
   const synchronizedChat = await Chat.findByIdAndUpdate(
     chat._id,
     {
@@ -263,7 +261,7 @@ const getAuthorizedChat = async (id: string, userId?: string) => {
   return { chat: synchronizedChat, activity };
 };
 
-router.get('/', auth, async (req: AuthRequest, res) => {
+router.get('/', auth, asyncHandler(async (req: AuthRequest, res) => {
   if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
   const lists = await getConversationLists(req.userId);
   const scope = req.query.scope === 'requests' ? 'requests' : 'active';
@@ -272,18 +270,18 @@ router.get('/', auth, async (req: AuthRequest, res) => {
     unreadConversationCount: lists.unreadConversationCount,
     unreadRequestCount: lists.unreadRequestCount,
   });
-});
+}));
 
-router.get('/unread-count', auth, async (req: AuthRequest, res) => {
+router.get('/unread-count', auth, asyncHandler(async (req: AuthRequest, res) => {
   if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
   const lists = await getConversationLists(req.userId);
   return res.json({
     unreadConversationCount: lists.unreadConversationCount,
     unreadRequestCount: lists.unreadRequestCount,
   });
-});
+}));
 
-router.post('/direct/:userId', auth, async (req: AuthRequest<DirectUserParams>, res) => {
+router.post('/direct/:userId', auth, asyncHandler(async (req: AuthRequest<DirectUserParams>, res) => {
   const currentUserId = req.userId;
   const otherUserId = req.params.userId;
   if (!currentUserId || !Types.ObjectId.isValid(otherUserId)) {
@@ -297,7 +295,7 @@ router.post('/direct/:userId', auth, async (req: AuthRequest<DirectUserParams>, 
     User.findById(currentUserId),
     User.findById(otherUserId),
   ]);
-  if (!currentUser || !otherUser) return res.status(404).json({ message: 'User not found.' });
+  if (!currentUser || !otherUser || otherUser.deletionStartedAt || otherUser.deletedAt) return res.status(404).json({ message: 'User not found.' });
   if (isBlockedBetween(currentUser, otherUser)) {
     return res.status(403).json({ message: 'This conversation is unavailable.' });
   }
@@ -338,9 +336,9 @@ router.post('/direct/:userId', auth, async (req: AuthRequest<DirectUserParams>, 
     state: chat.directState || 'active',
     title: otherUser.name,
   });
-});
+}));
 
-router.get('/:id', auth, async (req: AuthRequest<ChatIdParams>, res) => {
+router.get('/:id', auth, asyncHandler(async (req: AuthRequest<ChatIdParams>, res) => {
   const result = await getAuthorizedChat(req.params.id, req.userId);
   if (!result) return res.status(404).json({ message: 'Chat not found' });
   if ('error' in result) return res.status(403).json({ message: result.error });
@@ -364,14 +362,14 @@ router.get('/:id', auth, async (req: AuthRequest<ChatIdParams>, res) => {
     ...chat.toObject(),
     readOnly: isActivityChatReadOnly(chat.activity, chat),
   });
-});
+}));
 
 router.post(
   '/:id/message',
   auth,
   chatLimiter,
   body('message').isString().trim().isLength({ min: 1, max: 1200 }),
-  async (req: AuthRequest<ChatIdParams, unknown, SendMessageBody>, res) => {
+  asyncHandler(async (req: AuthRequest<ChatIdParams, unknown, SendMessageBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
@@ -418,7 +416,7 @@ router.post(
     await chat.save();
 
     return res.json(chat);
-  },
+  }),
 );
 
 export default router;

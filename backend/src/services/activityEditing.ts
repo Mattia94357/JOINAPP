@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import Activity, { IActivity } from '../models/Activity';
+import { appendNotificationEvent, materialEditCondition } from './notificationEvents';
 import { isScheduledStartInFuture, participationClosureReason, upcomingActivityFilter } from '../utils/activityLifecycle';
 
 const allowedCategories = new Set([
@@ -177,6 +178,7 @@ export const editUpcomingActivityAtomically = (
   const participantCount = { $size: { $ifNull: ['$participants', []] } };
   const maxAttendees = update.maxAttendees === undefined ? '$maxAttendees' : literal(update.maxAttendees);
   const set: Record<string, unknown> = {};
+  set.notificationEvents = appendNotificationEvent('activity_edited', hostId, undefined, materialEditCondition(update));
   Object.entries(update).forEach(([key, value]) => { set[key] = literal(value); });
   set.status = {
     $cond: [

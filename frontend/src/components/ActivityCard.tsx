@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
+import { useNotifications } from '../context/NotificationContext';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { colors } from '../theme';
 import LocationPreviewModal from './LocationPreviewModal';
@@ -83,6 +84,7 @@ export default function ActivityCard({
   const imagePressScale = useRef(new Animated.Value(1)).current;
   const imagePressOpacity = useRef(new Animated.Value(1)).current;
   const notificationsScale = useRef(new Animated.Value(1)).current;
+  const { unreadCount } = useNotifications();
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
   const passScale = useRef(new Animated.Value(1)).current;
@@ -171,9 +173,10 @@ export default function ActivityCard({
                     }}
                     activeOpacity={0.78}
                     accessibilityRole="button"
-                    accessibilityLabel="Notifications"
+                    accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                   >
                     <Ionicons name="notifications-outline" size={compact ? 23 : 25} color={colors.primary} />
+                    {unreadCount > 0 ? <View style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary }} /> : null}
                   </TouchableOpacity>
                 </Animated.View>
 

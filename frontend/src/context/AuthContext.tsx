@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { ApiUser, fetchCurrentUserRequest, loginRequest, registerRequest, updatePushTokenRequest } from '../api';
-import { registerForPushNotificationsAsync } from '../utils/notifications';
+import { ApiUser, fetchCurrentUserRequest, loginRequest, registerRequest } from '../api';
+import { startPushRegistration, revokeCurrentPushDevice } from '../utils/pushRegistration';
 
 type AuthState = {
   user: ApiUser | null;
@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  useEffect(() => { if (token) return startPushRegistration(token); }, [token]);
 
   useEffect(() => {
     async function restore() {
@@ -62,17 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (name: string, email: string, password: string) => {
     const response = await registerRequest(name, email, password);
     const { token: newToken } = response.data;
-    let newUser = response.data.user;
-
-    try {
-      const pushToken = await registerForPushNotificationsAsync();
-      if (pushToken) {
-        const pushResponse = await updatePushTokenRequest(pushToken, newToken);
-        newUser = pushResponse.data;
-      }
-    } catch (error) {
-      console.warn('Unable to register push notifications', error);
-    }
+    const newUser = response.data.user;
 
     setUser(newUser);
     setToken(newToken);
@@ -83,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    if (token) await revokeCurrentPushDevice(token);
     setUser(null);
     setToken(null);
     await Promise.all([AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(TOKEN_KEY)]);

@@ -1,6 +1,8 @@
 import { FilterQuery, Types } from 'mongoose';
 import Activity, { IActivity } from '../models/Activity';
 import User from '../models/User';
+import { activeUserFilter, isBlockedBetween } from './blocking';
+import { appendNotificationEvent } from './notificationEvents';
 import { participationClosureReason, upcomingActivityFilter } from '../utils/activityLifecycle';
 
 export type MembershipState = 'participant' | 'pending' | 'declined' | 'waitlisted' | 'none';
@@ -11,7 +13,7 @@ const objectId = (value: string) => new Types.ObjectId(value);
 const ids = (values: any[] | undefined) => (values || []).map((value) => value?._id?.toString?.() || value?.toString?.());
 
 export const confirmedActivityMemberIds = (activity: Partial<IActivity>) => Array.from(new Set([
-  activity.host?._id?.toString?.() || activity.host?.toString?.(),
+  activity.hostDeleted ? undefined : activity.host?._id?.toString?.() || activity.host?.toString?.(),
   ...ids(activity.participants),
 ].filter(Boolean) as string[]));
 
@@ -144,7 +146,10 @@ export const addPendingJoin = (
       ...noConflictingMembership(userObjectId),
       $expr: capacityAvailableExpression,
     },
-    { $addToSet: { pendingParticipants: userObjectId } },
+    [{ $set: {
+      pendingParticipants: { $setUnion: [{ $ifNull: ['$pendingParticipants', []] }, [userObjectId]] },
+      notificationEvents: appendNotificationEvent('join_request', userId),
+    } }],
     { new: true },
   );
 };
@@ -187,7 +192,9 @@ export const approvePendingJoin = (
       participants: { $ne: userObjectId },
       $expr: capacityAvailableExpression,
     },
-    confirmPipeline(userObjectId),
+    [{ $set: { ...confirmPipeline(userObjectId)[0].$set,
+      notificationEvents: appendNotificationEvent('join_approved', hostId, userId),
+    } }],
     { new: true },
   );
 };
@@ -207,6 +214,7 @@ export const declinePendingJoin = (
     },
     [{
       $set: {
+        notificationEvents: appendNotificationEvent('join_declined', hostId, userId),
         pendingParticipants: withoutUser('pendingParticipants', userObjectId),
         declinedParticipants: { $setUnion: [{ $ifNull: ['$declinedParticipants', []] }, [userObjectId]] },
         waitlist: withoutUser('waitlist', userObjectId),
@@ -274,6 +282,7 @@ export const removeConfirmedParticipant = (
     },
     [{
       $set: {
+        notificationEvents: appendNotificationEvent('participant_removed', hostId, targetUserId),
         participants: remainingParticipants,
         status: {
           $cond: [
@@ -298,18 +307,30 @@ export type WaitlistPromotionResult = {
   promotedUserIds: string[];
 };
 
+// Re-read both directions of every current member's block relationship.
+export const isMembershipEligible = async (activity: Partial<IActivity>, candidateId: string) => {
+  const memberIds = confirmedActivityMemberIds(activity);
+  const users = await User.find({ _id: { $in: [...memberIds, candidateId] }, ...activeUserFilter }).select('_id blockedUsers profileCompleted profilePictureUrl');
+  const candidate = users.find((user) => user._id.toString() === candidateId);
+  const hostId = activity.host?.toString();
+  if (!candidate?.profileCompleted || !candidate.profilePictureUrl
+    || !users.some((user) => user._id.toString() === hostId)) return false;
+  return !users.some((user) => memberIds.includes(user._id.toString()) && isBlockedBetween(candidate, user));
+};
+
 // Claims the current queue head with a conditional single-document update.
 // Repeating that claim fills every available place while preserving FIFO order.
 export const promoteActivityWaitlist = async (
   activityId: string,
-  now = new Date(),
+  now?: Date,
 ): Promise<WaitlistPromotionResult> => {
+  const currentTime = () => now ?? new Date();
   let activity = await Activity.findById(activityId);
   const promotedUserIds: string[] = [];
 
   while (
     activity
-    && !participationClosureReason(activity, now)
+    && !participationClosureReason(activity, currentTime())
     && hasAvailableCapacity(activity)
     && (activity.waitlist || []).length > 0
   ) {
@@ -317,14 +338,14 @@ export const promoteActivityWaitlist = async (
     const candidateObjectId = objectId(candidateId);
     const hostId = activity.host.toString();
     const state = membershipState(activity, candidateId);
-    const candidateExists = await User.exists({ _id: candidateObjectId });
-    const isEligible = candidateId !== hostId && state === 'waitlisted' && Boolean(candidateExists);
+    const isEligible = candidateId !== hostId && state === 'waitlisted'
+      && await isMembershipEligible(activity, candidateId);
 
     if (!isEligible) {
       const cleaned = await Activity.findOneAndUpdate(
         {
           _id: activityId,
-          ...lifecycleFilter(now),
+          ...lifecycleFilter(currentTime()),
           'waitlist.0': candidateObjectId,
         },
         { $pull: { waitlist: candidateObjectId } },
@@ -343,22 +364,36 @@ export const promoteActivityWaitlist = async (
       continue;
     }
 
+    const requiresApproval = activity.visibility === 'private' || activity.joinApproval === 'manual';
     const promoted = await Activity.findOneAndUpdate(
       {
         _id: activityId,
-        ...lifecycleFilter(now),
+        ...lifecycleFilter(currentTime()),
         host: { $ne: candidateObjectId },
+        // Do not use eligibility checked against a stale roster or approval policy.
+        $and: [
+          { host: activity.host },
+          { participants: activity.participants },
+          { $expr: { $eq: [{ $ifNull: ['$visibility', 'public'] }, activity.visibility ?? 'public'] } },
+          { $expr: { $eq: [{ $ifNull: ['$joinApproval', 'auto'] }, activity.joinApproval ?? 'auto'] } },
+        ],
         'waitlist.0': candidateObjectId,
         participants: { $ne: candidateObjectId },
         pendingParticipants: { $ne: candidateObjectId },
         declinedParticipants: { $ne: candidateObjectId },
         $expr: capacityAvailableExpression,
       },
-      confirmPipeline(candidateObjectId),
+      requiresApproval ? [{ $set: {
+        pendingParticipants: { $setUnion: [{ $ifNull: ['$pendingParticipants', []] }, [candidateObjectId]] },
+        waitlist: withoutUser('waitlist', candidateObjectId),
+        notificationEvents: appendNotificationEvent('join_request', candidateId),
+      } }] : [{ $set: { ...confirmPipeline(candidateObjectId)[0].$set,
+        notificationEvents: appendNotificationEvent('waitlist_promoted', undefined, candidateId),
+      } }],
       { new: true },
     );
     if (promoted) {
-      promotedUserIds.push(candidateId);
+      if (!requiresApproval) promotedUserIds.push(candidateId);
       activity = promoted;
       continue;
     }
@@ -367,7 +402,7 @@ export const promoteActivityWaitlist = async (
     if (!latest || (
       latest.waitlist?.[0]?.toString() === candidateId
       && hasAvailableCapacity(latest)
-      && !participationClosureReason(latest, now)
+      && !participationClosureReason(latest, currentTime())
     )) {
       activity = latest;
       break;

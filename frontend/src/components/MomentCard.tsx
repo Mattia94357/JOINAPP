@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { MomentResponse } from '../api';
 import { colors, spacing } from '../theme';
 import AvatarBadge from './AvatarBadge';
+import ReportButton from './ReportButton';
 
 type Props = {
   moment: MomentResponse;
@@ -78,6 +79,7 @@ export default function MomentCard({ moment, busy, onActivityPress, onCreatorPre
       </View>
 
       {moment.caption ? <Text style={styles.caption}>{moment.caption}</Text> : null}
+      {!moment.canDelete ? <ReportButton targetType="moment" targetId={moment.id} label="Report Moment" /> : null}
       {moment.canDelete && onDelete ? (
         <TouchableOpacity style={styles.deleteButton} disabled={busy} onPress={() => onDelete(moment)}>
           <Ionicons name="trash-outline" size={14} color={colors.textSubtle} />

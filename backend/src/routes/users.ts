@@ -1,16 +1,17 @@
+import { deleteAccount } from '../services/accountDeletion';
+import { activeUserFilter, socialAccessDenied } from '../services/blocking';
+import { submitReport } from '../services/reports';
+import { reportLimiter } from './reports';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { getRequesterId } from '../services/sessions';
 import express, { Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import User, { IUser } from '../models/User';
 import Activity from '../models/Activity';
-import UserReport from '../models/UserReport';
-import Chat from '../models/Chat';
-import Moment from '../models/Moment';
 import { rateLimit } from 'express-rate-limit';
 import type { ParamsDictionary } from 'express-serve-static-core';
-import jwt from 'jsonwebtoken';
-import { getJwtSecret } from '../config/security';
 import { effectiveActivityStatus } from '../utils/activityLifecycle';
 import { completePastActivities } from '../services/activityCompletion';
 
@@ -35,17 +36,11 @@ type ProfilePhotoBody = {
   profilePictureUrl: string;
   profileThumbnailUrl?: string;
 };
-type PushTokenBody = {
-  pushToken: string;
-};
 type PrivacyBody = {
   locationPublic?: boolean;
   hostedActivitiesPublic?: boolean;
   joinedActivitiesPublic?: boolean;
   publicGender?: boolean;
-};
-type ReportBody = {
-  reason?: string;
 };
 
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
@@ -61,15 +56,7 @@ const isAllowedGender = (value: unknown): value is Gender =>
 
 const optionalTrimmedString = (value: unknown) => (typeof value === 'string' ? value.trim() : undefined);
 
-const getRequesterId = (req: express.Request) => {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return undefined;
-  try {
-    return (jwt.verify(header.slice(7), getJwtSecret()) as { userId?: string }).userId;
-  } catch {
-    return undefined;
-  }
-};
+
 
 const historyActivityFields = 'title category location locationPrivacy date visibility status coverImage host participants';
 const canViewHistoryActivity = (activity: any, viewerId?: string) => (
@@ -175,7 +162,7 @@ router.patch(
   body('gender').optional({ nullable: true, checkFalsy: true }).isIn(allowedGenders),
   body('publicGender').optional().isBoolean(),
   body('hasCompletedOnboardingTutorial').optional().isBoolean(),
-  async (req: AuthRequest<NoParams, unknown, ProfileBody>, res: ApiResponse) => {
+  asyncHandler(async (req: AuthRequest<NoParams, unknown, ProfileBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
@@ -206,16 +193,16 @@ router.patch(
 
     await user.save();
     res.json(userPayload(user));
-  },
+  }),
 );
 
-router.get('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
+router.get('/me', auth, asyncHandler(async (req: AuthRequest, res: ApiResponse) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(userPayload(user));
-});
+}));
 
-router.get('/me/history', auth, async (req: AuthRequest, res: ApiResponse) => {
+router.get('/me/history', auth, asyncHandler(async (req: AuthRequest, res: ApiResponse) => {
   await completePastActivities(new Date(), { $or: [{ host: req.userId }, { participants: req.userId }] });
   const [hostedActivities, joinedActivities, hostedCount, joinedCount] = await Promise.all([
     Activity.find({ host: req.userId, status: { $ne: 'cancelled' } }).sort({ date: -1 }).limit(100).select(historyActivityFields),
@@ -229,7 +216,7 @@ router.get('/me/history', auth, async (req: AuthRequest, res: ApiResponse) => {
     hostedCount,
     joinedCount,
   });
-});
+}));
 
 router.patch(
   '/me/profile-photo',
@@ -243,7 +230,7 @@ router.patch(
     .isString()
     .custom(isValidProfileImage)
     .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
-  async (req: AuthRequest<NoParams, unknown, ProfilePhotoBody>, res: ApiResponse) => {
+  asyncHandler(async (req: AuthRequest<NoParams, unknown, ProfilePhotoBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
@@ -257,27 +244,11 @@ router.patch(
     await user.save();
 
     res.json(userPayload(user));
-  },
+  }),
 );
 
-// Stores the Expo push token for the signed-in user so future engagement notifications can be sent.
-router.patch(
-  '/me/push-token',
-  auth,
-  body('pushToken').isString().isLength({ min: 10, max: 512 }),
-  async (req: AuthRequest<NoParams, unknown, PushTokenBody>, res: ApiResponse) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid push token.' });
-
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    user.pushToken = req.body.pushToken;
-    await user.save();
-
-    res.json(userPayload(user));
-  },
-);
+// Old clients must upgrade rather than reactivate an unowned singleton token.
+router.patch('/me/push-token', auth, (_req, res) => res.status(410).json({ message: 'Please update JOIN to register this device.' }));
 
 router.patch(
   '/me/privacy',
@@ -286,7 +257,7 @@ router.patch(
   body('hostedActivitiesPublic').optional().isBoolean(),
   body('joinedActivitiesPublic').optional().isBoolean(),
   body('publicGender').optional().isBoolean(),
-  async (req: AuthRequest<NoParams, unknown, PrivacyBody>, res: ApiResponse) => {
+  asyncHandler(async (req: AuthRequest<NoParams, unknown, PrivacyBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: 'Privacy settings must be true or false.' });
     const user = await User.findById(req.userId);
@@ -299,56 +270,31 @@ router.patch(
     await user.save();
 
     res.json(userPayload(user));
-  },
+  }),
 );
 
-// Permanently deletes the account, cancels hosted plans, and removes private references.
-router.delete('/me', auth, async (req: AuthRequest, res: ApiResponse) => {
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ message: 'User not found' });
-
-  const userId = user._id;
-  await Activity.updateMany({ host: userId, status: { $ne: 'cancelled' } }, { $set: { status: 'cancelled', cancellationReason: 'Host account deleted.' } });
-  await Activity.updateMany({}, { $pull: { participants: userId, pendingParticipants: userId, declinedParticipants: userId, waitlist: userId, invitedUsers: userId } });
-  await Chat.updateMany({}, { $pull: { members: userId, messages: { author: userId } } });
-  await Moment.deleteMany({ creator: userId });
-  await Moment.updateMany({}, { $pull: { likes: userId } });
-  await User.updateMany({ blockedUsers: userId }, { $pull: { blockedUsers: userId } });
-  await UserReport.deleteMany({ $or: [{ reporter: userId }, { reportedUser: userId }] });
-  await User.deleteOne({ _id: userId });
+router.delete('/me', auth, asyncHandler(async (req: AuthRequest, res: ApiResponse) => {
+  await deleteAccount(req.userId as string);
   res.json({ message: 'Account deleted.' });
-});
+}));
 
-// Records a lightweight user report for moderation workflows without changing public API contracts.
-router.post(
-  '/:id/report',
-  auth,
-  moderationLimiter,
-  body('reason').optional().isString().isLength({ max: 500 }),
-  async (req: AuthRequest<UserIdParams, unknown, ReportBody>, res: ApiResponse) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ message: 'Report reason is too long.' });
+// Compatibility endpoint; all new reports use the same validation and deduplication.
+router.post('/:id/report', auth, reportLimiter, asyncHandler(async (req: any, res) => {
+  if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'User not found.' });
+  const result = await submitReport(req.userId, 'user', req.params.id, req.body?.reason, req.body?.detail);
+  res.status(result.status).json({ message: result.message });
+}));
 
-    if (!Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    if (req.params.id === req.userId) return res.status(400).json({ message: 'You cannot report yourself.' });
-
-    const reportedUser = await User.findById(req.params.id);
-    if (!reportedUser) return res.status(404).json({ message: 'User not found' });
-
-    await UserReport.create({
-      reporter: req.userId,
-      reportedUser: req.params.id,
-      reason: req.body.reason || 'No reason provided',
-    });
-
-    res.status(201).json({ message: 'Report submitted.' });
-  },
-);
+router.get('/me/blocked-users', auth, asyncHandler(async (req: AuthRequest, res) => {
+  const user = await User.findById(req.userId).select('blockedUsers');
+  const blocked = await User.find({ _id: { $in: user?.blockedUsers || [] }, ...activeUserFilter })
+    .select('name avatar profilePictureUrl profileThumbnailUrl');
+  res.json(blocked.map((person) => ({ id: person.id, name: person.name,
+    avatar: person.profileThumbnailUrl || person.profilePictureUrl || person.avatar })));
+}));
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.
-router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
+router.post('/:id/block', auth, moderationLimiter, asyncHandler(async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User to block not found' });
   }
@@ -362,19 +308,15 @@ router.post('/:id/block', auth, moderationLimiter, async (req: AuthRequest<UserI
     User.findById(req.params.id),
   ]);
   if (!user) return res.status(404).json({ message: 'User not found' });
-  if (!blockedUser) return res.status(404).json({ message: 'User to block not found' });
+  if (!blockedUser || blockedUser.deletionStartedAt || blockedUser.deletedAt) return res.status(404).json({ message: 'User to block not found' });
 
-  const alreadyBlocked = (user.blockedUsers || []).some((id) => id.toString() === req.params.id);
-  if (!alreadyBlocked) {
-    user.blockedUsers = [...(user.blockedUsers || []), blockedUser._id];
-    await user.save();
-  }
+  await User.updateOne({ _id: req.userId }, { $addToSet: { blockedUsers: blockedUser._id } });
 
   res.json({ message: 'User blocked.' });
-});
+}));
 
 // Removes a user from the signed-in user's block list.
-router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
+router.post('/:id/unblock', auth, asyncHandler(async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User not found' });
   }
@@ -382,13 +324,12 @@ router.post('/:id/unblock', auth, async (req: AuthRequest<UserIdParams>, res: Ap
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ message: 'User not found' });
 
-  user.blockedUsers = (user.blockedUsers || []).filter((id) => id.toString() !== req.params.id);
-  await user.save();
+  await User.updateOne({ _id: req.userId }, { $pull: { blockedUsers: req.params.id } });
 
   res.json({ message: 'User unblocked.' });
-});
+}));
 
-router.get('/:id', async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
+router.get('/:id', asyncHandler(async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'User not found' });
   }
@@ -396,7 +337,8 @@ router.get('/:id', async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
   const user = await User.findById(req.params.id).select('-password -passwordResetTokenHash -passwordResetExpires');
   if (!user) return res.status(404).json({ message: 'User not found' });
 
-  const viewerId = getRequesterId(req);
+  const viewerId = await getRequesterId(req);
+  if (await socialAccessDenied(viewerId, user.id)) return res.status(403).json({ message: 'Profile unavailable.' });
   const accessQuery = viewerId
     ? { $or: [{ visibility: { $ne: 'private' } }, { host: viewerId }, { participants: viewerId }] }
     : { visibility: { $ne: 'private' } };
@@ -422,6 +364,6 @@ router.get('/:id', async (req: AuthRequest<UserIdParams>, res: ApiResponse) => {
     hostedCount,
     joinedCount,
   });
-});
+}));
 
 export default router;

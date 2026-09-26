@@ -41,6 +41,7 @@ import ParticipantsModal from '../components/ParticipantsModal';
 import { getActivityCoverImage } from '../utils/activityAssets';
 import { getCuratedActivity } from '../utils/curatedActivities';
 import MomentCard from '../components/MomentCard';
+import ReportButton from '../components/ReportButton';
 import CreateMomentModal from '../components/CreateMomentModal';
 import MomentCommentsSection from '../components/MomentCommentsSection';
 import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
@@ -575,6 +576,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
       </ImageBackground>
 
       <View style={styles.content}>
+        {!isHost ? <ReportButton targetType="activity" targetId={activityId} label="Report activity" /> : null}
         <View style={styles.metadataGrid}>
           <View style={[styles.metadataCard, compact && styles.metadataCardCompact]}>
             <Ionicons name="time-outline" size={18} color="#f5c12d" />

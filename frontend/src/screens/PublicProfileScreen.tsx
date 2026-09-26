@@ -11,11 +11,11 @@ import {
   MomentResponse,
   openDirectConversationRequest,
   ProfileActivity,
-  reportUserRequest,
   ApiUser,
   unlikeMomentRequest,
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
+import ReportButton from '../components/ReportButton';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
@@ -77,19 +77,6 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const languages = profile?.languages || [];
   const targetUserId = profile?.id || userId;
   const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
-  const handleReport = async () => {
-    if (!token || !targetUserId) {
-      Alert.alert('Sign in required', 'Please log in to report a user.');
-      return;
-    }
-
-    try {
-      await reportUserRequest(targetUserId, token, 'Reported from public profile safety action.');
-      Alert.alert('Report submitted', 'Thanks for helping keep JOIN safe.');
-    } catch (error: any) {
-      Alert.alert('Unable to report', error?.response?.data?.message || 'Please try again later.');
-    }
-  };
 
   const handleBlock = async () => {
     if (!token || !targetUserId) {
@@ -185,10 +172,7 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
 
       {targetUserId && targetUserId !== user?.id ? (
         <View style={styles.safetyActions}>
-          <TouchableOpacity style={styles.safetyButton} onPress={handleReport}>
-            <Ionicons name="flag-outline" size={16} color={colors.primary} />
-            <Text style={styles.safetyText}>Report user</Text>
-          </TouchableOpacity>
+          <ReportButton targetType="user" targetId={targetUserId} label="Report user" />
           <TouchableOpacity style={styles.safetyButton} onPress={handleBlock}>
             <Ionicons name="remove-circle-outline" size={16} color={colors.danger} />
             <Text style={styles.safetyText}>Block user</Text>

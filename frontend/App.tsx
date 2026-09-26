@@ -14,6 +14,7 @@ import EditActivityScreen from './src/screens/EditActivityScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import BlockedUsersScreen from './src/screens/BlockedUsersScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
@@ -23,6 +24,8 @@ import MapModeScreen from './src/screens/MapModeScreen';
 import type { ActivityResponse } from './src/api';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { MessagingProvider } from './src/context/MessagingContext';
+import { NotificationProvider } from './src/context/NotificationContext';
+import { useNativePushRouting } from './src/hooks/useNativePushRouting';
 import { colors } from './src/theme';
 import { getApiConfigStatus, initializeApiConfig } from './src/api';
 import ResponsiveAppContainer from './src/components/ResponsiveAppContainer';
@@ -58,6 +61,7 @@ export type RootStackParamList = {
   MessageRequests: undefined;
   Profile: undefined;
   Settings: undefined;
+  BlockedUsers: undefined;
   Notifications: undefined;
 };
 
@@ -78,6 +82,7 @@ type AppNavigatorProps = {
 function AppNavigator({ onRouteChange }: AppNavigatorProps) {
   const { user, loading } = useAuth();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const pushNavigationReady = useNativePushRouting(navigationRef);
   const initialRouteName = user ? 'Home' : 'Onboarding';
 
   const reportActiveRoute = () => {
@@ -97,7 +102,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
   return (
     <NavigationContainer
       ref={navigationRef}
-      onReady={reportActiveRoute}
+      onReady={() => { reportActiveRoute(); pushNavigationReady(); }}
       onStateChange={reportActiveRoute}
       linking={{
         prefixes: getLinkingPrefixes(),
@@ -137,6 +142,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             <Stack.Screen name="Chat" component={ChatScreen} options={({ route }) => ({ title: route.params.title })} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+            <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ title: 'Blocked users' }} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
             <Stack.Screen
               name="PublicProfile"
@@ -247,7 +253,9 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <MessagingProvider>
-          <AppCanvas />
+          <NotificationProvider>
+            <AppCanvas />
+          </NotificationProvider>
         </MessagingProvider>
         <StatusBar style="light" />
       </AuthProvider>

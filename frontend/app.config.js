@@ -31,6 +31,9 @@ const legalUrl = (key, path) => process.env[key] || localEnv[key] || (legalBaseU
 
 module.exports = ({ config }) => ({
   ...config,
+  plugins: (config.plugins || []).some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === 'expo-notifications')
+    ? config.plugins
+    : [...(config.plugins || []), 'expo-notifications'],
   ios: {
     ...config.ios,
     infoPlist: {
@@ -42,6 +45,11 @@ module.exports = ({ config }) => ({
     },
   },
   extra: {
+    ...config.extra,
+    eas: {
+      ...config.extra?.eas,
+      projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID || localEnv.EXPO_PUBLIC_EAS_PROJECT_ID || config.extra?.eas?.projectId,
+    },
     API_URL: apiUrl,
     MAPTILER_API_KEY: mapTilerApiKey,
     MAPTILER_MAP_STYLE: mapTilerMapStyle || 'streets-v4-dark',

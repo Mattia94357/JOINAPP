@@ -116,6 +116,18 @@ const api = axios.create({
   timeout: 10000,
 });
 
+const activityChangeListeners = new Set<(authorization: string) => void>();
+export const onActivityMutation = (listener: (authorization: string) => void) => {
+  activityChangeListeners.add(listener);
+  return () => { activityChangeListeners.delete(listener); };
+};
+api.interceptors.response.use((response) => {
+  if (['post', 'patch', 'delete'].includes(response.config.method || '') && response.config.url?.startsWith('/api/activities/')) {
+    activityChangeListeners.forEach((listener) => listener(String(response.config.headers?.Authorization || '')));
+  }
+  return response;
+});
+
 const applyApiConfig = (nextConfig: ApiConfigStatus) => {
   apiConfig = nextConfig;
   api.defaults.baseURL = nextConfig.apiUrl || '';
@@ -165,7 +177,6 @@ export type ApiUser = {
   avatar?: string;
   profilePictureUrl?: string;
   profileThumbnailUrl?: string;
-  pushToken?: string;
   profileCompleted?: boolean;
   location?: string;
   interests?: string[];
@@ -253,6 +264,7 @@ export type RawActivity = {
   waitlist?: RawAvatarUser[];
   host: RawAvatarUser;
   participants: RawAvatarUser[];
+  participantCount?: number;
 };
 
 export type ActivityResponse = {
@@ -423,6 +435,15 @@ const mapParticipant = (participant: RawAvatarUser) => ({
 export const loginRequest = (email: string, password: string) =>
   api.post<{ token: string; user: ApiUser }>('/api/auth/login', { email, password });
 
+export type ReportTargetType = 'user' | 'activity' | 'moment' | 'comment';
+export const submitReportRequest = (targetType: ReportTargetType, targetId: string, reason: string, detail: string, token: string) =>
+  api.post('/api/reports', { targetType, targetId, reason, detail }, { headers: { Authorization: `Bearer ${token}` } });
+export type BlockedUser = { id: string; name: string; avatar?: string };
+export const fetchBlockedUsersRequest = (token: string) =>
+  api.get<BlockedUser[]>('/api/users/me/blocked-users', { headers: { Authorization: `Bearer ${token}` } });
+export const unblockUserRequest = (id: string, token: string) =>
+  api.post(`/api/users/${id}/unblock`, {}, { headers: { Authorization: `Bearer ${token}` } });
+
 export const registerRequest = (name: string, email: string, password: string) =>
   api.post<{ token: string; user: ApiUser }>('/api/auth/register', { name, email, password });
 
@@ -458,7 +479,7 @@ export const fetchActivities = async (token?: string) => {
     ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
-    attendees: activity.participants?.length || 0,
+    attendees: activity.participantCount ?? activity.participants?.length ?? 0,
     maxAttendees: activity.maxAttendees,
     costType: activity.costType || 'Free',
     costAmount: activity.costAmount || 0,
@@ -522,7 +543,7 @@ export const fetchActivity = async (activityId: string, token?: string, inviteCo
     ageGroup: activity.ageGroup || 'any',
     time: activity.date ? new Date(activity.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Anytime',
     vibe: activity.vibe || getVibeForCategory(normalizeActivityCategory(activity.category)),
-    attendees: activity.participants?.length || 0,
+    attendees: activity.participantCount ?? activity.participants?.length ?? 0,
     maxAttendees: activity.maxAttendees,
     costType: activity.costType || 'Free',
     costAmount: activity.costAmount || 0,
@@ -688,14 +709,33 @@ export const updateProfileRequest = async (
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const updatePushTokenRequest = async (pushToken: string, token: string) =>
-  api.patch<ApiUser>(
-    '/api/users/me/push-token',
-    { pushToken },
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+export const registerPushDeviceRequest = (installationId: string, payload: { expoPushToken: string; projectId: string; platform: 'ios' | 'android' }, token: string) =>
+  api.put<{ registrationId: string }>(`/api/push-devices/${installationId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+export const revokePushDeviceRequest = (installationId: string, registrationId: string, token: string) =>
+  api.delete(`/api/push-devices/${installationId}`, { headers: { Authorization: `Bearer ${token}` }, data: { registrationId } });
+export const fetchNotificationRequest = (id: string, token: string) =>
+  api.get<AppNotification>(`/api/notifications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+
+export type AppNotification = {
+  id: string;
+  type: 'join_request' | 'join_approved' | 'join_declined' | 'waitlist_promoted' | 'participant_removed' | 'activity_cancelled' | 'activity_edited';
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  target: { type: 'activity'; activityId: string } | null;
+  activityTitle: string | null;
+};
+export const fetchNotificationsRequest = (token: string, cursor?: string) =>
+  api.get<{ notifications: AppNotification[]; nextCursor: string | null }>('/api/notifications', {
+    headers: { Authorization: `Bearer ${token}` }, params: { cursor, limit: 20 },
+  });
+export const fetchNotificationCountRequest = (token: string) =>
+  api.get<{ unreadCount: number }>('/api/notifications/unread-count', { headers: { Authorization: `Bearer ${token}` } });
+export const markNotificationReadRequest = (id: string, token: string) =>
+  api.patch<{ id: string; readAt: string }>(`/api/notifications/${id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } });
+export const markAllNotificationsReadRequest = (token: string) =>
+  api.patch('/api/notifications/read-all', {}, { headers: { Authorization: `Bearer ${token}` } });
 
 export const deleteAccountRequest = async (token: string) =>
   api.delete('/api/users/me', {

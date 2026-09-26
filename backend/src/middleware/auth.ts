@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import type { ParsedQs } from 'qs';
-import jwt from 'jsonwebtoken';
-import { getJwtSecret } from '../config/security';
-import User from '../models/User';
+import { getRequesterId } from '../services/sessions';
+import { asyncHandler } from './asyncHandler';
 
 export interface AuthRequest<
   P = ParamsDictionary,
@@ -19,7 +18,7 @@ export interface AuthRequest<
   userId?: string;
 }
 
-const auth = async (
+const auth = asyncHandler(async (
   req: AuthRequest,
   res: Response<{ message: string }>,
   next: NextFunction,
@@ -31,19 +30,15 @@ const auth = async (
     return;
   }
 
-  const token = authHeader.split(' ')[1];
-  try {
-    const payload = jwt.verify(token, getJwtSecret()) as { userId: string };
-    if (!payload.userId || !(await User.exists({ _id: payload.userId }))) {
-      res.status(401).json({ message: 'Invalid token' });
-      return;
-    }
-    req.userId = payload.userId;
-    req.user = { id: payload.userId };
-    next();
-  } catch (error) {
+  const deletionRetry = req.method === 'DELETE' && req.baseUrl === '/api/users' && req.path === '/me';
+  const userId = await getRequesterId(req, deletionRetry);
+  if (!userId) {
     res.status(401).json({ message: 'Invalid token' });
+    return;
   }
-};
+  req.userId = userId;
+  req.user = { id: userId };
+  next();
+});
 
 export default auth;

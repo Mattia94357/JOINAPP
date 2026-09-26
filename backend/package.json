@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "set NODE_ENV=development&& ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
+    "test:beta-blockers": "npm run build && node tests/betaBlockers.test.js",
+    "test:beta-hardening": "npm run build && node tests/betaHardening.test.js",
     "test:lifecycle": "npm run build && node tests/activityLifecycle.test.js",
     "test:privacy": "npm run build && node tests/activityPrivacy.test.js",
     "test:capacity": "npm run build && node tests/activityMembership.test.js",
@@ -16,6 +18,8 @@
     "test:viewer-state": "npm run build && node tests/activityViewerState.test.js",
     "test:waitlist-promotion": "npm run build && node tests/waitlistPromotion.test.js",
     "test:activity-persistence": "npm run build && node tests/activityPersistence.test.js",
+    "test:notifications": "npm run build && node tests/notifications.test.js",
+    "test:push": "npm run build && node tests/pushDelivery.test.js",
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",
@@ -43,6 +47,7 @@
   },
   "devDependencies": {
     "@types/mongoose": "^5.11.97",
+    "mongodb-memory-server": "^11.2.0",
     "ts-node-dev": "^2.0.0"
   }
 }

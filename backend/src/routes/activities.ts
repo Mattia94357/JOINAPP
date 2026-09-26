@@ -1,12 +1,13 @@
+import { isBlockedBetween, socialAccessDenied } from '../services/blocking';
+import { cancelActivity } from '../services/activityCancellation';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { getRequesterId } from '../services/sessions';
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import jwt from 'jsonwebtoken';
 import { Types } from 'mongoose';
 import auth, { AuthRequest } from '../middleware/auth';
 import Activity from '../models/Activity';
 import User from '../models/User';
-import { lockActivityChatForCancellation } from '../services/activityChat';
-import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
 import {
   effectiveActivityStatus,
@@ -27,6 +28,7 @@ import {
   activityViewerJoinStatus,
   approvalMembershipIssue,
   approvePendingJoin,
+  isMembershipEligible,
   confirmDirectJoin,
   declinePendingJoin,
   hasAvailableCapacity,
@@ -112,25 +114,10 @@ const publicGenderValue = (user: any) => {
   return ['male', 'female', 'non_binary'].includes(user.gender) ? user.gender : undefined;
 };
 
-const getRequesterId = (req: express.Request) => {
-  const header = req.headers.authorization;
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
-  if (!token) return undefined;
-  try {
-    const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string };
-    return decoded.userId;
-  } catch {
-    return undefined;
-  }
-};
+
 
 const idInList = idInActivityList;
 
-const isBlockedBetween = (first: any, second: any) => {
-  const firstBlocked = (first?.blockedUsers || []).some((id: any) => id.toString() === second?.id);
-  const secondBlocked = (second?.blockedUsers || []).some((id: any) => id.toString() === first?.id);
-  return firstBlocked || secondBlocked;
-};
 
 const privateMutationAccessFilter = (activity: any, userId: string, inviteCode?: string) => {
   if (activity.visibility !== 'private') return {};
@@ -193,10 +180,10 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
   return safePayload;
 };
 
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const now = new Date();
   await completePastActivities(now, { visibility: 'public' });
-  const userId = getRequesterId(req);
+  const userId = await getRequesterId(req);
   const hostGender = typeof req.query.hostGender === 'string' ? req.query.hostGender : undefined;
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
   const page = Math.max(Number(req.query.page) || 1, 1);
@@ -210,7 +197,7 @@ router.get('/', async (req, res) => {
     ? activities.filter((activity) => publicGenderValue(activity.host) === hostGender)
     : activities;
   res.json(filteredActivities.map((activity) => activityPayload(activity, userId)));
-});
+}));
 
 router.post(
   '/',
@@ -241,7 +228,7 @@ router.post(
   body('cancellationPolicy').optional({ checkFalsy: true }).isString().trim().isLength({ max: 500 }),
   body('visibility').optional().isIn(['public', 'private']),
   body('joinApproval').optional().isIn(['auto', 'manual']),
-  async (req: AuthRequest<Record<string, never>, unknown, CreateActivityBody>, res) => {
+  asyncHandler(async (req: AuthRequest<Record<string, never>, unknown, CreateActivityBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     const unsupported = unsupportedActivityCreateFields(req.body);
@@ -342,15 +329,15 @@ router.post(
       .populate('host', `${participantFields} gender publicGender`)
       .populate('participants', participantFields);
     res.status(201).json(activityPayload(populated || activity, req.userId, { includeHostInviteCode: true }));
-  }
+  })
 );
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
 
-  const userId = getRequesterId(req);
+  const userId = await getRequesterId(req);
   await completeActivityIfPast(req.params.id);
   const activity = await Activity.findById(req.params.id)
     .populate('host', `${participantFields} gender publicGender`)
@@ -363,9 +350,9 @@ router.get('/:id', async (req, res) => {
     return res.status(403).json({ message: 'This private activity is invite-only.' });
   }
   res.json(activityPayload(activity, userId, { includeHostInviteCode: true }));
-});
+}));
 
-router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.patch('/:id', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Activity not found' });
   const now = new Date();
   const parsed = parseActivityEdit(req.body, now);
@@ -402,18 +389,18 @@ router.patch('/:id', auth, activityWriteLimiter, async (req: AuthRequest<Activit
     && activity.maxAttendees !== undefined
     && edit.maxAttendees > activity.maxAttendees;
   const finalActivity = capacityIncreased
-    ? (await promoteActivityWaitlist(updated.id, now)).activity || updated
+    ? (await promoteActivityWaitlist(updated.id)).activity || updated
     : updated;
   const populated = await populatedActivity(finalActivity.id);
   return res.json(activityPayload(populated || finalActivity, req.userId, { includeHostInviteCode: true }));
-});
+}));
 
 router.post(
   '/:id/join',
   auth,
   activityWriteLimiter,
   body('inviteCode').optional().isString().isLength({ min: 1, max: 128 }),
-  async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
+  asyncHandler(async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid private activity invite code.' });
   if (!Types.ObjectId.isValid(req.params.id)) {
@@ -436,7 +423,7 @@ router.post(
     });
   }
   const host = await User.findById(activity.host);
-  if (host && isBlockedBetween(user, host)) {
+  if (!host || await socialAccessDenied(req.userId, host.id)) {
     return res.status(403).json({ message: 'You cannot join this activity.' });
   }
   const currentMembers = await User.find({ _id: { $in: [activity.host, ...(activity.participants || [])] } }).select('blockedUsers');
@@ -500,14 +487,14 @@ router.post(
   }
 
   return res.status(409).json({ message: 'Activity membership changed. Please try again.' });
-});
+}));
 
 // Lets a signed-in user explicitly save an activity without joining it.
 router.post(
   '/:id/save',
   auth,
   body('inviteCode').optional().isString().isLength({ min: 1, max: 128 }),
-  async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
+  asyncHandler(async (req: AuthRequest<ActivityIdParams, unknown, PrivateAccessBody>, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ message: 'Invalid private activity invite code.' });
   if (!Types.ObjectId.isValid(req.params.id)) {
@@ -528,10 +515,10 @@ router.post(
     : [...(user.savedActivities || []), activity._id];
   await user.save();
   res.json({ saved: !saved, savedActivities: user.savedActivities });
-});
+}));
 
 // A confirmed non-host participant may leave only before the activity starts.
-router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.post('/:id/leave', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -560,7 +547,7 @@ router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<Ac
   const now = new Date();
   const updated = await leaveUpcomingActivity(activity.id, requesterId, now);
   if (updated) {
-    const finalActivity = (await promoteActivityWaitlist(updated.id, now)).activity || updated;
+    const finalActivity = (await promoteActivityWaitlist(updated.id)).activity || updated;
     return res.json({
       status: 'left',
       message: 'You left the activity.',
@@ -577,10 +564,10 @@ router.post('/:id/leave', auth, activityWriteLimiter, async (req: AuthRequest<Ac
   if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot leave after the activity has started.' });
   if (latest.host.toString() === requesterId) return res.status(403).json({ message: 'Hosts cannot leave their own activity.' });
   return res.status(409).json({ message: 'You are no longer a confirmed participant in this activity.' });
-});
+}));
 
 // A host may atomically remove another confirmed participant before the activity starts.
-router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityParticipantParams>, res) => {
+router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityParticipantParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -609,7 +596,7 @@ router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, async
   const now = new Date();
   const updated = await removeConfirmedParticipant(activity.id, req.params.userId, requesterId, now);
   if (updated) {
-    const finalActivity = (await promoteActivityWaitlist(updated.id, now)).activity || updated;
+    const finalActivity = (await promoteActivityWaitlist(updated.id)).activity || updated;
     const populated = await populatedActivity(finalActivity.id);
     return res.json(activityPayload(populated || finalActivity, requesterId, { includeHostInviteCode: true }));
   }
@@ -623,10 +610,10 @@ router.post('/:id/remove-participant/:userId', auth, activityWriteLimiter, async
   if (latestClosure === 'completed') return res.status(400).json({ message: 'Participants cannot be removed from a completed activity.' });
   if (latestClosure === 'started') return res.status(400).json({ message: 'Participants cannot be removed after the activity has started.' });
   return res.status(409).json({ message: 'This user is no longer a confirmed participant.' });
-});
+}));
 
 // A requester may atomically withdraw only their own still-pending request.
-router.post('/:id/withdraw', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.post('/:id/withdraw', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -659,10 +646,10 @@ router.post('/:id/withdraw', auth, activityWriteLimiter, async (req: AuthRequest
   if (latestClosure === 'completed') return res.status(400).json({ message: 'You cannot withdraw a request from a completed activity.' });
   if (latestClosure === 'started') return res.status(400).json({ message: 'You cannot withdraw a request after the activity has started.' });
   return res.status(409).json({ message: 'This join request is no longer pending.' });
-});
+}));
 
 // A requester may atomically give up only their own current waitlist place.
-router.post('/:id/leave-waitlist', auth, activityWriteLimiter, async (req: AuthRequest<ActivityIdParams>, res) => {
+router.post('/:id/leave-waitlist', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityIdParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -694,10 +681,10 @@ router.post('/:id/leave-waitlist', auth, activityWriteLimiter, async (req: AuthR
     return res.status(409).json({ message: 'You are now a confirmed participant and are no longer on the waitlist.' });
   }
   return res.status(409).json({ message: 'You are no longer on the waitlist for this activity.' });
-});
+}));
 
 // Host-only endpoint for approving a manual join request.
-router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityApprovalParams>, res) => {
+router.post('/:id/approve/:userId', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityApprovalParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -718,6 +705,9 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
   if (approvalIssue === 'already_confirmed') return res.status(409).json({ message: 'This user is already confirmed.' });
   if (approvalIssue === 'not_pending') return res.status(409).json({ message: 'This join request is no longer pending.' });
   if (approvalIssue === 'full') return res.status(409).json({ message: 'Activity is full.' });
+  if (!(await isMembershipEligible(activity, req.params.userId))) {
+    return res.status(403).json({ message: 'This user is no longer eligible to join.' });
+  }
 
   const now = new Date();
   const approved = await approvePendingJoin(activity.id, req.params.userId, req.userId, now);
@@ -735,10 +725,10 @@ router.post('/:id/approve/:userId', auth, activityWriteLimiter, async (req: Auth
   if (latestState !== 'pending') return res.status(409).json({ message: 'This join request is no longer pending.' });
   if (!hasAvailableCapacity(latest)) return res.status(409).json({ message: 'Activity is full.' });
   return res.status(409).json({ message: 'Join request changed. Please refresh and try again.' });
-});
+}));
 
 // Host-only endpoint for declining a manual join request.
-router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: AuthRequest<ActivityApprovalParams>, res) => {
+router.post('/:id/decline/:userId', auth, activityWriteLimiter, asyncHandler(async (req: AuthRequest<ActivityApprovalParams>, res) => {
   if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
     return res.status(404).json({ message: 'Activity or user not found' });
   }
@@ -759,10 +749,10 @@ router.post('/:id/decline/:userId', auth, activityWriteLimiter, async (req: Auth
     return res.status(409).json({ message: 'This user is already confirmed.' });
   }
   return res.status(409).json({ message: 'This join request is no longer pending.' });
-});
+}));
 
 // Host-only cancellation endpoint. Cancelled activities remain readable but cannot be joined.
-router.post('/:id/cancel', auth, async (req: AuthRequest<ActivityIdParams, unknown, CancelActivityBody>, res) => {
+router.post('/:id/cancel', auth, asyncHandler(async (req: AuthRequest<ActivityIdParams, unknown, CancelActivityBody>, res) => {
   if (!Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({ message: 'Activity not found' });
   }
@@ -771,11 +761,8 @@ router.post('/:id/cancel', auth, async (req: AuthRequest<ActivityIdParams, unkno
   if (!activity) return res.status(404).json({ message: 'Activity not found' });
   if (activity.host.toString() !== req.userId) return res.status(403).json({ message: 'Only the host can cancel this activity.' });
 
-  await lockActivityChatForCancellation(activity);
-  activity.status = 'cancelled';
-  activity.cancellationReason = typeof req.body.reason === 'string' ? req.body.reason.slice(0, 500) : undefined;
-  await activity.save();
+  await cancelActivity(activity, req.userId as string, typeof req.body.reason === 'string' ? req.body.reason : undefined);
   res.json({ message: 'Activity cancelled.' });
-});
+}));
 
 export default router;

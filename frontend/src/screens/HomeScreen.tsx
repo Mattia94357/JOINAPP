@@ -23,10 +23,9 @@ import BottomNavigation, {
   BOTTOM_NAV_HEIGHT,
 } from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
-import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest, updatePushTokenRequest } from '../api';
+import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest } from '../api';
 import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
 import { curatedActivities } from '../utils/curatedActivities';
-import { registerForPushNotificationsAsync } from '../utils/notifications';
 import { activityStartDate } from '../utils/activityFilters';
 import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
@@ -259,17 +258,6 @@ export default function HomeScreen({ navigation, route }: Props) {
             waitlisted: false,
           };
         }));
-      }
-      if (!user?.pushToken) {
-        try {
-          const pushToken = await registerForPushNotificationsAsync();
-          if (pushToken) {
-            const response = await updatePushTokenRequest(pushToken, token);
-            await updateUser(response.data);
-          }
-        } catch (error) {
-          console.warn('Unable to register push notifications after join', error);
-        }
       }
       // Keep the card in place so the CTA immediately transitions from JOIN to CHAT.
       void refreshActivities();

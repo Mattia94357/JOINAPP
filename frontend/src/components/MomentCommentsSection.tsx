@@ -18,6 +18,7 @@ import {
 } from '../api';
 import { colors, spacing } from '../theme';
 import AvatarBadge from './AvatarBadge';
+import ReportButton from './ReportButton';
 
 const COMMENT_LIMIT = 400;
 
@@ -176,6 +177,7 @@ export default function MomentCommentsSection({ moment, token, onMomentUpdate, o
             <Text style={styles.commentText}>{comment.text}</Text>
             <View style={styles.commentMeta}>
               <Text style={styles.time}>{compactTime(comment.createdAt)}</Text>
+              {!comment.canDelete ? <ReportButton targetType="comment" targetId={comment.id} label="Report comment" /> : null}
               {comment.canDelete ? (
                 <TouchableOpacity disabled={Boolean(deletingId)} onPress={() => deleteComment(comment)}>
                   <Text style={styles.deleteText}>{deletingId === comment.id ? 'Deleting…' : 'Delete'}</Text>

@@ -4,6 +4,11 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
+  sessionVersion?: number;
+  deletionStartedAt?: Date;
+  deletedAt?: Date;
+  deletionActivityIds?: Types.ObjectId[];
+  deletionMomentIds?: Types.ObjectId[];
   avatar?: string;
   profilePictureUrl?: string;
   profileThumbnailUrl?: string;
@@ -38,10 +43,16 @@ const UserSchema = new Schema<IUser>({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },
+  sessionVersion: { type: Number, default: 0, min: 0, select: false },
+  deletionStartedAt: Date,
+  deletedAt: Date,
+  deletionActivityIds: { type: [Schema.Types.ObjectId], default: undefined, select: false },
+  deletionMomentIds: { type: [Schema.Types.ObjectId], default: undefined, select: false },
   avatar: { type: String },
   profilePictureUrl: { type: String },
   profileThumbnailUrl: { type: String },
-  pushToken: { type: String },
+  // Legacy data only. Never delivered or serialized; cleared on device registration.
+  pushToken: { type: String, select: false },
   profileCompleted: { type: Boolean, default: false },
   location: { type: String },
   interests: [{ type: String }],

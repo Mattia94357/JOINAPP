@@ -1,3 +1,5 @@
+import { asyncHandler } from '../middleware/asyncHandler';
+import { deleteAccount } from '../services/accountDeletion';
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -30,7 +32,7 @@ const getFrontendUrl = () => {
   return '';
 };
 
-const isStrongPassword = (password: string) => password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
+const isStrongPassword = (password: unknown) => typeof password === 'string' && password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
 
 const publicUserPayload = (user: any) => ({
   id: user.id,
@@ -39,7 +41,6 @@ const publicUserPayload = (user: any) => ({
   avatar: user.profileThumbnailUrl || user.profilePictureUrl || user.avatar,
   profilePictureUrl: user.profilePictureUrl,
   profileThumbnailUrl: user.profileThumbnailUrl,
-  pushToken: user.pushToken,
   profileCompleted: Boolean(user.profileCompleted || user.profilePictureUrl),
   location: user.location,
   interests: user.interests || [],
@@ -67,15 +68,15 @@ router.post(
   '/register',
   authLimiter,
   body('name').isString().trim().isLength({ min: 2, max: 80 }),
-  body('email').isEmail(),
+  body('email').isString().bail().isEmail(),
   body('password').custom(isStrongPassword),
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: passwordStrengthMessage });
 
     const { name, password } = req.body;
     const email = normalizeEmail(req.body.email);
-    const existing = await User.findOne({ email });
+    const existing = await User.findOne({ email }).select('+sessionVersion');
     if (existing) return res.status(400).json({ message: 'Email already in use' });
 
     const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1E1E1E&color=F4C542&size=128`;
@@ -83,16 +84,16 @@ router.post(
     const user = new User({ name, email, password: hashed, avatar, profileCompleted: false });
     await user.save();
 
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id, sessionVersion: user.sessionVersion ?? 0 }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: publicUserPayload(user) });
-  }
+  })
 );
 
 router.post(
   '/forgot-password',
   authLimiter,
-  body('email').isEmail(),
-  async (req, res) => {
+  body('email').isString().bail().isEmail(),
+  asyncHandler(async (req, res) => {
     logAuthDebug('[auth:forgot-password] Request received');
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -101,9 +102,9 @@ router.post(
     }
 
     const email = normalizeEmail(req.body.email);
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+sessionVersion');
 
-    if (!user) {
+    if (!user || user.deletionStartedAt || user.deletedAt) {
       logAuthDebug('[auth:forgot-password] User not found');
       return res.json({ message: genericResetMessage });
     }
@@ -147,7 +148,7 @@ router.post(
       console.warn('[auth:forgot-password] Reset email send failed.', smtpErrorDetails(error));
       return res.status(500).json({ message: 'Unable to send reset email. Check mail server configuration.' });
     }
-  }
+  })
 );
 
 router.post(
@@ -155,7 +156,7 @@ router.post(
   authLimiter,
   body('token').isString().notEmpty(),
   body('password').custom(isStrongPassword),
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     logAuthDebug('[auth:reset-password] Request received');
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -180,36 +181,49 @@ router.post(
     }
 
     logAuthDebug('[auth:reset-password] Reset token valid');
-    user.password = await bcrypt.hash(password, 10);
-    user.passwordResetTokenHash = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const consumed = await User.findOneAndUpdate({
+      _id: user._id,
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpires: { $gt: new Date() },
+    }, {
+      $set: { password: passwordHash },
+      $unset: { passwordResetTokenHash: 1, passwordResetExpires: 1 },
+      $inc: { sessionVersion: 1 },
+    }, { new: true });
+    if (!consumed) return res.status(400).json({ message: 'Reset token is invalid or expired. Request a new password reset link.' });
     logAuthDebug('[auth:reset-password] Password updated successfully. Reset token cleared.');
 
     res.json({ message: 'Password updated. You can now log in.' });
-  }
+  })
 );
 
 router.post(
   '/login',
   authLimiter,
-  body('email').isEmail(),
-  body('password').exists(),
-  async (req, res) => {
+  body('email').isString().bail().isEmail(),
+  body('password').isString().notEmpty(),
+  asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { password } = req.body;
     const email = normalizeEmail(req.body.email);
-    const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    const user = await User.findOne({ email }).select('+sessionVersion');
+    if (!user || user.deletedAt) return res.status(401).json({ message: 'Invalid credentials' });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Invalid credentials' });
+    if (user.deletionStartedAt) {
+      // A user who lost/expired their session can finish an already requested deletion.
+      // Never issue a normal session for an account in the deletion state.
+      await deleteAccount(user.id);
+      return res.status(401).json({ code: 'ACCOUNT_DELETED', message: 'Account deletion completed.' });
+    }
 
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id, sessionVersion: user.sessionVersion ?? 0 }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: publicUserPayload(user) });
-  }
+  })
 );
 
 export default router;

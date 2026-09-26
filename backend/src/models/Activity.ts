@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { notificationTypes } from './Notification';
 
 export interface IActivity extends Document {
   title: string;
@@ -11,6 +12,7 @@ export interface IActivity extends Document {
   locationPrivacy?: 'public' | 'approximate' | 'private';
   description: string;
   host: Types.ObjectId;
+  hostDeleted?: boolean;
   participants: Types.ObjectId[];
   pendingParticipants?: Types.ObjectId[];
   declinedParticipants?: Types.ObjectId[];
@@ -38,6 +40,7 @@ export interface IActivity extends Document {
   inviteCode?: string;
   activityRating?: number;
   reviewCount?: number;
+  notificationEvents?: any[];
 }
 
 const ActivitySchema = new Schema<IActivity>({
@@ -51,6 +54,7 @@ const ActivitySchema = new Schema<IActivity>({
   locationPrivacy: { type: String, enum: ['public', 'approximate', 'private'], default: 'public' },
   description: { type: String, required: true },
   host: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  hostDeleted: { type: Boolean, default: false },
   participants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   pendingParticipants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   declinedParticipants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
@@ -78,6 +82,12 @@ const ActivitySchema = new Schema<IActivity>({
   inviteCode: { type: String },
   activityRating: { type: Number, default: 0 },
   reviewCount: { type: Number, default: 0 },
+  notificationEvents: { type: [new Schema({
+    type: { type: String, enum: notificationTypes, required: true },
+    actor: { type: Schema.Types.ObjectId, ref: 'User' },
+    recipients: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    createdAt: { type: Date, required: true },
+  })], default: [], select: false },
 }, { timestamps: true });
 
 ActivitySchema.index({ createdAt: -1 });
@@ -86,5 +96,6 @@ ActivitySchema.index({ participants: 1, createdAt: -1 });
 ActivitySchema.index({ visibility: 1, status: 1, createdAt: -1 });
 ActivitySchema.index({ category: 1, status: 1, date: 1 });
 ActivitySchema.index({ latitude: 1, longitude: 1 });
+ActivitySchema.index({ 'notificationEvents.createdAt': 1 }, { partialFilterExpression: { 'notificationEvents.0': { $exists: true } } });
 
 export default model<IActivity>('Activity', ActivitySchema);

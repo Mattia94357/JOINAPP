@@ -113,6 +113,11 @@ class WaitlistHarness {
     if (!candidate || contains(activity.participants, candidate)) return null;
     if (filter['waitlist.0'] && !sameId(activity.waitlist[0], candidate)) return null;
     if (activity.maxAttendees && activity.participants.length >= activity.maxAttendees) return null;
+    if (filter['waitlist.0'] && !set.participants && set.pendingParticipants) {
+      activity.pendingParticipants.push(candidate);
+      activity.waitlist = remove(activity.waitlist, candidate);
+      return activity;
+    }
     activity.participants.push(candidate);
     activity.pendingParticipants = remove(activity.pendingParticipants, candidate);
     activity.declinedParticipants = remove(activity.declinedParticipants, candidate);
@@ -128,15 +133,18 @@ const withHarness = async (activity, test, missingUsers = []) => {
   const originalFindById = Activity.findById;
   const originalFindOneAndUpdate = Activity.findOneAndUpdate;
   const originalUserExists = User.exists;
+  const originalUserFind = User.find;
   Activity.findById = harness.findById;
   Activity.findOneAndUpdate = harness.findOneAndUpdate;
   User.exists = harness.userExists;
+  User.find = ({ _id }) => ({ select: async () => _id.$in.filter((id) => !harness.missingUsers.has(String(id))).map((id) => ({ _id: id, blockedUsers: [], profileCompleted: true, profilePictureUrl: 'test.jpg' })) });
   try {
     await test(activity);
   } finally {
     Activity.findById = originalFindById;
     Activity.findOneAndUpdate = originalFindOneAndUpdate;
     User.exists = originalUserExists;
+    User.find = originalUserFind;
   }
 };
 
@@ -209,9 +217,10 @@ const withHarness = async (activity, test, missingUsers = []) => {
     assert.equal(canAccessActivityChat(activity, first.toString()), false);
     assert.equal(canAccessActivity(activity, first.toString()), true);
     await promoteActivityWaitlist(activity._id.toString(), now);
-    assert.equal(canAccessActivityChat(activity, first.toString()), true);
+    assert.equal(canAccessActivityChat(activity, first.toString()), false);
     assert.equal(canAccessActivity(activity, first.toString()), true);
-    assert.equal(contains(activity.invitedUsers, first), false);
+    assert.equal(contains(activity.pendingParticipants, first), true);
+    assert.equal(contains(activity.invitedUsers, first), true);
   });
 
   for (const closed of [

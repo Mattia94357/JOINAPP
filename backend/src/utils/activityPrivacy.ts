@@ -18,7 +18,7 @@ const toId = (value: any) => value?._id?.toString?.() || value?.id?.toString?.()
 export const generateActivityInviteCode = () => crypto.randomBytes(24).toString('base64url');
 
 const inviteCodesMatch = (provided?: string, stored?: string) => {
-  if (!provided || !stored) return false;
+  if (typeof provided !== 'string' || typeof stored !== 'string' || !provided || !stored) return false;
   const providedBytes = Buffer.from(provided);
   const storedBytes = Buffer.from(stored);
   return providedBytes.length === storedBytes.length
@@ -82,6 +82,18 @@ export const sanitizeActivityPrivacy = <T extends Record<string, any>>(
   const access = privateActivityAccess(activity, userId);
   const isHost = access === 'host';
   const isConfirmed = isHost || access === 'participant';
+  if (activity.visibility === 'private' && !isConfirmed) {
+    // An explicit allowlist prevents new identity/location fields leaking into previews.
+    const preview: Record<string, any> = {};
+    for (const key of ['_id', 'id', 'title', 'category', 'description', 'date', 'endDate',
+      'ageGroup', 'vibe', 'maxAttendees', 'costType', 'costAmount', 'currency',
+      'visibility', 'joinApproval', 'status', 'coverImage', 'participantCount', 'spotsLeft']) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) preview[key] = payload[key];
+    }
+    preview.location = 'Location shared after approval';
+    preview.participants = [];
+    return preview as T;
+  }
   const locationPrivacy = activity.locationPrivacy === 'private'
     ? 'private'
     : activity.locationPrivacy === 'approximate' || activity.isApproximateLocation
@@ -91,6 +103,7 @@ export const sanitizeActivityPrivacy = <T extends Record<string, any>>(
   const canSeeCoordinates = isConfirmed || publicPreciseLocation;
 
   delete safePayload.pendingParticipants;
+  delete safePayload.notificationEvents;
   delete safePayload.declinedParticipants;
   delete safePayload.waitlist;
   delete safePayload.invitedUsers;
