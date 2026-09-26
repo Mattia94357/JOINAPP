@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetchUnreadConversationCountRequest } from '../api';
 import { useAuth } from './AuthContext';
@@ -19,6 +19,11 @@ export function MessagingProvider({ children }: { children: React.ReactNode }) {
   const { token, user } = useAuth();
   const [unreadConversationCount, setUnreadConversationCount] = useState(0);
   const [unreadRequestCount, setUnreadRequestCount] = useState(0);
+  const sessionGeneration = useRef(0);
+  const sessionKey = `${user?.id || ''}:${token || ''}`;
+  const activeSessionKey = useRef(sessionKey);
+  activeSessionKey.current = sessionKey;
+  useEffect(() => { sessionGeneration.current += 1; }, [sessionKey]);
 
   const refreshUnreadConversations = useCallback(async () => {
     if (!token || !user) {
@@ -27,14 +32,17 @@ export function MessagingProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const generation = sessionGeneration.current;
+    const requestedSession = sessionKey;
     try {
       const response = await fetchUnreadConversationCountRequest(token);
+      if (generation !== sessionGeneration.current || requestedSession !== activeSessionKey.current) return;
       setUnreadConversationCount(response.data.unreadConversationCount || 0);
       setUnreadRequestCount(response.data.unreadRequestCount || 0);
     } catch {
       // Keep the last known badge state during brief network interruptions.
     }
-  }, [token, user]);
+  }, [token, user, sessionKey]);
 
   useEffect(() => {
     void refreshUnreadConversations();

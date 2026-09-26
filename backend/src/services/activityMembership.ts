@@ -4,6 +4,7 @@ import User from '../models/User';
 import { activeUserFilter, isBlockedBetween } from './blocking';
 import { appendNotificationEvent } from './notificationEvents';
 import { participationClosureReason, upcomingActivityFilter } from '../utils/activityLifecycle';
+import { userImageUrls } from './imageAssets';
 
 export type MembershipState = 'participant' | 'pending' | 'declined' | 'waitlisted' | 'none';
 export type ViewerJoinStatus = 'host' | MembershipState | 'invited';
@@ -310,10 +311,10 @@ export type WaitlistPromotionResult = {
 // Re-read both directions of every current member's block relationship.
 export const isMembershipEligible = async (activity: Partial<IActivity>, candidateId: string) => {
   const memberIds = confirmedActivityMemberIds(activity);
-  const users = await User.find({ _id: { $in: [...memberIds, candidateId] }, ...activeUserFilter }).select('_id blockedUsers profileCompleted profilePictureUrl');
+  const users = await User.find({ _id: { $in: [...memberIds, candidateId] }, ...activeUserFilter }).select('_id blockedUsers profileCompleted profileImage +profilePictureUrl');
   const candidate = users.find((user) => user._id.toString() === candidateId);
   const hostId = activity.host?.toString();
-  if (!candidate?.profileCompleted || !candidate.profilePictureUrl
+  if (!candidate?.profileCompleted || !userImageUrls(candidate).profilePictureUrl
     || !users.some((user) => user._id.toString() === hostId)) return false;
   return !users.some((user) => memberIds.includes(user._id.toString()) && isBlockedBetween(candidate, user));
 };

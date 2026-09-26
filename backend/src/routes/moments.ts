@@ -15,20 +15,22 @@ import {
   canAccessPrivateParticipantContent,
   canViewPreciseActivityLocation,
 } from '../utils/activityPrivacy';
+import { decodeImageDataUri, ImageInputError } from '../services/imageValidation';
+import { getImageStorage } from '../services/imageStorage';
+import { cleanupUnreferencedAssets, momentImageUrls, userImageUrls } from '../services/imageAssets';
+import type { ImageAsset } from '../models/ImageAsset';
 
 const router = express.Router();
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
+const imageUploadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many photo uploads. Please try again later.' } });
 const MAX_IMAGES = 3;
-const MAX_IMAGE_BYTES = 1536 * 1024;
-const MAX_IMAGE_PAYLOAD_LENGTH = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 128;
-const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
-const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
+const MAX_IMAGE_BYTES = 1280 * 1024;
 
 type MomentIdParams = { id: string };
 type MomentCommentParams = { id: string; commentId: string };
 type UserMomentsParams = { userId: string };
 type ActivityMomentsParams = { activityId: string };
-type CreateMomentBody = { activityId: string; images: string[]; caption?: string };
+type CreateMomentBody = { activityId: string; images: string[]; caption?: string; clientRequestId?: string };
 type CreateCommentBody = { text: string; clientRequestId?: string };
 
 
@@ -43,21 +45,10 @@ const canViewMoment = async (moment: any, viewerId?: string) => Boolean(
   && !(await socialAccessDenied(viewerId, moment.creator?._id?.toString?.() || moment.creator?.toString?.())),
 );
 
-const imageByteSize = (value: string) => Math.ceil(((value.split(',')[1] || '').length * 3) / 4);
-const validImage = (value: unknown) => {
-  if (typeof value !== 'string' || !value || value.length > MAX_IMAGE_PAYLOAD_LENGTH) return false;
-  if (imageUrlPattern.test(value)) return true;
-  if (!imageDataPattern.test(value)) return false;
-  const encoded = value.split(',')[1] || '';
-  return Boolean(encoded && /^[a-zA-Z0-9+/=]+$/.test(encoded) && imageByteSize(value) <= MAX_IMAGE_BYTES);
-};
-
 const personPayload = (user: any) => ({
   id: user?._id?.toString?.() || user?.id,
   name: user?.name || 'Former JOIN member',
-  avatar: user?.profileThumbnailUrl || user?.profilePictureUrl || user?.avatar,
-  profilePictureUrl: user?.profilePictureUrl,
-  profileThumbnailUrl: user?.profileThumbnailUrl,
+  ...userImageUrls(user),
 });
 
 const commentPayload = (comment: any, viewerId?: string) => ({
@@ -86,7 +77,7 @@ const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = [
     coverImage: moment.activity?.coverImage,
     visibility: moment.activity?.visibility,
   },
-  images: moment.images || [],
+  images: momentImageUrls(moment),
   caption: moment.caption,
   likeCount: (moment.likes || []).length,
   likedByViewer: idInList(moment.likes, viewerId),
@@ -98,20 +89,21 @@ const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = [
 });
 
 const populatedMoment = (query: any) => query
-  .populate('creator', 'name avatar profilePictureUrl profileThumbnailUrl')
+  .populate('creator', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl')
   .populate('activity', 'title category date location locationPrivacy coverImage visibility host participants');
 
 const populatedComments = (query: any) => query
-  .populate('author', 'name avatar profilePictureUrl profileThumbnailUrl');
+  .populate('author', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl');
 
 router.post(
   '/',
   auth,
-  writeLimiter,
+  imageUploadLimiter,
   body('activityId').isMongoId(),
   body('images').isArray({ min: 1, max: MAX_IMAGES }),
-  body('images.*').custom(validImage).withMessage('Moment photos must be JPEG, PNG, or WEBP images under 1.5MB each.'),
+  body('images.*').isString().withMessage('Moment photos must be JPEG, PNG, or WEBP images.'),
   body('caption').optional().isString().isLength({ max: 280 }),
+  body('clientRequestId').optional().isString().isLength({ min: 8, max: 64 }),
   asyncHandler(async (req: AuthRequest<Record<string, never>, unknown, CreateMomentBody>, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
@@ -127,15 +119,40 @@ router.post(
     if (!hasActivityStarted(activity)) {
       return res.status(400).json({ message: 'Moments become available once the activity begins.' });
     }
+    if (req.body.clientRequestId) {
+      const existing = await populatedMoment(Moment.findOne({ creator: req.userId, clientRequestId: req.body.clientRequestId }));
+      if (existing) return res.status(200).json(momentPayload(existing, req.userId));
+    }
 
-    const moment = await Moment.create({
-      creator: req.userId,
-      activity: activity._id,
-      images: req.body.images.slice(0, MAX_IMAGES),
-      caption: typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 280) : undefined,
-      likes: [],
-      commentCount: 0,
-    });
+    let decoded;
+    try { decoded = req.body.images.map((value) => decodeImageDataUri(value, MAX_IMAGE_BYTES)); }
+    catch (error) { if (error instanceof ImageInputError) return res.status(error.status).json({ message: error.message }); throw error; }
+    const imageAssets: ImageAsset[] = [];
+    try {
+      for (const image of decoded) imageAssets.push(await getImageStorage().upload({ image, kind: 'moment', ownerId: req.userId as string }));
+    } catch (error) {
+      await cleanupUnreferencedAssets(imageAssets);
+      throw error;
+    }
+    let moment;
+    try {
+      moment = await Moment.create({
+        creator: req.userId,
+        activity: activity._id,
+        imageAssets,
+        clientRequestId: req.body.clientRequestId,
+        caption: typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 280) : undefined,
+        likes: [],
+        commentCount: 0,
+      });
+    } catch (error: any) {
+      await cleanupUnreferencedAssets(imageAssets);
+      if (error?.code === 11000 && req.body.clientRequestId) {
+        const existing = await populatedMoment(Moment.findOne({ creator: req.userId, clientRequestId: req.body.clientRequestId }));
+        if (existing) return res.status(200).json(momentPayload(existing, req.userId));
+      }
+      throw error;
+    }
     const populated = await populatedMoment(Moment.findById(moment.id));
     return res.status(201).json(momentPayload(populated, req.userId));
   }),
@@ -275,7 +292,9 @@ router.delete('/:id', auth, writeLimiter, asyncHandler(async (req: AuthRequest<M
   if (!moment) return res.status(404).json({ message: 'Moment not found.' });
   if (moment.creator.toString() !== req.userId) return res.status(403).json({ message: 'You can only delete your own Moments.' });
   await MomentComment.deleteMany({ moment: moment._id });
+  const assets = moment.imageAssets || [];
   await moment.deleteOne();
+  await cleanupUnreferencedAssets(assets);
   return res.json({ message: 'Moment deleted.' });
 }));
 

@@ -16,6 +16,7 @@ import pushDeviceRoutes from './routes/pushDevices';
 import { startPushWorker } from './services/pushDelivery';
 import { startNotificationWorker } from './services/notifications';
 import { assertProductionEnvironment, printStartupWarnings } from './config/env';
+import { localImageDirectory } from './services/imageStorage';
 
 dotenv.config();
 
@@ -55,6 +56,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '6mb' }));
+if (process.env.NODE_ENV !== 'production' && process.env.IMAGE_STORAGE_PROVIDER === 'local') {
+  app.use('/uploads', express.static(localImageDirectory(), { index: false, fallthrough: false }));
+}
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } }));
 
 app.use('/api/auth', authRoutes);

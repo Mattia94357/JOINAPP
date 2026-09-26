@@ -8,6 +8,7 @@
     "build": "tsc",
     "test:beta-blockers": "npm run build && node tests/betaBlockers.test.js",
     "test:beta-hardening": "npm run build && node tests/betaHardening.test.js",
+    "test:messaging": "npm run build && node tests/messagingReliability.test.js",
     "test:lifecycle": "npm run build && node tests/activityLifecycle.test.js",
     "test:privacy": "npm run build && node tests/activityPrivacy.test.js",
     "test:capacity": "npm run build && node tests/activityMembership.test.js",
@@ -24,6 +25,9 @@
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",
     "backfill:activity-coordinates": "node dist/scripts/backfill-activity-coordinates.js"
+    ,"migrate:chat-messages": "npm run build && node dist/scripts/migrate-chat-messages.js",
+    "migrate:image-assets": "npm run build && node dist/scripts/migrate-image-assets.js",
+    "test:images": "npm run build && node tests/imageHardening.test.js"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.2",

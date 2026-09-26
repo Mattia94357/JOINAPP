@@ -46,7 +46,7 @@ async function run() {
     const group = await activity({ participants: [host._id, a._id, b._id] });
     const direct = await call(a, `/chats/direct/${b.id}`, 'POST', {});
     assert.equal(direct.status, 200);
-    assert.equal((await call(b, `/chats/${direct.data.chatId}/message`, 'POST', { message: 'PRIVATE_PREVIEW' })).status, 200);
+    assert.equal((await call(b, `/chats/${direct.data.chatId}/message`, 'POST', { message: 'PRIVATE_PREVIEW', clientMessageId: 'private-preview-1' })).status, 200);
     const past = await activity({ participants: [host._id, a._id, b._id], status: 'completed', date: new Date(Date.now() - 86400000) });
     const moment = await Moment.create({ activity: past._id, creator: b._id, images: ['https://example.test/m.jpg'] });
     const thirdMoment = await Moment.create({ activity: past._id, creator: c._id, images: ['https://example.test/c.jpg'] });
@@ -55,7 +55,7 @@ async function run() {
     for (const [viewer, target] of [[a, b], [b, a]]) {
       assert.equal((await call(viewer, `/chats/direct/${target.id}`, 'POST', {})).status, 403);
       assert.equal((await call(viewer, `/chats/${direct.data.chatId}`)).status, 403);
-      assert.equal((await call(viewer, `/chats/${direct.data.chatId}/message`, 'POST', { message: 'Denied' })).status, 403);
+      assert.equal((await call(viewer, `/chats/${direct.data.chatId}/message`, 'POST', { message: 'Denied', clientMessageId: `denied-${viewer.id}` })).status, 403);
       assert.equal((await call(viewer, `/users/${target.id}`)).status, 403);
       assert.equal((await call(viewer, `/moments/user/${target.id}`)).status, 403);
       for (const scope of ['', '?scope=requests']) {
@@ -67,7 +67,7 @@ async function run() {
         assert.equal(list.data.unreadRequestCount, 0);
       }
       assert.equal((await call(viewer, `/chats/${group.id}`)).status, 200);
-      assert.equal((await call(viewer, `/chats/${group.id}/message`, 'POST', { message: 'Group remains usable' })).status, 200);
+      assert.equal((await call(viewer, `/chats/${group.id}/message`, 'POST', { message: 'Group remains usable', clientMessageId: `group-${viewer.id}` })).status, 200);
     }
     assert.equal((await call(a, `/moments/${moment.id}/like`, 'POST', {})).status, 404);
     assert.equal((await call(a, `/moments/${moment.id}/like`, 'DELETE')).status, 404);

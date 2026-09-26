@@ -7,10 +7,12 @@ import UserReport from '../models/UserReport';
 import Notification from '../models/Notification';
 import PushDevice from '../models/PushDevice';
 import PushDelivery from '../models/PushDelivery';
+import ChatMessage from '../models/ChatMessage';
 import { cancelActivity } from './activityCancellation';
 import { completePastActivities } from './activityCompletion';
 import { leaveUpcomingActivity, promoteActivityWaitlist } from './activityMembership';
 import { participationClosureReason } from '../utils/activityLifecycle';
+import { cleanupUnreferencedAssets } from './imageAssets';
 
 export const deleteAccount = async (userId: string) => {
   const initial = await User.findById(userId).select('+sessionVersion');
@@ -19,7 +21,9 @@ export const deleteAccount = async (userId: string) => {
   await User.updateOne({ _id: userId, deletionStartedAt: { $exists: false } }, { $set: { deletionStartedAt: new Date() } });
   const activities = await Activity.find({ $or: [{ host: userId }, { participants: userId },
     { pendingParticipants: userId }, { waitlist: userId }] }).distinct('_id');
-  const authoredMoments = await Moment.find({ creator: userId }).distinct('_id');
+  const authoredMomentDocs = await Moment.find({ creator: userId }).select('imageAssets');
+  const authoredMoments = authoredMomentDocs.map((moment) => moment._id);
+  const imageAssets = [initial.profileImage, ...authoredMomentDocs.flatMap((moment) => moment.imageAssets || [])];
   const commentedMoments = await MomentComment.find({ author: userId }).distinct('moment');
   // Store affected IDs BEFORE removing references so retries can repair counts/promotions.
   await User.updateOne({ _id: userId, deletedAt: { $exists: false } }, { $addToSet: {
@@ -54,7 +58,9 @@ export const deleteAccount = async (userId: string) => {
       recipients: { $setDifference: ['$$event.recipients', [user._id]] },
     }] } } },
   } }]);
-  await Chat.deleteMany({ chatType: 'directPrivateChat', $or: [{ members: userId }, { initiatedBy: userId }, { requestRecipient: userId }] });
+  const directChatIds = await Chat.find({ chatType: 'directPrivateChat', $or: [{ members: userId }, { initiatedBy: userId }, { requestRecipient: userId }] }).distinct('_id');
+  await ChatMessage.deleteMany({ chat: { $in: directChatIds } });
+  await Chat.deleteMany({ _id: { $in: directChatIds } });
   await Chat.updateMany({}, { $pull: { members: user._id, messages: { author: user._id }, readStates: { user: user._id } } });
   await Chat.updateMany({ initiatedBy: userId }, { $unset: { initiatedBy: 1 } });
   await Chat.updateMany({ requestRecipient: userId }, { $unset: { requestRecipient: 1 } });
@@ -75,4 +81,5 @@ export const deleteAccount = async (userId: string) => {
     _id: user._id, name: 'Former JOIN member', email: `deleted-${user.id}@invalid.local`, password: '!deleted',
     sessionVersion: user.sessionVersion ?? 0, deletionStartedAt: user.deletionStartedAt, deletedAt: new Date(),
   });
+  await cleanupUnreferencedAssets(imageAssets);
 };

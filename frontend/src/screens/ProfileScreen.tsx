@@ -41,7 +41,7 @@ import ProfileMomentsModal from '../components/ProfileMomentsModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-const maxProfileImageBytes = 5 * 1024 * 1024;
+const maxProfileImageBytes = 4 * 1024 * 1024;
 const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const genderOptions = [
   { label: 'Male', value: 'male' },
@@ -237,8 +237,8 @@ export default function ProfileScreen({ navigation }: Props) {
       }
 
       if (asset.fileSize && asset.fileSize > maxProfileImageBytes) {
-        setUploadMessage('Profile photos must be 5MB or smaller.');
-        Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
+        setUploadMessage('Profile photos must be 4MB or smaller.');
+        Alert.alert('Image too large', 'Profile photos must be 4MB or smaller.');
         return;
       }
 
@@ -249,14 +249,14 @@ export default function ProfileScreen({ navigation }: Props) {
       }
 
       if (payloadBytes > maxProfileImageBytes) {
-        setUploadMessage('Profile photos must be 5MB or smaller.');
-        Alert.alert('Image too large', 'Profile photos must be 5MB or smaller.');
+        setUploadMessage('Profile photos must be 4MB or smaller.');
+        Alert.alert('Image too large', 'Profile photos must be 4MB or smaller.');
         return;
       }
 
       const imageDataUrl = `data:${mimeType};base64,${asset.base64}`;
       debugPhotoUpload('endpoint called', { endpoint: '/api/users/me/profile-photo', payloadBytes });
-      const response = await updateProfilePhotoRequest(imageDataUrl, token, imageDataUrl);
+      const response = await updateProfilePhotoRequest(imageDataUrl, token);
       debugPhotoUpload('response received', {
         status: response.status,
         hasProfilePictureUrl: Boolean(response.data.profilePictureUrl),

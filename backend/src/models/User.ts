@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { ImageAsset, ImageAssetSchema } from './ImageAsset';
 
 export interface IUser extends Document {
   name: string;
@@ -12,6 +13,7 @@ export interface IUser extends Document {
   avatar?: string;
   profilePictureUrl?: string;
   profileThumbnailUrl?: string;
+  profileImage?: ImageAsset;
   pushToken?: string;
   profileCompleted?: boolean;
   location?: string;
@@ -48,9 +50,10 @@ const UserSchema = new Schema<IUser>({
   deletedAt: Date,
   deletionActivityIds: { type: [Schema.Types.ObjectId], default: undefined, select: false },
   deletionMomentIds: { type: [Schema.Types.ObjectId], default: undefined, select: false },
-  avatar: { type: String },
-  profilePictureUrl: { type: String },
-  profileThumbnailUrl: { type: String },
+  avatar: { type: String, select: false },
+  profilePictureUrl: { type: String, select: false },
+  profileThumbnailUrl: { type: String, select: false },
+  profileImage: { type: ImageAssetSchema },
   // Legacy data only. Never delivered or serialized; cleared on device registration.
   pushToken: { type: String, select: false },
   profileCompleted: { type: Boolean, default: false },

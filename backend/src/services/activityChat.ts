@@ -24,25 +24,9 @@ export const lockActivityChatForCancellation = (activity: any) => {
       },
       $setOnInsert: {
         activity: activity._id,
-        messages: [],
         readStates: members.map((member) => ({ user: member, lastReadAt: new Date() })),
       },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
 };
-
-export const appendActivityChatMessage = (
-  chatId: string,
-  authorId: string,
-  message: string,
-  sentAt = new Date(),
-) => Chat.findOneAndUpdate(
-  {
-    _id: chatId,
-    activity: { $exists: true },
-    activityReadOnly: { $ne: true },
-  },
-  { $push: { messages: { author: new Types.ObjectId(authorId), message, sentAt } } },
-  { new: true },
-);

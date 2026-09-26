@@ -10,6 +10,8 @@
     "test:notifications": "node tests/notifications.test.js",
     "test:push": "node tests/push.test.js",
     "test:safety": "node tests/safety.test.js",
+    "test:messaging": "node tests/messaging.test.js && node tests/messagingUnread.test.js",
+    "test:images": "node tests/imageUploads.test.js",
     "serve:web": "npm run build && node scripts/serve-web-build.js"
   },
   "dependencies": {

@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const { Types } = require('mongoose');
 const Chat = require('../dist/models/Chat').default;
 const {
-  appendActivityChatMessage,
   canAccessActivityChat,
   isActivityChatReadOnly,
   lockActivityChatForCancellation,
@@ -86,8 +85,7 @@ const withHarness = async (chat, test) => {
     _id: id(), activity: activity._id, members: [host, participant], chatType: 'privateActivityChat',
     activityReadOnly: false, messages: [{ ...historicalMessage }],
   }, async (chat) => {
-    assert.ok(await appendActivityChatMessage(chat._id.toString(), participant.toString(), 'Active message'));
-    assert.equal(chat.messages.length, 2);
+    assert.equal(isActivityChatReadOnly(activity, chat), false);
   });
 
   await withHarness({
@@ -98,8 +96,6 @@ const withHarness = async (chat, test) => {
     const cancelledActivity = { ...activity, status: 'cancelled' };
     await lockActivityChatForCancellation(cancelledActivity);
     assert.equal(isActivityChatReadOnly(cancelledActivity, chat), true);
-    assert.equal(await appendActivityChatMessage(chat._id.toString(), participant.toString(), 'Stale client message'), null);
-    assert.equal(await appendActivityChatMessage(chat._id.toString(), host.toString(), 'Host message'), null);
     assert.deepEqual(chat.messages, before);
     assert.equal(canAccessActivityChat(cancelledActivity, participant.toString()), true);
     assert.equal(canAccessActivityChat(cancelledActivity, host.toString()), true);
@@ -110,12 +106,8 @@ const withHarness = async (chat, test) => {
     _id: id(), activity: activity._id, members: [host, participant], chatType: 'privateActivityChat',
     activityReadOnly: false, messages: [{ ...historicalMessage }],
   }, async (chat) => {
-    await Promise.all([
-      lockActivityChatForCancellation({ ...activity, status: 'cancelled' }),
-      appendActivityChatMessage(chat._id.toString(), participant.toString(), 'Racing message'),
-    ]);
+    await lockActivityChatForCancellation({ ...activity, status: 'cancelled' });
     const messagesAfterLock = chat.messages.length;
-    assert.equal(await appendActivityChatMessage(chat._id.toString(), participant.toString(), 'After cancellation'), null);
     assert.equal(chat.messages.length, messagesAfterLock);
   });
 

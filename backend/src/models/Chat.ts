@@ -9,6 +9,7 @@ export interface IMessage {
 export interface IChatReadState {
   user: Types.ObjectId;
   lastReadAt: Date;
+  lastReadMessageId?: Types.ObjectId;
 }
 
 export interface IChat extends Document {
@@ -21,7 +22,8 @@ export interface IChat extends Document {
   requestRecipient?: Types.ObjectId;
   activityReadOnly?: boolean;
   readStates: IChatReadState[];
-  messages: IMessage[];
+  messages?: IMessage[];
+  lastMessageAt?: Date;
 }
 
 const MessageSchema = new Schema<IMessage>({
@@ -33,6 +35,7 @@ const MessageSchema = new Schema<IMessage>({
 const ChatReadStateSchema = new Schema<IChatReadState>({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   lastReadAt: { type: Date, default: Date.now },
+  lastReadMessageId: { type: Schema.Types.ObjectId, ref: 'ChatMessage' },
 }, { _id: false });
 
 const ChatSchema = new Schema<IChat>({
@@ -49,11 +52,14 @@ const ChatSchema = new Schema<IChat>({
   requestRecipient: { type: Schema.Types.ObjectId, ref: 'User' },
   activityReadOnly: { type: Boolean, default: false },
   readStates: { type: [ChatReadStateSchema], default: [] },
-  messages: [MessageSchema],
+  // Compatibility only. The migration moves these records to ChatMessage and unsets this field.
+  messages: { type: [MessageSchema], default: undefined, select: false },
+  lastMessageAt: { type: Date },
 }, { timestamps: true });
 
 ChatSchema.index({ activity: 1 }, { unique: true, sparse: true });
 ChatSchema.index({ directKey: 1 }, { unique: true, sparse: true });
 ChatSchema.index({ members: 1, updatedAt: -1 });
+ChatSchema.index({ members: 1, lastMessageAt: -1 });
 
 export default model<IChat>('Chat', ChatSchema);

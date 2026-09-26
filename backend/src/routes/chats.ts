@@ -9,414 +9,162 @@ import Chat from '../models/Chat';
 import Activity from '../models/Activity';
 import User from '../models/User';
 import { confirmedActivityMemberIds } from '../services/activityMembership';
-import {
-  appendActivityChatMessage,
-  CANCELLED_ACTIVITY_CHAT_MESSAGE,
-  canAccessActivityChat,
-  isActivityChatReadOnly,
-} from '../services/activityChat';
+import { canAccessActivityChat, isActivityChatReadOnly } from '../services/activityChat';
+import { countUnreadMessages, createChatMessage, decodeMessageCursor, getMessagePage,
+  latestMessageForChat, markMessagesRead } from '../services/chatMessages';
+import { userImageUrls } from '../services/imageAssets';
 
 const router = express.Router();
-type ChatIdParams = { id: string };
-type DirectUserParams = { userId: string };
-type SendMessageBody = { message: string };
-
-const chatLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: 20,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { message: 'Too many attempts. Please try again later.' },
-});
-
+const limiter = rateLimit({ windowMs: 60000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
+const id = (value: any) => value?._id?.toString?.() || value?.toString?.() || '';
 const cleanMessage = (value: string) => value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
-const toId = (value: any) => value?._id?.toString?.() || value?.toString?.() || '';
-const idInList = (list: any[] | undefined, id?: string) =>
-  Boolean(id && (list || []).some((item) => toId(item) === id));
-const directKeyFor = (firstId: string, secondId: string) => [firstId, secondId].sort().join(':');
-
-
-const activityMemberIds = confirmedActivityMemberIds;
-
-const usersShareActivity = async (firstId: string, secondId: string) =>
-  Boolean(await Activity.exists({
-    status: { $ne: 'cancelled' },
-    $and: [
-      { $or: [{ host: firstId }, { participants: firstId }] },
-      { $or: [{ host: secondId }, { participants: secondId }] },
-    ],
-  }));
+const members = confirmedActivityMemberIds;
+const directKey = (a: string, b: string) => [a, b].sort().join(':');
+const shareActivity = (a: string, b: string) => Activity.exists({ status: { $ne: 'cancelled' }, $and: [
+  { $or: [{ host: a }, { participants: a }] }, { $or: [{ host: b }, { participants: b }] },
+] });
 
 const ensureActivityChats = async (userId: string) => {
-  const activities = await Activity.find({
-    $or: [{ host: userId }, { participants: userId }],
-  }).select('_id host hostDeleted participants visibility status');
-
-  await Promise.all(activities.map(async (activity) => {
-    const members = activityMemberIds(activity);
-    const cancelled = activity.status === 'cancelled';
-    await Chat.findOneAndUpdate(
-      { activity: activity._id },
-      {
-        $set: {
-          members,
-          chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
-          ...(cancelled ? { activityReadOnly: true } : {}),
-        },
-        $setOnInsert: {
-          activity: activity._id,
-          ...(!cancelled ? { activityReadOnly: false } : {}),
-          messages: [],
-          readStates: members.map((member) => ({ user: member, lastReadAt: new Date() })),
-        },
-      },
-      { upsert: true, setDefaultsOnInsert: true },
-    );
-  }));
+  const activities = await Activity.find({ $or: [{ host: userId }, { participants: userId }] })
+    .select('host hostDeleted participants visibility status');
+  await Promise.all(activities.map((activity) => Chat.findOneAndUpdate({ activity: activity._id }, {
+    $set: { members: members(activity), chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+      ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}) },
+    $setOnInsert: { activity: activity._id, readStates: members(activity).map((user) => ({ user, lastReadAt: new Date() })) },
+  }, { upsert: true, setDefaultsOnInsert: true, timestamps: false })));
 };
 
-const markChatRead = async (chat: any, userId: string) => {
-  const userObjectId = new Types.ObjectId(userId);
-  await Chat.findByIdAndUpdate(chat._id, [{
-    $set: {
-      readStates: {
-        $concatArrays: [
-          {
-            $filter: {
-              input: { $ifNull: ['$readStates', []] },
-              as: 'readState',
-              cond: { $ne: ['$$readState.user', userObjectId] },
-            },
-          },
-          [{ user: userObjectId, lastReadAt: new Date() }],
-        ],
-      },
-    },
-  }]);
-};
-
-const unreadCountFor = (chat: any, userId: string) => {
-  const readState = (chat.readStates || []).find((state: any) => toId(state.user) === userId);
-  const lastReadAt = readState ? new Date(readState.lastReadAt).getTime() : 0;
-  return (chat.messages || []).filter((message: any) =>
-    toId(message.author) !== userId
-    && new Date(message.sentAt).getTime() > lastReadAt).length;
-};
-
-const conversationSummary = (chat: any, userId: string) => {
-  const latest = chat.messages?.[chat.messages.length - 1];
-  const isActivity = chat.chatType !== 'directPrivateChat';
-  const otherUser = isActivity
-    ? null
-    : (chat.members || []).find((member: any) => member && toId(member) !== userId);
-  const unreadCount = unreadCountFor(chat, userId);
-
-  return {
-    id: chat._id.toString(),
-    type: isActivity ? 'activity' : 'direct',
-    state: chat.directState || 'active',
-    title: isActivity ? chat.activity?.title || 'Activity chat' : otherUser?.name || 'Unavailable member',
-    image: isActivity
-      ? chat.activity?.coverImage
-      : otherUser?.profileThumbnailUrl || otherUser?.profilePictureUrl || otherUser?.avatar,
-    activity: isActivity && chat.activity ? {
-      id: toId(chat.activity),
-      title: chat.activity.title,
-      coverImage: chat.activity.coverImage,
-      status: chat.activity.status,
-    } : undefined,
-    user: otherUser ? {
-      id: toId(otherUser),
-      name: otherUser.name,
-      avatar: otherUser.profileThumbnailUrl || otherUser.profilePictureUrl || otherUser.avatar,
-    } : undefined,
-    latestMessage: latest?.message || '',
-    latestMessageAt: latest?.sentAt || chat.updatedAt,
-    unread: unreadCount > 0,
-    unreadCount,
-    readOnly: isActivity && isActivityChatReadOnly(chat.activity, chat),
-  };
-};
-
-const getConversationLists = async (userId: string) => {
-  await ensureActivityChats(userId);
-
-  const chats = await Chat.find({ members: userId })
-    .populate('activity', 'title coverImage host hostDeleted participants status')
-    .populate('members', 'name avatar profilePictureUrl profileThumbnailUrl blockedUsers deletionStartedAt deletedAt')
-    .sort({ updatedAt: -1 });
-
-  await Promise.all(chats.map(async (chat: any) => {
-    if (
-      chat.chatType === 'directPrivateChat'
-      && chat.directState === 'request'
-      && chat.members?.length === 2
-      && chat.members.every((member: any) => member && !member.deletionStartedAt && !member.deletedAt)
-      && !isBlockedBetween(chat.members[0], chat.members[1])
-      && await usersShareActivity(toId(chat.members[0]), toId(chat.members[1]))
-    ) {
-      chat.directState = 'active';
-      chat.requestRecipient = undefined;
-      await chat.save();
-    }
-  }));
-
-  const visibleChats = chats.filter((chat: any) => {
-    if (chat.chatType === 'directPrivateChat') {
-      return chat.members.length === 2 && chat.members.every((user: any) => user && !user.deletionStartedAt && !user.deletedAt)
-        && !isBlockedBetween(chat.members[0], chat.members[1]);
-    }
-    const activity = chat.activity;
-    return activity && canAccessActivityChat(activity, userId);
-  });
-
-  const summaries = visibleChats.map((chat: any) => conversationSummary(chat, userId));
-  const recipientRequestIds = visibleChats
-    .filter((chat: any) =>
-      chat.chatType === 'directPrivateChat'
-      && chat.directState === 'request'
-      && toId(chat.requestRecipient) === userId)
-    .map((chat: any) => chat._id.toString());
-  const requests = summaries.filter((summary: any) => {
-    const chat = visibleChats.find((item: any) => item._id.toString() === summary.id);
-    return recipientRequestIds.includes(summary.id) && Boolean(chat?.messages?.length);
-  });
-  const conversations = summaries.filter((summary: any) => !recipientRequestIds.includes(summary.id));
-  const byLatest = (first: any, second: any) =>
-    new Date(second.latestMessageAt || 0).getTime() - new Date(first.latestMessageAt || 0).getTime();
-
-  conversations.sort(byLatest);
-  requests.sort(byLatest);
-
-  return {
-    conversations,
-    requests,
-    unreadConversationCount: conversations.filter((conversation: any) => conversation.unread).length,
-    unreadRequestCount: requests.filter((request: any) => request.unread).length,
-  };
-};
-
-const getAuthorizedChat = async (id: string, userId?: string) => {
-  if (!Types.ObjectId.isValid(id) || !userId) return null;
-
-  let chat = await Chat.findById(id);
+const authorize = async (value: string, userId?: string): Promise<any> => {
+  if (!Types.ObjectId.isValid(value) || !userId) return null;
+  let chat = await Chat.findById(value);
   let activity = chat?.activity ? await Activity.findById(chat.activity) : null;
-
   if (!chat) {
-    activity = await Activity.findById(id);
+    activity = await Activity.findById(value);
     if (!activity) return null;
-    const members = activityMemberIds(activity);
-    if (!canAccessActivityChat(activity, userId)) {
-      return { error: 'You need to join this activity to access the chat.' };
-    }
-    chat = await Chat.findOneAndUpdate(
-      { activity: activity._id },
-      {
-        $set: {
-          members,
-          chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
-          ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}),
-        },
-        $setOnInsert: {
-          activity: activity._id,
-          ...(activity.status !== 'cancelled' ? { activityReadOnly: false } : {}),
-          messages: [],
-          readStates: members.map((member) => ({ user: member, lastReadAt: new Date() })),
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
+    if (!canAccessActivityChat(activity, userId)) return { error: 'You need to join this activity to access the chat.' };
+    chat = await Chat.findOneAndUpdate({ activity: activity._id }, {
+      $set: { members: members(activity), chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+        ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}) },
+      $setOnInsert: { activity: activity._id, readStates: members(activity).map((user) => ({ user, lastReadAt: new Date() })) },
+    }, { upsert: true, new: true, setDefaultsOnInsert: true, timestamps: false });
   }
-
   if (!chat) return null;
-
   if (chat.chatType === 'directPrivateChat') {
-    if (!idInList(chat.members, userId)) return { error: 'You do not have access to this conversation.' };
-    const members = await User.find({ _id: { $in: chat.members }, ...activeUserFilter }).select('blockedUsers');
-    if (members.length !== 2 || isBlockedBetween(members[0], members[1])) {
-      return { error: 'This conversation is unavailable.' };
-    }
-    return { chat };
+    if (!(chat.members || []).some((member) => id(member) === userId)) return { error: 'You do not have access to this conversation.' };
+    const people = await User.find({ _id: { $in: chat.members }, ...activeUserFilter }).select('_id blockedUsers');
+    return people.length === 2 && !isBlockedBetween(people[0], people[1]) ? { chat } : { error: 'This conversation is unavailable.' };
   }
-
   if (!activity && chat.activity) activity = await Activity.findById(chat.activity);
-  if (!activity || !canAccessActivityChat(activity, userId)) {
-    return { error: 'You need to join this activity to access the chat.' };
+  if (!activity || !canAccessActivityChat(activity, userId)) return { error: 'You need to join this activity to access the chat.' };
+  chat = await Chat.findByIdAndUpdate(chat._id, { $set: { members: members(activity),
+    chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
+    ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}) } }, { new: true, timestamps: false });
+  return chat ? { chat, activity } : null;
+};
+
+const visibleChats = async (userId: string) => {
+  await ensureActivityChats(userId);
+  const chats: any[] = await Chat.find({ members: userId })
+    .populate('activity', 'title coverImage host hostDeleted participants status')
+    .populate('members', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl blockedUsers deletionStartedAt deletedAt');
+  const output = [];
+  for (const chat of chats) {
+    if (chat.chatType === 'directPrivateChat') {
+      if (chat.members.length !== 2 || chat.members.some((person: any) => !person || person.deletionStartedAt || person.deletedAt)
+        || isBlockedBetween(chat.members[0], chat.members[1])) continue;
+      if (chat.directState === 'request' && await shareActivity(id(chat.members[0]), id(chat.members[1]))) {
+        await Chat.updateOne({ _id: chat._id, directState: 'request' },
+          { $set: { directState: 'active' }, $unset: { requestRecipient: 1 } }, { timestamps: false });
+        chat.directState = 'active'; chat.requestRecipient = undefined;
+      }
+    } else if (!chat.activity || !canAccessActivityChat(chat.activity, userId)) continue;
+    output.push(chat);
   }
+  return output;
+};
 
-  // Group access follows activity membership; pairwise blocks affect direct chats only.
-  const synchronizedChat = await Chat.findByIdAndUpdate(
-    chat._id,
-    {
-      $set: {
-        members: activityMemberIds(activity),
-        chatType: activity.visibility === 'private' ? 'privateActivityChat' : 'publicActivityChat',
-        ...(activity.status === 'cancelled' ? { activityReadOnly: true } : {}),
-      },
-    },
-    { new: true },
-  );
-  if (!synchronizedChat) return null;
-
-  return { chat: synchronizedChat, activity };
+const lists = async (userId: string) => {
+  const chats = await visibleChats(userId);
+  const summaries = await Promise.all(chats.map(async (chat: any) => {
+    const [latest, unreadCount] = await Promise.all([latestMessageForChat(chat.id), countUnreadMessages(chat, userId)]);
+    const activityChat = chat.chatType !== 'directPrivateChat';
+    const other = activityChat ? null : chat.members.find((person: any) => person && id(person) !== userId);
+    return { id: chat.id, type: activityChat ? 'activity' : 'direct', state: chat.directState || 'active',
+      title: activityChat ? chat.activity?.title || 'Activity chat' : other?.name || 'Former JOIN member',
+      image: activityChat ? chat.activity?.coverImage : userImageUrls(other).avatar,
+      activity: activityChat && chat.activity ? { id: id(chat.activity), title: chat.activity.title,
+        coverImage: chat.activity.coverImage, status: chat.activity.status } : undefined,
+      user: other ? { id: id(other), name: other.name, avatar: userImageUrls(other).avatar } : undefined,
+      latestMessage: latest?.text || '', latestMessageAt: latest?.createdAt || chat.lastMessageAt || chat.updatedAt,
+      unread: unreadCount > 0, unreadCount, readOnly: activityChat && isActivityChatReadOnly(chat.activity, chat),
+      request: chat.chatType === 'directPrivateChat' && chat.directState === 'request'
+        && id(chat.requestRecipient) === userId && Boolean(latest) };
+  }));
+  summaries.sort((a: any, b: any) => new Date(b.latestMessageAt || 0).getTime() - new Date(a.latestMessageAt || 0).getTime());
+  const clean = ({ request, ...item }: any) => item;
+  const conversations = summaries.filter((item) => !item.request).map(clean);
+  const requests = summaries.filter((item) => item.request).map(clean);
+  return { conversations, requests, unreadConversationCount: conversations.filter((item) => item.unread).length,
+    unreadRequestCount: requests.filter((item) => item.unread).length };
 };
 
 router.get('/', auth, asyncHandler(async (req: AuthRequest, res) => {
-  if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
-  const lists = await getConversationLists(req.userId);
-  const scope = req.query.scope === 'requests' ? 'requests' : 'active';
-  return res.json({
-    conversations: scope === 'requests' ? lists.requests : lists.conversations,
-    unreadConversationCount: lists.unreadConversationCount,
-    unreadRequestCount: lists.unreadRequestCount,
-  });
+  const result = await lists(req.userId!);
+  res.json({ conversations: req.query.scope === 'requests' ? result.requests : result.conversations,
+    unreadConversationCount: result.unreadConversationCount, unreadRequestCount: result.unreadRequestCount });
 }));
-
 router.get('/unread-count', auth, asyncHandler(async (req: AuthRequest, res) => {
-  if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
-  const lists = await getConversationLists(req.userId);
-  return res.json({
-    unreadConversationCount: lists.unreadConversationCount,
-    unreadRequestCount: lists.unreadRequestCount,
-  });
+  const result = await lists(req.userId!);
+  res.json({ unreadConversationCount: result.unreadConversationCount, unreadRequestCount: result.unreadRequestCount });
+}));
+router.post('/direct/:userId', auth, asyncHandler(async (req: AuthRequest<{ userId: string }>, res) => {
+  const currentId = req.userId!; const otherId = req.params.userId;
+  if (!Types.ObjectId.isValid(otherId) || currentId === otherId) return res.status(400).json({ message: 'Invalid user.' });
+  const [current, other] = await Promise.all([User.findById(currentId), User.findById(otherId)]);
+  if (!current || !other || other.deletionStartedAt || other.deletedAt) return res.status(404).json({ message: 'User not found.' });
+  if (isBlockedBetween(current, other)) return res.status(403).json({ message: 'This conversation is unavailable.' });
+  const key = directKey(currentId, otherId);
+  let chat = await Chat.findOne({ directKey: key }) || await Chat.findOne({ chatType: 'directPrivateChat',
+    members: { $all: [currentId, otherId] }, $expr: { $eq: [{ $size: '$members' }, 2] } });
+  if (!chat) {
+    const active = Boolean(await shareActivity(currentId, otherId));
+    chat = await Chat.create({ members: [currentId, otherId], chatType: 'directPrivateChat', directKey: key,
+      directState: active ? 'active' : 'request', initiatedBy: currentId, requestRecipient: active ? undefined : otherId,
+      readStates: [{ user: currentId, lastReadAt: new Date() }, { user: otherId, lastReadAt: new Date() }] });
+  } else if (!chat.directKey) await Chat.updateOne({ _id: chat._id }, { $set: { directKey: key, directState: chat.directState || 'active' } }, { timestamps: false });
+  res.json({ chatId: chat.id, state: chat.directState || 'active', title: other.name });
 }));
 
-router.post('/direct/:userId', auth, asyncHandler(async (req: AuthRequest<DirectUserParams>, res) => {
-  const currentUserId = req.userId;
-  const otherUserId = req.params.userId;
-  if (!currentUserId || !Types.ObjectId.isValid(otherUserId)) {
-    return res.status(400).json({ message: 'Invalid user.' });
-  }
-  if (currentUserId === otherUserId) {
-    return res.status(400).json({ message: 'You cannot message yourself.' });
-  }
-
-  const [currentUser, otherUser] = await Promise.all([
-    User.findById(currentUserId),
-    User.findById(otherUserId),
-  ]);
-  if (!currentUser || !otherUser || otherUser.deletionStartedAt || otherUser.deletedAt) return res.status(404).json({ message: 'User not found.' });
-  if (isBlockedBetween(currentUser, otherUser)) {
-    return res.status(403).json({ message: 'This conversation is unavailable.' });
-  }
-
-  const directKey = directKeyFor(currentUserId, otherUserId);
-  let chat = await Chat.findOne({ directKey });
-  if (!chat) {
-    chat = await Chat.findOne({
-      chatType: 'directPrivateChat',
-      members: { $all: [currentUserId, otherUserId] },
-      $expr: { $eq: [{ $size: '$members' }, 2] },
-    });
-    if (chat && !chat.directKey) {
-      chat.directKey = directKey;
-      chat.directState = chat.directState || 'active';
-      await chat.save();
-    }
-  }
-  if (!chat) {
-    const sharedActivity = await usersShareActivity(currentUserId, otherUserId);
-    chat = await Chat.create({
-      members: [currentUserId, otherUserId],
-      chatType: 'directPrivateChat',
-      directKey,
-      directState: sharedActivity ? 'active' : 'request',
-      initiatedBy: currentUserId,
-      requestRecipient: sharedActivity ? undefined : otherUserId,
-      readStates: [
-        { user: currentUserId, lastReadAt: new Date() },
-        { user: otherUserId, lastReadAt: new Date() },
-      ],
-      messages: [],
-    });
-  }
-
-  return res.json({
-    chatId: chat._id.toString(),
-    state: chat.directState || 'active',
-    title: otherUser.name,
-  });
-}));
-
-router.get('/:id', auth, asyncHandler(async (req: AuthRequest<ChatIdParams>, res) => {
-  const result = await getAuthorizedChat(req.params.id, req.userId);
+router.get('/:id', auth, asyncHandler(async (req: AuthRequest<{ id: string }>, res) => {
+  const result = await authorize(req.params.id, req.userId);
   if (!result) return res.status(404).json({ message: 'Chat not found' });
-  if ('error' in result) return res.status(403).json({ message: result.error });
-
-  await markChatRead(result.chat, req.userId!);
-
-  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
-  const before = req.query.before ? new Date(String(req.query.before)) : null;
-  const chat = await Chat.findById(result.chat._id)
-    .populate('activity', 'title coverImage status')
-    .populate('members', 'name profilePictureUrl profileThumbnailUrl avatar')
-    .populate('messages.author', 'name profilePictureUrl profileThumbnailUrl avatar');
-  if (chat) {
-    const messages = before && !Number.isNaN(before.getTime())
-      ? chat.messages.filter((message: any) => new Date(message.sentAt).getTime() < before.getTime())
-      : chat.messages;
-    chat.messages = messages.slice(-limit) as any;
-  }
+  if (result.error) return res.status(403).json({ message: result.error });
+  if ((req.query.before && !decodeMessageCursor(req.query.before)) || (req.query.after && !decodeMessageCursor(req.query.after)))
+    return res.status(400).json({ message: 'Invalid message cursor.' });
+  const page = await getMessagePage(result.chat.id, Math.min(Math.max(Number(req.query.limit) || 50, 1), 100), req.query.before, req.query.after);
+  const chat = await Chat.findById(result.chat._id).populate('activity', 'title coverImage status')
+    .populate('members', 'name profileImage +profilePictureUrl +profileThumbnailUrl +avatar');
   if (!chat) return res.status(404).json({ message: 'Chat not found' });
-  return res.json({
-    ...chat.toObject(),
-    readOnly: isActivityChatReadOnly(chat.activity, chat),
-  });
+  if (!req.query.before && page.records.length) await markMessagesRead(chat.id, req.userId!, page.records[page.records.length - 1]);
+  res.json({ id: chat.id, chatType: chat.chatType, activity: chat.activity, members: chat.members,
+    readOnly: isActivityChatReadOnly(chat.activity, chat), messages: page.messages,
+    nextCursor: page.nextCursor, latestCursor: page.latestCursor, hasMore: page.hasMore });
 }));
 
-router.post(
-  '/:id/message',
-  auth,
-  chatLimiter,
+router.post('/:id/message', auth, limiter,
   body('message').isString().trim().isLength({ min: 1, max: 1200 }),
-  asyncHandler(async (req: AuthRequest<ChatIdParams, unknown, SendMessageBody>, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const result = await getAuthorizedChat(req.params.id, req.userId);
-    if (!result) return res.status(404).json({ message: 'Chat not found' });
-    if ('error' in result) return res.status(403).json({ message: result.error });
-    const chat = result.chat;
-
-    if (chat.chatType !== 'directPrivateChat' && isActivityChatReadOnly(result.activity, chat)) {
-      return res.status(409).json({ code: 'ACTIVITY_CHAT_READ_ONLY', message: CANCELLED_ACTIVITY_CHAT_MESSAGE });
-    }
-
+  body('clientMessageId').isString().isLength({ min: 8, max: 100 }),
+  asyncHandler(async (req: AuthRequest<{ id: string }, unknown, { message: string; clientMessageId: string }>, res) => {
+    if (!validationResult(req).isEmpty()) return res.status(400).json({ message: 'Message and client message ID are required.' });
+    if (!Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Chat not found.' });
     const message = cleanMessage(req.body.message);
     if (!message) return res.status(400).json({ message: 'Message cannot be empty.' });
-    const previous = chat.messages[chat.messages.length - 1];
-    if (
-      previous?.author?.toString() === req.userId
-      && previous.message === message
-      && Date.now() - new Date(previous.sentAt).getTime() < 10_000
-    ) {
-      return res.status(429).json({ message: 'Please avoid sending duplicate messages.' });
-    }
-
-    if (chat.chatType !== 'directPrivateChat') {
-      const updated = await appendActivityChatMessage(chat.id, req.userId as string, message);
-      if (!updated) {
-        return res.status(409).json({ code: 'ACTIVITY_CHAT_READ_ONLY', message: CANCELLED_ACTIVITY_CHAT_MESSAGE });
-      }
-      return res.json(updated);
-    }
-
-    chat.messages.push({ author: req.userId as any, message, sentAt: new Date() });
-    if (
-      chat.chatType === 'directPrivateChat'
-      && chat.directState === 'request'
-      && toId(chat.requestRecipient) === req.userId
-    ) {
-      chat.directState = 'active';
-      chat.requestRecipient = undefined;
-    }
-    const ownReadState = (chat.readStates || []).find((state: any) => toId(state.user) === req.userId);
-    if (ownReadState) ownReadState.lastReadAt = new Date();
-    else chat.readStates.push({ user: req.userId as any, lastReadAt: new Date() });
-    await chat.save();
-
-    return res.json(chat);
+    const access = await authorize(req.params.id, req.userId);
+    if (!access) return res.status(404).json({ message: 'Chat not found.' });
+    if (access.error) return res.status(403).json({ message: access.error });
+    const result = await createChatMessage(access.chat.id, req.userId!, message, req.body.clientMessageId);
+    if (!result.created) return res.status(result.status).json({ code: result.code, message: result.message });
+    res.json({ message: result.created });
   }),
 );
-
 export default router;

@@ -14,6 +14,9 @@ import { rateLimit } from 'express-rate-limit';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import { effectiveActivityStatus } from '../utils/activityLifecycle';
 import { completePastActivities } from '../services/activityCompletion';
+import { decodeImageDataUri, ImageInputError } from '../services/imageValidation';
+import { getImageStorage } from '../services/imageStorage';
+import { cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
 
 const router = express.Router();
 
@@ -34,7 +37,6 @@ type ProfileBody = {
 };
 type ProfilePhotoBody = {
   profilePictureUrl: string;
-  profileThumbnailUrl?: string;
 };
 type PrivacyBody = {
   locationPublic?: boolean;
@@ -43,13 +45,11 @@ type PrivacyBody = {
   publicGender?: boolean;
 };
 
-const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
-const imageDataPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
-const maxProfileImageBytes = 5 * 1024 * 1024;
-const maxProfileImagePayloadLength = Math.ceil((maxProfileImageBytes * 4) / 3) + 128;
+const maxProfileImageBytes = 4 * 1024 * 1024;
 const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'] as const;
 type Gender = typeof allowedGenders[number];
 const moderationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
+const imageUploadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many photo uploads. Please try again later.' } });
 
 const isAllowedGender = (value: unknown): value is Gender =>
   typeof value === 'string' && (allowedGenders as readonly string[]).includes(value);
@@ -79,20 +79,6 @@ const historyActivityPayload = (activity: any, viewerId?: string) => {
   });
 };
 
-const getBase64ByteSize = (value: string) => {
-  const base64 = value.split(',')[1] || '';
-  return Math.ceil((base64.length * 3) / 4);
-};
-
-const isValidProfileImage = (value: string) => {
-  if (value.length > maxProfileImagePayloadLength) return false;
-  if (imageUrlPattern.test(value)) return true;
-  if (!imageDataPattern.test(value)) return false;
-  const base64 = value.split(',')[1] || '';
-  if (!base64 || !/^[a-zA-Z0-9+/=]+$/.test(base64)) return false;
-  return getBase64ByteSize(value) <= maxProfileImageBytes;
-};
-
 const publicGenderValue = (user: IUser) => {
   const gender = user.gender;
   if (!user.publicGender || !gender || gender === 'prefer_not_to_say') return undefined;
@@ -103,10 +89,8 @@ const userPayload = (user: IUser) => ({
   id: user.id,
   name: user.name,
   email: user.email,
-  avatar: user.profileThumbnailUrl || user.profilePictureUrl || user.avatar,
-  profilePictureUrl: user.profilePictureUrl,
-  profileThumbnailUrl: user.profileThumbnailUrl,
-  profileCompleted: Boolean(user.profileCompleted || user.profilePictureUrl),
+  ...userImageUrls(user),
+  profileCompleted: Boolean(user.profileCompleted || user.profileImage || userImageUrls(user).profilePictureUrl),
   location: user.location,
   interests: user.interests || [],
   verified: user.verified,
@@ -131,9 +115,7 @@ const userPayload = (user: IUser) => ({
 const publicUserPayload = (user: IUser) => ({
   id: user.id,
   name: user.name,
-  avatar: user.profileThumbnailUrl || user.profilePictureUrl || (user.profileCompleted ? user.avatar : undefined),
-  profilePictureUrl: user.profilePictureUrl,
-  profileThumbnailUrl: user.profileThumbnailUrl,
+  ...userImageUrls(user),
   bio: user.bio,
   aboutMe: user.aboutMe,
   location: user.locationPublic ? user.location : undefined,
@@ -221,27 +203,32 @@ router.get('/me/history', auth, asyncHandler(async (req: AuthRequest, res: ApiRe
 router.patch(
   '/me/profile-photo',
   auth,
-  body('profilePictureUrl')
-    .isString()
-    .custom(isValidProfileImage)
-    .withMessage('Use a JPEG, PNG, or WEBP image under 5MB.'),
-  body('profileThumbnailUrl')
-    .optional()
-    .isString()
-    .custom(isValidProfileImage)
-    .withMessage('Use a JPEG, PNG, or WEBP thumbnail under 5MB.'),
+  imageUploadLimiter,
+  body('profilePictureUrl').isString().withMessage('Upload a JPEG, PNG, or WEBP image.'),
   asyncHandler(async (req: AuthRequest<NoParams, unknown, ProfilePhotoBody>, res: ApiResponse) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-    const user = await User.findById(req.userId);
+    let image;
+    try { image = decodeImageDataUri(req.body.profilePictureUrl, maxProfileImageBytes); }
+    catch (error) { if (error instanceof ImageInputError) return res.status(error.status).json({ message: error.message }); throw error; }
+    const user = await User.findById(req.userId).select('+avatar +profilePictureUrl +profileThumbnailUrl');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    user.profilePictureUrl = req.body.profilePictureUrl;
-    user.profileThumbnailUrl = req.body.profileThumbnailUrl || req.body.profilePictureUrl;
-    user.avatar = user.profileThumbnailUrl;
-    user.profileCompleted = true;
-    await user.save();
+    const previous = user.profileImage;
+    const uploaded = await getImageStorage().upload({ image, kind: 'profile', ownerId: user.id });
+    try {
+      user.profileImage = uploaded;
+      user.profilePictureUrl = undefined;
+      user.profileThumbnailUrl = undefined;
+      user.avatar = undefined;
+      user.profileCompleted = true;
+      await user.save();
+    } catch (error) {
+      await cleanupUnreferencedAssets([uploaded]);
+      throw error;
+    }
+    await cleanupUnreferencedAssets([previous]);
 
     res.json(userPayload(user));
   }),
@@ -288,9 +275,9 @@ router.post('/:id/report', auth, reportLimiter, asyncHandler(async (req: any, re
 router.get('/me/blocked-users', auth, asyncHandler(async (req: AuthRequest, res) => {
   const user = await User.findById(req.userId).select('blockedUsers');
   const blocked = await User.find({ _id: { $in: user?.blockedUsers || [] }, ...activeUserFilter })
-    .select('name avatar profilePictureUrl profileThumbnailUrl');
+    .select('name profileImage +avatar +profilePictureUrl +profileThumbnailUrl');
   res.json(blocked.map((person) => ({ id: person.id, name: person.name,
-    avatar: person.profileThumbnailUrl || person.profilePictureUrl || person.avatar })));
+    avatar: userImageUrls(person).avatar })));
 }));
 
 // Adds a user to the signed-in user's block list. This is additive and safe for existing users.

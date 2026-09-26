@@ -3,7 +3,9 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { requestPhotoPermission } from './mediaPermissions';
 
 export const MAX_MOMENT_IMAGES = 3;
-const MAX_IMAGE_BYTES = 1536 * 1024;
+const MAX_IMAGE_BYTES = 1280 * 1024;
+
+export type PreparedMomentImage = { uri: string };
 
 export const pickMomentImages = async () => {
   const permitted = await requestPhotoPermission('library');
@@ -25,13 +27,22 @@ export const pickMomentImages = async () => {
     const prepared = await ImageManipulator.manipulateAsync(asset.uri, resize, {
       compress: 0.68,
       format: ImageManipulator.SaveFormat.JPEG,
-      base64: true,
+      base64: false,
     });
-    if (!prepared.base64 || Math.ceil((prepared.base64.length * 3) / 4) > MAX_IMAGE_BYTES) {
-      throw new Error('Each Moment photo must be 1.5MB or smaller after processing.');
-    }
-    return `data:image/jpeg;base64,${prepared.base64}`;
+    return { uri: prepared.uri };
   }));
 
   return images;
 };
+
+export const encodeMomentImagesForUpload = async (images: PreparedMomentImage[]) => Promise.all(images.map(async ({ uri }) => {
+  const prepared = await ImageManipulator.manipulateAsync(uri, [], {
+    compress: 0.68,
+    format: ImageManipulator.SaveFormat.JPEG,
+    base64: true,
+  });
+  if (!prepared.base64 || Math.ceil((prepared.base64.length * 3) / 4) > MAX_IMAGE_BYTES) {
+    throw new Error('Each Moment photo must be 1.25MB or smaller after processing.');
+  }
+  return `data:image/jpeg;base64,${prepared.base64}`;
+}));

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,16 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
 import { useMessaging } from '../context/MessagingContext';
-import { fetchChatRequest, sendChatMessageRequest } from '../api';
+import { ChatMessageResponse, fetchChatRequest, sendChatMessageRequest } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import BottomNavigation, {
   BOTTOM_NAV_WEB_CONTENT_CLEARANCE,
@@ -29,23 +31,36 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
 type ChatMessage = {
   id: string;
+  senderId: string;
   author: string;
+  avatar?: string;
   text: string;
   time: string;
+  createdAt: string;
+  clientMessageId?: string;
   pinned?: boolean;
   status?: 'pending' | 'sent' | 'failed';
   reactions?: Array<{ label: string; count: number }>;
 };
 
-const mapChatMessages = (chatData: any): ChatMessage[] => (chatData?.messages || []).map((message: any, index: number) => ({
-  id: message._id || String(index),
-  author: message.author?.name || 'Member',
-  text: message.message,
-  time: message.sentAt
-    ? new Date(message.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+export const mapChatMessages = (values: ChatMessageResponse[]): ChatMessage[] => (values || []).map((message) => ({
+  id: message.id,
+  senderId: message.sender.id,
+  author: message.sender.name || 'Former JOIN member',
+  avatar: message.sender.avatar,
+  text: message.text,
+  createdAt: message.createdAt,
+  time: message.createdAt
+    ? new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : 'Now',
   reactions: [],
 }));
+
+export const mergeChatMessages = (current: ChatMessage[], incoming: ChatMessage[]) => {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+};
 
 export default function ChatScreen({ route }: Props) {
   const { chatId } = route.params;
@@ -62,49 +77,96 @@ export default function ChatScreen({ route }: Props) {
   const [chatTitle, setChatTitle] = useState(route.params.title);
   const [chatKind, setChatKind] = useState<'activity' | 'direct'>('activity');
   const [readOnly, setReadOnly] = useState(false);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState('');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const latestCursorRef = useRef<string | null>(null);
+  const focusedRef = useRef(false);
+  const requestGeneration = useRef(0);
 
-  useEffect(() => {
-    if (chatId !== 'general' && token) {
-      const loadChat = async () => {
-        setLoading(true);
-        setLockedMessage('');
-        try {
-          const response = await fetchChatRequest(chatId, token);
-          const chatData = response.data;
-          if (chatData && Array.isArray(chatData.messages)) {
-            const isDirect = chatData.chatType === 'directPrivateChat';
-            const otherMember = isDirect
-              ? chatData.members?.find((member: any) => (member._id || member.id) !== user?.id)
-              : null;
-            setChatKind(isDirect ? 'direct' : 'activity');
-            setChatTitle(isDirect ? otherMember?.name || route.params.title : chatData.activity?.title || route.params.title);
-            setReadOnly(!isDirect && Boolean(chatData.readOnly || chatData.activity?.status === 'cancelled'));
-            setMessages(mapChatMessages(chatData));
-            await refreshUnreadConversations();
-          }
-        } catch (error) {
-          console.warn(error);
-          setMessages([]);
-          setLockedMessage('You need to join this activity to access the chat.');
-        } finally {
-          setLoading(false);
-        }
-      };
+  const applyMetadata = useCallback((chatData: any) => {
+    const isDirect = chatData.chatType === 'directPrivateChat';
+    const otherMember = isDirect ? chatData.members?.find((member: any) => (member._id || member.id) !== user?.id) : null;
+    setChatKind(isDirect ? 'direct' : 'activity');
+    setChatTitle(isDirect ? otherMember?.name || route.params.title : chatData.activity?.title || route.params.title);
+    setReadOnly(!isDirect && Boolean(chatData.readOnly || chatData.activity?.status === 'cancelled'));
+  }, [route.params.title, user?.id]);
 
-      loadChat();
+  const refreshLatest = useCallback(async (initial = false) => {
+    if (chatId === 'general' || !token || (!focusedRef.current && !initial)) return;
+    const generation = requestGeneration.current;
+    if (initial) setLoading(true);
+    try {
+      const response = await fetchChatRequest(chatId, token,
+        !initial && latestCursorRef.current ? { after: latestCursorRef.current } : undefined);
+      if (generation !== requestGeneration.current || (!focusedRef.current && !initial)) return;
+      applyMetadata(response.data);
+      const mapped = mapChatMessages(response.data.messages);
+      setMessages((current) => initial ? mapped : mergeChatMessages(current, mapped));
+      if (initial) { setNextCursor(response.data.nextCursor); setHasMore(response.data.hasMore); }
+      if (response.data.latestCursor) latestCursorRef.current = response.data.latestCursor;
+      setLockedMessage('');
+      await refreshUnreadConversations();
+    } catch (error: any) {
+      if (generation !== requestGeneration.current) return;
+      if (initial) setLockedMessage(error?.response?.data?.message || 'Unable to load this chat.');
+    } finally {
+      if (initial && generation === requestGeneration.current) setLoading(false);
     }
-  }, [chatId, refreshUnreadConversations, route.params.title, token, user?.id]);
+  }, [applyMetadata, chatId, refreshUnreadConversations, token]);
+
+  useFocusEffect(useCallback(() => {
+    focusedRef.current = true;
+    requestGeneration.current += 1;
+    latestCursorRef.current = null;
+    void refreshLatest(true);
+    const interval = setInterval(() => { if (AppState.currentState === 'active') void refreshLatest(false); }, 4000);
+    const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') void refreshLatest(false); });
+    return () => { focusedRef.current = false; requestGeneration.current += 1; clearInterval(interval); subscription.remove(); };
+  }, [refreshLatest]));
+
+  const loadOlder = async () => {
+    if (!token || !nextCursor || olderLoading) return;
+    setOlderLoading(true); setOlderError('');
+    const generation = requestGeneration.current;
+    try {
+      const response = await fetchChatRequest(chatId, token, { before: nextCursor });
+      if (generation !== requestGeneration.current || !focusedRef.current) return;
+      setMessages((current) => mergeChatMessages(current, mapChatMessages(response.data.messages)));
+      setNextCursor(response.data.nextCursor); setHasMore(response.data.hasMore);
+    } catch { if (generation === requestGeneration.current) setOlderError('Older messages could not be loaded. Tap to retry.'); }
+    finally { if (generation === requestGeneration.current) setOlderLoading(false); }
+  };
+
+  const submitMessage = async (nextMessage: string, clientMessageId: string, tempId: string) => {
+    if (!token) return;
+    try {
+      const response = await sendChatMessageRequest(chatId, nextMessage, clientMessageId, token);
+      const saved = mapChatMessages([response.data.message])[0];
+      setMessages((current) => mergeChatMessages(current.filter((message) => message.id !== tempId), [saved]));
+      void refreshUnreadConversations();
+    } catch (error: any) {
+      if (error?.response?.data?.code === 'ACTIVITY_CHAT_READ_ONLY') setReadOnly(true);
+      setMessages((current) => current.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
+      Alert.alert('Message not sent', error?.response?.data?.message || 'Please try again.');
+    }
+  };
 
   const sendMessage = async () => {
     if (!draft.trim() || lockedMessage || readOnly) return;
     const nextMessage = draft.trim();
-    const tempId = `local-${Date.now()}`;
+    const clientMessageId = `${user?.id || 'anonymous'}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tempId = `local-${clientMessageId}`;
+    const createdAt = new Date().toISOString();
     setMessages((prev) => [
       ...prev,
       {
         id: tempId,
-        author: user?.name || 'You',
+        senderId: user?.id || '', author: user?.name || 'You',
         text: nextMessage,
+        createdAt,
+        clientMessageId,
         time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         status: token && chatId !== 'general' ? 'pending' : 'sent',
         reactions: [],
@@ -112,25 +174,7 @@ export default function ChatScreen({ route }: Props) {
     ]);
     setDraft('');
     if (token && chatId !== 'general') {
-      try {
-        await sendChatMessageRequest(chatId, nextMessage, token);
-        setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'sent' } : message));
-        await refreshUnreadConversations();
-      } catch (error: any) {
-        if (error?.response?.data?.code === 'ACTIVITY_CHAT_READ_ONLY') {
-          setReadOnly(true);
-          setMessages((prev) => prev.filter((message) => message.id !== tempId));
-          try {
-            const refreshed = await fetchChatRequest(chatId, token);
-            setMessages(mapChatMessages(refreshed.data));
-          } catch {
-            // Keep the already loaded historical messages if the refresh fails.
-          }
-        } else {
-          setMessages((prev) => prev.map((message) => message.id === tempId ? { ...message, status: 'failed' } : message));
-        }
-        Alert.alert('Message not sent', error?.response?.data?.message || 'You need to join this activity to access the chat.');
-      }
+      void submitMessage(nextMessage, clientMessageId, tempId);
     }
   };
 
@@ -187,6 +231,13 @@ export default function ChatScreen({ route }: Props) {
           styles.messageContent,
           { paddingBottom: bottomNavigationClearance },
         ]}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        ListHeaderComponent={hasMore || olderError ? (
+          <TouchableOpacity style={styles.olderButton} disabled={olderLoading} onPress={loadOlder} accessibilityLabel="Load older messages">
+            {olderLoading ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={styles.olderText}>{olderError || 'Load older messages'}</Text>}
+          </TouchableOpacity>
+        ) : null}
         ListEmptyComponent={
           <View style={styles.emptyChat}>
             <Text style={styles.emptyChatTitle}>No messages yet.</Text>
@@ -194,10 +245,10 @@ export default function ChatScreen({ route }: Props) {
           </View>
         }
         renderItem={({ item }) => {
-          const isMe = item.author === user?.name || item.author === 'You';
+          const isMe = item.senderId === user?.id;
           return (
             <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
-              {!isMe && <View style={styles.messageAvatar}><AvatarBadge name={item.author} size={32} /></View>}
+              {!isMe && <View style={styles.messageAvatar}><AvatarBadge name={item.author} avatarUrl={item.avatar} size={32} /></View>}
               <View style={[styles.messageBubble, item.pinned && styles.messageBubblePinned, isMe && styles.messageBubbleMe]}>
                 {item.pinned && (
                   <View style={styles.pinnedRow}>
@@ -211,7 +262,11 @@ export default function ChatScreen({ route }: Props) {
                 </View>
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text}</Text>
                 {item.status === 'pending' ? <Text style={styles.messageStatus}>Sending...</Text> : null}
-                {item.status === 'failed' ? <Text style={styles.messageStatusFailed}>Failed to send</Text> : null}
+                {item.status === 'failed' ? (
+                  <TouchableOpacity accessibilityLabel="Retry message" onPress={() => item.clientMessageId && submitMessage(item.text, item.clientMessageId, item.id)}>
+                    <Text style={styles.messageStatusFailed}>Failed to send · Tap to retry</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {item.reactions?.length ? (
                   <View style={styles.reactionsRow}>
                     {item.reactions.map((reaction) => (
@@ -347,6 +402,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     flexGrow: 1,
   },
+  olderButton: { alignSelf: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  olderText: { color: colors.primary, fontSize: 12, fontWeight: '800' },
   emptyChat: {
     flex: 1,
     alignItems: 'center',

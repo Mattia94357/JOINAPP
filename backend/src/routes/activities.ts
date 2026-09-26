@@ -45,6 +45,7 @@ import {
   parseActivityEdit,
 } from '../services/activityEditing';
 import { activityCreateConsistencyIssue, unsupportedActivityCreateFields } from '../services/activityCreation';
+import { userImageUrls } from '../services/imageAssets';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -101,7 +102,7 @@ const allowedCategories = [
   'Coworking',
   'Other',
 ];
-const participantFields = 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
+const participantFields = 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
 const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const allowedHostGenderFilters = ['male', 'female', 'non_binary'];
 const activityWriteLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
@@ -143,9 +144,7 @@ const populatedActivity = (activityId: string) => Activity.findById(activityId)
 const publicPersonPayload = (user: any) => ({
   id: user?.id || user?._id?.toString(),
   name: user?.name,
-  avatar: user?.profileThumbnailUrl || user?.profilePictureUrl || (user?.profileCompleted ? user?.avatar : undefined),
-  profilePictureUrl: user?.profilePictureUrl,
-  profileThumbnailUrl: user?.profileThumbnailUrl,
+  ...userImageUrls(user),
   verified: user?.verified,
   gender: publicGenderValue(user),
   hostRating: user?.hostRating,
@@ -192,7 +191,7 @@ router.get('/', asyncHandler(async (req, res) => {
     .skip((page - 1) * limit)
     .limit(limit)
     .populate('host', `${participantFields} gender publicGender`)
-    .populate('participants', 'name avatar profilePictureUrl profileThumbnailUrl profileCompleted verified');
+    .populate('participants', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl profileCompleted verified');
   const filteredActivities = allowedHostGenderFilters.includes(hostGender || '')
     ? activities.filter((activity) => publicGenderValue(activity.host) === hostGender)
     : activities;
@@ -416,7 +415,7 @@ router.post(
   if (!canAccessActivity(activity, req.userId, req.body.inviteCode)) {
     return res.status(403).json({ message: 'A valid invitation is required to join this private activity.' });
   }
-  if (!user.profileCompleted || !user.profilePictureUrl) {
+  if (!user.profileCompleted || !userImageUrls(user).profilePictureUrl) {
     return res.status(403).json({
       code: 'PROFILE_PHOTO_REQUIRED',
       message: 'Profile photos are required before joining activities so everyone can see who is attending.',

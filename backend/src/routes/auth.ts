@@ -10,6 +10,7 @@ import { isMailConfigured, sendPasswordResetEmail, smtpErrorDetails } from '../c
 import { isDevelopment } from '../config/env';
 import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
+import { userImageUrls } from '../services/imageAssets';
 
 const router = express.Router();
 const resetTokenMinutes = 30;
@@ -38,10 +39,8 @@ const publicUserPayload = (user: any) => ({
   id: user.id,
   name: user.name,
   email: user.email,
-  avatar: user.profileThumbnailUrl || user.profilePictureUrl || user.avatar,
-  profilePictureUrl: user.profilePictureUrl,
-  profileThumbnailUrl: user.profileThumbnailUrl,
-  profileCompleted: Boolean(user.profileCompleted || user.profilePictureUrl),
+  ...userImageUrls(user),
+  profileCompleted: Boolean(user.profileCompleted || user.profileImage || userImageUrls(user).profilePictureUrl),
   location: user.location,
   interests: user.interests || [],
   verified: user.verified,
@@ -79,9 +78,8 @@ router.post(
     const existing = await User.findOne({ email }).select('+sessionVersion');
     if (existing) return res.status(400).json({ message: 'Email already in use' });
 
-    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1E1E1E&color=F4C542&size=128`;
     const hashed = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashed, avatar, profileCompleted: false });
+    const user = new User({ name, email, password: hashed, profileCompleted: false });
     await user.save();
 
     const token = jwt.sign({ userId: user.id, sessionVersion: user.sessionVersion ?? 0 }, getJwtSecret(), { expiresIn: '7d' });

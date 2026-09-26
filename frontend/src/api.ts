@@ -351,6 +351,24 @@ export type ConversationListResponse = {
   unreadRequestCount: number;
 };
 
+export type ChatMessageResponse = {
+  id: string;
+  sender: { id: string; name: string; avatar?: string };
+  text: string;
+  createdAt: string;
+};
+export type ChatPageResponse = {
+  id: string;
+  chatType: 'publicActivityChat' | 'privateActivityChat' | 'directPrivateChat';
+  activity?: { title?: string; status?: string };
+  members: Array<{ _id?: string; id?: string; name: string }>;
+  readOnly: boolean;
+  messages: ChatMessageResponse[];
+  nextCursor: string | null;
+  latestCursor: string | null;
+  hasMore: boolean;
+};
+
 export type ProfileActivity = {
   _id: string;
   title: string;
@@ -691,10 +709,10 @@ export const cancelActivityRequest = async (activityId: string, token: string, r
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const updateProfilePhotoRequest = async (profilePictureUrl: string, token: string, profileThumbnailUrl?: string) =>
+export const updateProfilePhotoRequest = async (profilePictureUrl: string, token: string) =>
   api.patch<ApiUser>(
     '/api/users/me/profile-photo',
-    { profilePictureUrl, profileThumbnailUrl: profileThumbnailUrl || profilePictureUrl },
+    { profilePictureUrl },
     {
       headers: { Authorization: `Bearer ${token}` },
       timeout: 30000,
@@ -760,14 +778,14 @@ export const blockUserRequest = async (userId: string, token: string) =>
     },
   );
 
-export const fetchChatRequest = async (chatId: string, token: string) =>
-  api.get(`/api/chats/${chatId}`, {
+export const fetchChatRequest = async (chatId: string, token: string, cursor?: { before?: string; after?: string }) =>
+  api.get<ChatPageResponse>(`/api/chats/${chatId}`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: { limit: 50 },
+    params: { limit: 50, ...cursor },
   });
 
-export const sendChatMessageRequest = async (chatId: string, message: string, token: string) =>
-  api.post(`/api/chats/${chatId}/message`, { message }, {
+export const sendChatMessageRequest = async (chatId: string, message: string, clientMessageId: string, token: string) =>
+  api.post<{ message: ChatMessageResponse }>(`/api/chats/${chatId}/message`, { message, clientMessageId }, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -810,8 +828,8 @@ export const fetchActivityMomentsRequest = (activityId: string, token?: string) 
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
-export const createMomentRequest = (activityId: string, images: string[], caption: string, token: string) =>
-  api.post<MomentResponse>('/api/moments', { activityId, images, caption }, {
+export const createMomentRequest = (activityId: string, images: string[], caption: string, token: string, clientRequestId?: string) =>
+  api.post<MomentResponse>('/api/moments', { activityId, images, caption, clientRequestId }, {
     headers: { Authorization: `Bearer ${token}` },
     timeout: 45000,
   });

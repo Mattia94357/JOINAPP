@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto';
 import { createMomentRequest, MomentResponse } from '../api';
 import { colors, spacing } from '../theme';
-import { MAX_MOMENT_IMAGES, pickMomentImages } from '../utils/momentMedia';
+import { encodeMomentImagesForUpload, MAX_MOMENT_IMAGES, pickMomentImages, PreparedMomentImage } from '../utils/momentMedia';
 
 type Props = {
   visible: boolean;
@@ -15,7 +16,8 @@ type Props = {
 };
 
 export default function CreateMomentModal({ visible, activityId, activityTitle, token, onClose, onCreated }: Props) {
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<PreparedMomentImage[]>([]);
+  const [clientRequestId, setClientRequestId] = useState('');
   const [caption, setCaption] = useState('');
   const [preparing, setPreparing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -23,7 +25,9 @@ export default function CreateMomentModal({ visible, activityId, activityTitle, 
   const chooseImages = async () => {
     setPreparing(true);
     try {
-      setImages(await pickMomentImages());
+      const selected = await pickMomentImages();
+      setImages(selected);
+      if (selected.length) setClientRequestId(Crypto.randomUUID());
     } catch (error: any) {
       Alert.alert('Photo unavailable', error?.message || 'Choose another photo and try again.');
     } finally {
@@ -35,10 +39,12 @@ export default function CreateMomentModal({ visible, activityId, activityTitle, 
     if (!images.length || saving) return;
     setSaving(true);
     try {
-      const response = await createMomentRequest(activityId, images, caption.trim(), token);
+      const uploadImages = await encodeMomentImagesForUpload(images);
+      const response = await createMomentRequest(activityId, uploadImages, caption.trim(), token, clientRequestId || Crypto.randomUUID());
       onCreated(response.data);
       setImages([]);
       setCaption('');
+      setClientRequestId('');
       onClose();
     } catch (error: any) {
       Alert.alert('Moment not saved', error?.response?.data?.message || 'Please try again.');
@@ -63,7 +69,7 @@ export default function CreateMomentModal({ visible, activityId, activityTitle, 
 
           {images.length ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewRow}>
-              {images.map((image, index) => <Image key={index} source={{ uri: image }} style={styles.preview} />)}
+              {images.map((image, index) => <Image key={index} source={{ uri: image.uri }} style={styles.preview} />)}
             </ScrollView>
           ) : (
             <TouchableOpacity style={styles.photoPicker} onPress={chooseImages} disabled={preparing}>

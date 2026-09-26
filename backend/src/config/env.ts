@@ -33,5 +33,10 @@ export const assertProductionEnvironment = () => {
     if (secret.length < 32 || /^(secret|changeme|password)$/i.test(secret)) {
       throw new Error('JWT_SECRET must be a unique value of at least 32 characters in production.');
     }
+    if (process.env.IMAGE_STORAGE_PROVIDER !== 'cloudinary') {
+      throw new Error('IMAGE_STORAGE_PROVIDER must be cloudinary in production.');
+    }
+    const missingImages = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'].filter((key) => !process.env[key]);
+    if (missingImages.length) throw new Error(`Missing required image storage variables: ${missingImages.join(', ')}`);
   }
 };
