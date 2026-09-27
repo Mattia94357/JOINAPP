@@ -45,7 +45,10 @@ import {
   parseActivityEdit,
 } from '../services/activityEditing';
 import { activityCreateConsistencyIssue, unsupportedActivityCreateFields } from '../services/activityCreation';
-import { userImageUrls } from '../services/imageAssets';
+import { activityImageUrl, cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
+import { decodeImageDataUri } from '../services/imageValidation';
+import { getImageStorage } from '../services/imageStorage';
+import type { ImageAsset } from '../models/ImageAsset';
 import { hostRating, reviewCount } from '../services/trust';
 
 const router = express.Router();
@@ -66,7 +69,7 @@ type CreateActivityBody = {
   endDate?: string;
   ageGroup?: string;
   vibe?: string;
-  coverImage?: string;
+  coverImageData?: string;
   maxAttendees: number;
   venueName?: string;
   exactAddress?: string;
@@ -77,7 +80,6 @@ type CreateActivityBody = {
   cancellationPolicy?: string;
   visibility?: string;
   joinApproval?: string;
-  galleryImages?: unknown;
 };
 type CancelActivityBody = {
   reason?: unknown;
@@ -104,7 +106,6 @@ const allowedCategories = [
   'Other',
 ];
 const participantFields = 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl profileCompleted verified hostRating hostedCount joinedCount location bio aboutMe languages interests ageRange activityRating reviewCount';
-const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 const allowedHostGenderFilters = ['male', 'female', 'non_binary'];
 const activityWriteLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
 const cleanText = (value: unknown, max: number) => typeof value === 'string'
@@ -162,12 +163,14 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
   const waitlist = activity.waitlist || [];
   const safePayload: any = sanitizeActivityPrivacy({
     ...activity.toObject(),
+    coverImage: activityImageUrl(activity),
     status: effectiveActivityStatus(activity),
     host: publicPersonPayload(activity.host),
     participants: participants.map(publicPersonPayload),
     participantCount: participants.length,
     spotsLeft: activity.maxAttendees ? Math.max(activity.maxAttendees - participants.length, 0) : undefined,
   }, activity, viewerId, options);
+  delete safePayload.coverImageAsset;
 
   if (viewerId) safePayload.viewerJoinStatus = activityViewerJoinStatus(activity, viewerId);
 
@@ -216,8 +219,7 @@ router.post(
   body('endDate').optional({ checkFalsy: true }).isISO8601(),
   body('ageGroup').optional().isIn(['any', '18-24', '25-34', '35-44', '45+']),
   body('maxAttendees').isInt({ min: 2 }),
-  body('coverImage').optional({ checkFalsy: true }).custom((value) => imageUrlPattern.test(value)),
-  body('galleryImages').optional().isArray({ max: 5 }),
+  body('coverImageData').optional().isString(),
   body('vibe').optional().isString().trim().isLength({ max: 80 }),
   body('venueName').optional({ checkFalsy: true }).isString().trim().isLength({ max: 120 }),
   body('exactAddress').optional({ checkFalsy: true }).isString().trim().isLength({ max: 240 }),
@@ -248,7 +250,7 @@ router.post(
       endDate,
       ageGroup,
       vibe,
-      coverImage,
+      coverImageData,
       maxAttendees,
       venueName,
       exactAddress,
@@ -259,7 +261,6 @@ router.post(
       cancellationPolicy,
       visibility,
       joinApproval,
-      galleryImages,
     } = req.body;
     const hasLatitude = latitude !== undefined && latitude !== null && latitude !== '';
     const hasLongitude = longitude !== undefined && longitude !== null && longitude !== '';
@@ -282,12 +283,10 @@ router.post(
     if (consistencyIssue === 'paid_cost_required') {
       return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
     }
-    const gallery = Array.isArray(galleryImages) ? galleryImages.map((image) => String(image).trim()).filter(Boolean).slice(0, 5) : [];
-    if (coverImage && !imageUrlPattern.test(String(coverImage))) {
-      return res.status(400).json({ message: 'Use a valid JPEG, PNG, or WEBP cover image URL.' });
-    }
-    if (gallery.some((image) => !imageUrlPattern.test(image))) {
-      return res.status(400).json({ message: 'Gallery images must be valid JPEG, PNG, or WEBP URLs.' });
+    let coverImageAsset: ImageAsset | undefined;
+    if (coverImageData) {
+      const image = decodeImageDataUri(coverImageData, 4 * 1024 * 1024);
+      coverImageAsset = await getImageStorage().upload({ image, kind: 'activity', ownerId: req.userId as string });
     }
 
     const activity = new Activity({
@@ -306,8 +305,7 @@ router.post(
       endDate: scheduledEnd,
       ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
       vibe: cleanText(vibe, 80),
-      coverImage,
-      galleryImages: gallery,
+      coverImageAsset,
       maxAttendees,
       visibility: visibility === 'private' ? 'private' : 'public',
       joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
@@ -324,7 +322,12 @@ router.post(
       participants: [req.userId],
     });
 
-    await activity.save();
+    try {
+      await activity.save();
+    } catch (error) {
+      await cleanupUnreferencedAssets([coverImageAsset]);
+      throw error;
+    }
     const populated = await Activity.findById(activity.id)
       .populate('host', `${participantFields} gender publicGender`)
       .populate('participants', participantFields);

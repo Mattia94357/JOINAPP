@@ -17,7 +17,22 @@ export const getMapTilerConfig = () => ({
 });
 
 type GeocodingResponse = {
-  features?: Array<{ center?: [number, number] }>;
+  features?: Array<{ center?: [number, number]; place_name?: string }>;
+};
+
+export const reverseGeocodeJoinLocation = async (coordinate: { latitude: number; longitude: number }) => {
+  const { apiKey } = getMapTilerConfig();
+  if (!apiKey) return undefined;
+  try {
+    const response = await fetch(
+      `https://api.maptiler.com/geocoding/${coordinate.longitude},${coordinate.latitude}.json?key=${encodeURIComponent(apiKey)}&language=en&limit=1`,
+    );
+    if (!response.ok) return undefined;
+    const data = await response.json() as GeocodingResponse;
+    return data.features?.[0]?.place_name?.split(',').slice(0, 3).map((part) => part.trim()).filter(Boolean).join(', ');
+  } catch {
+    return undefined;
+  }
 };
 
 export const geocodeActivityLocation = async (query: string) => {

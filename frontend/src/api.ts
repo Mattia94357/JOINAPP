@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { getActivityCoverImage, getVibeForCategory } from './utils/activityAssets';
+import { getVibeForCategory, resolveActivityImage } from './utils/activityAssets';
 import { getAvailabilityTag } from './utils/availability';
 import { normalizeActivityCategory } from './utils/categories';
 
@@ -528,7 +528,7 @@ export const fetchActivities = async (token?: string) => {
     galleryImages: activity.galleryImages || [],
     activityRating: activity.activityRating,
     reviewCount: activity.reviewCount,
-    coverImage: activity.coverImage || getActivityCoverImage(normalizeActivityCategory(activity.category), activity._id),
+    coverImage: resolveActivityImage({ uploadedImage: activity.coverImage, category: normalizeActivityCategory(activity.category) }),
     availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || activity.host?.id || '',
@@ -592,7 +592,7 @@ export const fetchActivity = async (activityId: string, token?: string, inviteCo
     galleryImages: activity.galleryImages || [],
     activityRating: activity.activityRating,
     reviewCount: activity.reviewCount,
-    coverImage: activity.coverImage || getActivityCoverImage(normalizeActivityCategory(activity.category), activity._id),
+    coverImage: resolveActivityImage({ uploadedImage: activity.coverImage, category: normalizeActivityCategory(activity.category) }),
     availabilityTag: activity.availabilityTag || getAvailabilityTag(activity.date),
     host: activity.host?.name || 'Unknown',
     hostId: activity.host?._id || activity.host?.id || '',
@@ -631,6 +631,7 @@ export const createActivityRequest = async (
     endDate?: string;
     vibe?: string;
     coverImage?: string;
+    coverImageData?: string;
     maxAttendees?: number;
     venueName?: string;
     exactAddress?: string;
@@ -641,7 +642,6 @@ export const createActivityRequest = async (
     cancellationPolicy?: string;
     visibility?: 'public' | 'private';
     joinApproval?: 'auto' | 'manual';
-    galleryImages?: string[];
     ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   },
   token: string,

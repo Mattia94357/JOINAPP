@@ -38,6 +38,7 @@ async function run() {
     const app = express(); app.set('trust proxy', 1); app.use(express.json({ limit: '6mb' }));
     app.use('/api/users', require('../dist/routes/users').default);
     app.use('/api/moments', require('../dist/routes/moments').default);
+    app.use('/api/activities', require('../dist/routes/activities').default);
     app.use(require('../dist/middleware/errorHandler').errorHandler);
     server = await new Promise((resolve) => { const value = app.listen(0, '127.0.0.1', () => resolve(value)); });
     const call = async (user, route, method = 'GET', body) => {
@@ -49,6 +50,27 @@ async function run() {
     };
     const makeUser = (name) => User.create({ name, email: `${name}-${sequence++}@example.test`, password: 'test', profileCompleted: false });
     const owner = await makeUser('owner');
+
+    const activityInput = {
+      title: 'Provider backed activity picture', category: 'Food', location: 'Perth',
+      description: 'A properly bounded activity image upload regression test.',
+      date: new Date(Date.now() + 86400000).toISOString(), maxAttendees: 8, coverImageData: PNG,
+    };
+    const activityPicture = await call(owner, '/activities', 'POST', activityInput);
+    assert.equal(activityPicture.status, 201);
+    assert.match(activityPicture.data.coverImage, /^https:\/\/cdn\.example\.test\/activity\//);
+    assert.ok(!JSON.stringify(activityPicture.data).includes('storageKey'));
+    assert.ok(!JSON.stringify(activityPicture.data).includes('base64'));
+    const storedActivityPicture = await Activity.findById(activityPicture.data._id);
+    assert.match(storedActivityPicture.coverImageAsset.storageKey, /^activity\//);
+    assert.equal(storedActivityPicture.coverImage, undefined);
+    assert.equal((await call(owner, '/activities', 'POST', { ...activityInput, coverImageData: undefined, coverImage: 'https://attacker.test/a.jpg' })).status, 400);
+    assert.equal((await call(owner, '/activities', 'POST', { ...activityInput, coverImageData: undefined, galleryImages: ['https://attacker.test/a.jpg'] })).status, 400);
+    const activityCountBeforeFailure = await Activity.countDocuments();
+    failUpload = true;
+    assert.equal((await call(owner, '/activities', 'POST', { ...activityInput, title: 'Failed provider picture' })).status, 500);
+    assert.equal(await Activity.countDocuments(), activityCountBeforeFailure);
+    failUpload = false;
 
     const valid = await call(owner, '/users/me/profile-photo', 'PATCH', { profilePictureUrl: PNG });
     assert.equal(valid.status, 200);

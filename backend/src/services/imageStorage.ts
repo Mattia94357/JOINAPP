@@ -4,7 +4,7 @@ import path from 'path';
 import type { ImageAsset } from '../models/ImageAsset';
 import type { ValidatedImage } from './imageValidation';
 
-export type ImageKind = 'profile' | 'moment';
+export type ImageKind = 'profile' | 'moment' | 'activity';
 export type UploadInput = { image: ValidatedImage; kind: ImageKind; ownerId: string; deterministicKey?: string };
 export interface ImageStorage { upload(input: UploadInput): Promise<ImageAsset>; delete(storageKey: string): Promise<void>; }
 

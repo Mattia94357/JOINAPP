@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,6 +40,7 @@ import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 import LatestMomentSection from '../components/LatestMomentSection';
 import ProfileMomentsModal from '../components/ProfileMomentsModal';
 import { ratingLabel } from '../utils/rating';
+import { getCurrentJoinPlaceResult } from '../utils/locationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -78,14 +80,15 @@ export default function ProfileScreen({ navigation }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [passportVisible, setPassportVisible] = useState(false);
+  const [deviceLocation, setDeviceLocation] = useState('Finding current location…');
   const [aboutMe, setAboutMe] = useState(user?.aboutMe || user?.bio || '');
-  const [profileLocation, setProfileLocation] = useState(user?.location || '');
   const [languagesText, setLanguagesText] = useState((user?.languages || []).join(', '));
   const [interestsText, setInterestsText] = useState((user?.interests || []).join(', '));
   const [instagram, setInstagram] = useState(user?.instagram || '');
   const [ageRange, setAgeRange] = useState(user?.ageRange || '');
   const [gender, setGender] = useState(user?.gender || 'prefer_not_to_say');
-  const [publicGender, setPublicGender] = useState(Boolean(user?.publicGender));
   const [hostedActivities, setHostedActivities] = useState<ProfileActivity[]>([]);
   const [joinedActivities, setJoinedActivities] = useState<ProfileActivity[]>([]);
   const [moments, setMoments] = useState<MomentResponse[]>([]);
@@ -99,7 +102,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const [busyMomentId, setBusyMomentId] = useState<string>();
 
   const interests = user?.interests || [];
-  const location = user?.location || 'Location not added';
+  const location = deviceLocation;
   const hasProfilePhoto = Boolean(user?.profilePictureUrl || user?.profileThumbnailUrl);
   const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
   const displayHostedCount = hostedCount;
@@ -116,6 +119,40 @@ export default function ProfileScreen({ navigation }: Props) {
   const latestMoment = useMemo(() => [...moments].sort((a, b) => (
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   ))[0], [moments]);
+
+  const resetProfileDrafts = () => {
+    setAboutMe(user?.aboutMe || user?.bio || '');
+    setLanguagesText((user?.languages || []).join(', '));
+    setInterestsText((user?.interests || []).join(', '));
+    setInstagram(user?.instagram || '');
+    setAgeRange(user?.ageRange || '');
+    setGender(user?.gender || 'prefer_not_to_say');
+  };
+
+  useEffect(() => {
+    resetProfileDrafts();
+  }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentJoinPlaceResult().then(async (result) => {
+      if (!active) return;
+      if (result.status !== 'success' || !result.place) {
+        setDeviceLocation('Current location unavailable');
+        return;
+      }
+      setDeviceLocation(result.place);
+      if (token && result.place !== user?.location) {
+        try {
+          const response = await updateProfileRequest({ location: result.place }, token);
+          if (active) await updateUser(response.data);
+        } catch {
+          // A reverse-geocoded label is helpful but must never block Profile.
+        }
+      }
+    });
+    return () => { active = false; };
+  }, [token, user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -293,18 +330,17 @@ export default function ProfileScreen({ navigation }: Props) {
         {
           aboutMe: aboutMe.trim(),
           bio: aboutMe.trim(),
-          location: profileLocation.trim(),
           languages: languagesText.split(',').map((item) => item.trim()).filter(Boolean),
           interests: interestsText.split(',').map((item) => item.trim()).filter(Boolean),
           instagram: instagram.trim(),
           ageRange: ageRange.trim(),
           gender,
-          publicGender: gender === 'prefer_not_to_say' ? false : publicGender,
         },
         token,
       );
       await updateUser(response.data);
       setUploadMessage('Profile updated.');
+      setEditingProfile(false);
     } catch (error: any) {
       Alert.alert('Unable to save profile', error?.response?.data?.message || 'Please try again.');
     } finally {
@@ -419,48 +455,68 @@ export default function ProfileScreen({ navigation }: Props) {
       />
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Beta profile</Text>
-        <TextInput
-          value={aboutMe}
-          onChangeText={setAboutMe}
-          style={[styles.input, styles.textArea]}
-          placeholder="About Me"
-          placeholderTextColor={colors.textSubtle}
-          multiline
-        />
-        <TextInput value={profileLocation} onChangeText={setProfileLocation} style={styles.input} placeholder="Location, e.g. Phuket" placeholderTextColor={colors.textSubtle} />
-        <TextInput value={languagesText} onChangeText={setLanguagesText} style={styles.input} placeholder="Languages, comma separated" placeholderTextColor={colors.textSubtle} />
-        <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
-        <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
-        <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
-        <Text style={styles.fieldLabel}>Host gender</Text>
-        <View style={styles.genderGrid}>
-          {genderOptions.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[styles.genderChip, gender === option.value && styles.genderChipActive]}
-              onPress={() => {
-                setGender(option.value);
-                if (option.value === 'prefer_not_to_say') setPublicGender(false);
-              }}
-            >
-              <Text style={[styles.genderChipText, gender === option.value && styles.genderChipTextActive]}>{option.label}</Text>
+        <View style={styles.profileDetailsHeader}>
+          <View>
+            <Text style={styles.profileDetailsEyebrow}>YOUR JOIN STORY</Text>
+            <Text style={styles.profileDetailsTitle}>Profile details</Text>
+          </View>
+          {!editingProfile ? (
+            <TouchableOpacity style={styles.editProfileButton} onPress={() => setEditingProfile(true)}>
+              <Text style={styles.editProfileText}>Edit profile</Text>
             </TouchableOpacity>
-          ))}
+          ) : null}
         </View>
-        <TouchableOpacity
-          style={[styles.visibilityToggle, (gender === 'prefer_not_to_say') && styles.visibilityToggleDisabled]}
-          onPress={() => gender !== 'prefer_not_to_say' && setPublicGender((value) => !value)}
-          disabled={gender === 'prefer_not_to_say'}
-        >
-          <Ionicons name={publicGender && gender !== 'prefer_not_to_say' ? 'eye-outline' : 'eye-off-outline'} size={17} color={colors.primary} />
-          <Text style={styles.visibilityToggleText}>
-            {publicGender && gender !== 'prefer_not_to_say' ? 'Visible on public profile' : 'Hidden from public profile'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
-          <Text style={styles.saveProfileText}>{savingProfile ? 'Saving...' : 'Save profile'}</Text>
-        </TouchableOpacity>
+
+        <View style={styles.profileDetailsBody}>
+          <View style={styles.detailLocationRow}>
+            <View style={styles.detailGrow}>
+              <Text style={styles.detailLabel}>CURRENT LOCATION</Text>
+              <Text style={styles.detailValue}>{deviceLocation}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setPassportVisible(true)}>
+              <Text style={styles.changeLocationText}>Change location</Text>
+            </TouchableOpacity>
+          </View>
+
+          {editingProfile ? (
+            <>
+              <Text style={styles.fieldLabel}>About me</Text>
+              <TextInput value={aboutMe} onChangeText={setAboutMe} style={[styles.input, styles.textArea]} placeholder="About me" placeholderTextColor={colors.textSubtle} multiline />
+              <TextInput value={languagesText} onChangeText={setLanguagesText} style={styles.input} placeholder="Languages, comma separated" placeholderTextColor={colors.textSubtle} />
+              <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
+              <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
+              <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
+              <Text style={styles.fieldLabel}>Gender</Text>
+              <View style={styles.genderGrid}>
+                {genderOptions.map((option) => (
+                  <TouchableOpacity key={option.value} style={[styles.genderChip, gender === option.value && styles.genderChipActive]} onPress={() => setGender(option.value)}>
+                    <Text style={[styles.genderChipText, gender === option.value && styles.genderChipTextActive]}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.editActions}>
+                <TouchableOpacity style={styles.cancelProfileButton} onPress={() => { resetProfileDrafts(); setEditingProfile(false); }} disabled={savingProfile}>
+                  <Text style={styles.cancelProfileText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
+                  <Text style={styles.saveProfileText}>{savingProfile ? 'Saving…' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.detailDivider} />
+              <Text style={styles.detailLabel}>ABOUT</Text>
+              <Text style={styles.detailValue}>{user?.aboutMe || user?.bio || 'Add a little about yourself.'}</Text>
+              <View style={styles.detailPair}>
+                <View style={styles.detailGrow}><Text style={styles.detailLabel}>LANGUAGES</Text><Text style={styles.detailValue}>{user?.languages?.join(', ') || 'Not added'}</Text></View>
+                <View style={styles.detailGrow}><Text style={styles.detailLabel}>AGE RANGE</Text><Text style={styles.detailValue}>{user?.ageRange || 'Not added'}</Text></View>
+              </View>
+              <Text style={styles.detailLabel}>INSTAGRAM</Text>
+              <Text style={styles.detailValue}>{user?.instagram || 'Not connected'}</Text>
+            </>
+          )}
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -539,6 +595,18 @@ export default function ProfileScreen({ navigation }: Props) {
         onDeleteMoment={deleteMoment}
         onMomentUpdate={updateMomentComments}
       />
+      <Modal visible={passportVisible} transparent animationType="fade" onRequestClose={() => setPassportVisible(false)}>
+        <View style={styles.passportBackdrop}>
+          <View style={styles.passportCard}>
+            <Text style={styles.passportEyebrow}>JOIN+</Text>
+            <Text style={styles.passportTitle}>Passport Mode</Text>
+            <Text style={styles.passportCopy}>Explore and plan in another city while your current location stays device-derived. Passport Mode will require an upgrade and is not available yet.</Text>
+            <TouchableOpacity style={styles.passportButton} onPress={() => setPassportVisible(false)}>
+              <Text style={styles.passportButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <BottomNavigation />
     </View>
   );
@@ -745,6 +813,34 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 9,
   },
+  profileDetailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  profileDetailsEyebrow: { color: colors.primary, fontSize: 10, fontWeight: '900', letterSpacing: 1.6 },
+  profileDetailsTitle: { color: colors.text, fontSize: 24, fontWeight: '900', marginTop: 3 },
+  editProfileButton: { borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
+  editProfileText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
+  profileDetailsBody: { backgroundColor: colors.surfaceSoft, borderRadius: 16, padding: spacing.md },
+  detailLocationRow: { flexDirection: 'row', alignItems: 'center' },
+  detailGrow: { flex: 1 },
+  detailLabel: { color: colors.textSubtle, fontSize: 10, fontWeight: '900', letterSpacing: 1.2, marginTop: spacing.sm, marginBottom: 4 },
+  detailValue: { color: colors.text, fontSize: 14, lineHeight: 21, fontWeight: '700' },
+  changeLocationText: { color: colors.primary, fontSize: 12, fontWeight: '900', marginLeft: spacing.md },
+  detailDivider: { height: 1, backgroundColor: colors.border, marginTop: spacing.md },
+  detailPair: { flexDirection: 'row', gap: spacing.md },
+  editActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  cancelProfileButton: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, alignItems: 'center', paddingVertical: 13 },
+  cancelProfileText: { color: colors.text, fontWeight: '900' },
+  passportBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.76)', justifyContent: 'center', padding: spacing.lg },
+  passportCard: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 20, padding: spacing.xl },
+  passportEyebrow: { color: colors.primary, fontWeight: '900', letterSpacing: 2, fontSize: 11 },
+  passportTitle: { color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 6 },
+  passportCopy: { color: colors.textMuted, lineHeight: 22, marginTop: spacing.md },
+  passportButton: { backgroundColor: colors.primary, borderRadius: 10, alignItems: 'center', paddingVertical: 14, marginTop: spacing.lg },
+  passportButtonText: { color: colors.primaryText, fontWeight: '900' },
   fieldLabel: {
     color: colors.text,
     fontSize: 13,
@@ -778,26 +874,6 @@ const styles = StyleSheet.create({
   },
   genderChipTextActive: {
     color: colors.primary,
-  },
-  visibilityToggle: {
-    minHeight: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.surfaceSoft,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  visibilityToggleDisabled: {
-    opacity: 0.6,
-  },
-  visibilityToggleText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '800',
-    marginLeft: spacing.sm,
   },
   badgeGrid: {
     flexDirection: 'row',
@@ -884,6 +960,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   saveProfileButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 10,
     alignItems: 'center',

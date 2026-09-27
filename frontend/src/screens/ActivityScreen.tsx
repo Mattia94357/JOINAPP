@@ -38,7 +38,7 @@ import {
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
 import ParticipantsModal from '../components/ParticipantsModal';
-import { getActivityCoverImage } from '../utils/activityAssets';
+import { resolveActivityImage } from '../utils/activityAssets';
 import MomentCard from '../components/MomentCard';
 import ReportButton from '../components/ReportButton';
 import CreateMomentModal from '../components/CreateMomentModal';
@@ -235,7 +235,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const viewerFlags = activityViewerFlags(activity.viewerJoinStatus);
   const isHost = viewerFlags.isHost;
   const alreadyJoined = viewerFlags.isConfirmed || isHost;
-  const coverImage = activity.coverImage || getActivityCoverImage(activity.category, activity.id);
+  const coverImage = resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category });
   const capacity = activity.maxAttendees ? `${attendees}/${activity.maxAttendees}` : `${attendees}`;
   const pendingApproval = viewerFlags.isPending;
   const requestDeclined = viewerFlags.isDeclined;

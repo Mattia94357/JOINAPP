@@ -19,8 +19,8 @@ import { RootStackParamList } from '../../App';
 import MapModeMap from '../components/MapModeMap';
 import type { MapActivity } from '../components/MapModeMap.types';
 import AvatarBadge from '../components/AvatarBadge';
-import { colors } from '../theme';
-import { getActivityCoverImage } from '../utils/activityAssets';
+import { colors, spacing } from '../theme';
+import { resolveActivityImage } from '../utils/activityAssets';
 import { getMapTilerConfig } from '../utils/mapConfig';
 import { activityCategories } from '../utils/categories';
 import {
@@ -38,13 +38,6 @@ const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
 type ContentProps = Props & { realActivities: ActivityResponse[] };
-
-const GLOBAL_FALLBACK_REGION: Region = {
-  latitude: 0,
-  longitude: 0,
-  latitudeDelta: 120,
-  longitudeDelta: 120,
-};
 
 let sessionMapViewport: Region | null = null;
 
@@ -115,13 +108,12 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
   const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fallbackViewportActive = useRef(false);
   const { height } = useWindowDimensions();
   const attendees = selectedActivity.attendees ?? selectedActivity.participants.length;
   const spotsLeft = selectedActivity.maxAttendees
     ? Math.max(selectedActivity.maxAttendees - attendees, 0)
     : null;
-  const coverImage = selectedActivity.coverImage || getActivityCoverImage(selectedActivity.category, selectedActivity.id);
+  const coverImage = resolveActivityImage({ uploadedImage: selectedActivity.coverImage, category: selectedActivity.category });
   const creatorName = selectedActivity.host?.trim() || 'JOIN member';
   const creatorDisplayName = creatorName.split(/\s+/)[0];
   const compactHeight = height < 760;
@@ -163,12 +155,8 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       category: activity.category,
       latitude: activity.latitude as number,
       longitude: activity.longitude as number,
-      coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity.id),
+      coverImage: resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category }),
     })), [filteredActivities]);
-  const initialMappedActivity = useMemo(() => realActivities.find((activity) => (
-    activity.locationPrivacy !== 'private' && Number.isFinite(activity.latitude) && Number.isFinite(activity.longitude)
-  )), [realActivities]);
-
   useEffect(() => {
     if (filteredActivities.some((activity) => activity.id === selectedActivity.id)) return;
     if (filteredActivities[0]) setSelectedActivity(filteredActivities[0]);
@@ -238,11 +226,6 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
   const rememberMapViewport = useCallback((region: Region) => {
     if (!isValidMapRegion(region)) return;
-    const isUntouchedGlobalFallback = fallbackViewportActive.current
-      && Math.abs(region.latitude - GLOBAL_FALLBACK_REGION.latitude) < 0.0001
-      && Math.abs(region.longitude - GLOBAL_FALLBACK_REGION.longitude) < 0.0001;
-    if (isUntouchedGlobalFallback) return;
-    fallbackViewportActive.current = false;
     sessionMapViewport = region;
     if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     persistViewportTimer.current = setTimeout(() => void saveLastMapViewport(region), 500);
@@ -256,7 +239,6 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
     setUserCoordinate(coordinate);
     setLocationState('ready');
-    fallbackViewportActive.current = false;
     const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
     sessionMapViewport = region;
     void saveLastMapViewport(region);
@@ -265,31 +247,6 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
   const recenterOnCurrentLocation = useCallback(() => {
     setLocationState('loading');
-
-    if (Platform.OS === 'web') {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        setLocationState('unavailable');
-        return;
-      }
-
-      // Keep this direct call synchronous with the user tap so Safari can show its native prompt.
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const coordinate = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-          applyCurrentCoordinate(coordinate);
-        },
-        (error) => {
-          reportFrontendError('map_geolocation_failed', { name: 'GeolocationError', code: String(error.code) });
-          setLocationState('unavailable');
-        },
-        { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
-      );
-      return;
-    }
-
     void getCurrentJoinLocationResult({
       forceRefresh: true,
       retryDenied: true,
@@ -338,13 +295,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         return;
       }
 
-      const firstMappedActivity = initialMappedActivity;
-      if (firstMappedActivity) {
-        setMapRegion({ latitude: firstMappedActivity.latitude as number, longitude: firstMappedActivity.longitude as number, latitudeDelta: 0.08, longitudeDelta: 0.08 });
-        return;
-      }
-      fallbackViewportActive.current = true;
-      setMapRegion(GLOBAL_FALLBACK_REGION);
+      setMapRegion(null);
     };
 
     initializeMap();
@@ -353,7 +304,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       active = false;
       if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
-  }, [initialMappedActivity]);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -373,7 +324,18 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         />
       ) : (
         <View style={styles.mapLoading}>
-          <ActivityIndicator color={colors.primary} size="small" />
+          {locationState === 'loading' ? (
+            <>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={styles.mapLoadingText}>Finding your current location…</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="location-outline" size={28} color={colors.primary} />
+              <Text style={styles.mapLoadingText}>Location unavailable</Text>
+              <Text style={styles.mapLoadingHint}>Enable foreground location access, then try again.</Text>
+            </>
+          )}
         </View>
       )}
 
@@ -557,6 +519,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#111310',
+  },
+  mapLoadingText: {
+    color: colors.text,
+    fontWeight: '800',
+    marginTop: spacing.sm,
+  },
+  mapLoadingHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'center',
   },
   safeOverlay: {
     ...StyleSheet.absoluteFillObject,

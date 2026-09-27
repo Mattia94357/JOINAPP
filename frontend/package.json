@@ -18,6 +18,7 @@
     "test:images": "node tests/imageUploads.test.js",
     "test:production-cleanup": "node tests/productionCleanup.test.js",
     "test:native-release-config": "node tests/nativeReleaseConfig.test.js",
+    "test:product-refinements": "node tests/productRefinements.test.js",
     "serve:web": "npm run build && node scripts/serve-web-build.js"
   },
   "dependencies": {

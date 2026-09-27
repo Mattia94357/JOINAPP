@@ -1,9 +1,9 @@
 export const creatableActivityFields = [
   'title', 'category', 'location', 'locationName', 'latitude', 'longitude',
   'isApproximateLocation', 'locationPrivacy', 'description', 'date', 'endDate',
-  'ageGroup', 'vibe', 'coverImage', 'maxAttendees', 'venueName', 'exactAddress',
+  'ageGroup', 'vibe', 'coverImageData', 'maxAttendees', 'venueName', 'exactAddress',
   'costType', 'costAmount', 'currency', 'hostNote', 'cancellationPolicy',
-  'visibility', 'joinApproval', 'galleryImages',
+  'visibility', 'joinApproval',
 ] as const;
 
 const creatableFieldSet = new Set<string>(creatableActivityFields);

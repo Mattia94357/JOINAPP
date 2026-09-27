@@ -86,6 +86,20 @@ export const pickProfileImage = async (source: PhotoSource) => {
   } as ImagePicker.ImagePickerAsset;
 };
 
+export const pickActivityImage = async (source: PhotoSource) => {
+  const hasPermission = await requestPhotoPermission(source);
+  if (!hasPermission) return null;
+  const result = source === 'camera'
+    ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 9], quality: 0.75, base64: false, exif: false })
+    : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 9], quality: 0.75, base64: false, exif: false });
+  if (result.canceled || !result.assets?.length) return null;
+  const asset = result.assets[0];
+  const resized = await ImageManipulator.manipulateAsync(asset.uri, (asset.width || 0) > 1600 ? [{ resize: { width: 1600 } }] : [], {
+    compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: true,
+  });
+  return { ...asset, uri: resized.uri, width: resized.width, height: resized.height, base64: resized.base64, mimeType: 'image/jpeg' } as ImagePicker.ImagePickerAsset;
+};
+
 export const choosePhotoSource = (onSelect: (source: PhotoSource) => void) => {
   if (Platform.OS === 'web') {
     onSelect('library');
@@ -93,6 +107,15 @@ export const choosePhotoSource = (onSelect: (source: PhotoSource) => void) => {
   }
 
   Alert.alert('Profile photo', 'Add a photo so people can see who is joining.', [
+    { text: 'Take photo', onPress: () => onSelect('camera') },
+    { text: 'Choose from library', onPress: () => onSelect('library') },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+};
+
+export const chooseActivityPhotoSource = (onSelect: (source: PhotoSource) => void) => {
+  if (Platform.OS === 'web') return onSelect('library');
+  Alert.alert('Activity picture', 'Choose a photo for this plan.', [
     { text: 'Take photo', onPress: () => onSelect('camera') },
     { text: 'Choose from library', onPress: () => onSelect('library') },
     { text: 'Cancel', style: 'cancel' },

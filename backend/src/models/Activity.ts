@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { notificationTypes } from './Notification';
+import { ImageAsset, ImageAssetSchema } from './ImageAsset';
 
 export interface IActivity extends Document {
   title: string;
@@ -22,6 +23,7 @@ export interface IActivity extends Document {
   endDate?: Date;
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   coverImage?: string;
+  coverImageAsset?: ImageAsset;
   galleryImages?: string[];
   vibe?: string;
   availabilityTag?: string;
@@ -64,6 +66,7 @@ const ActivitySchema = new Schema<IActivity>({
   endDate: { type: Date },
   ageGroup: { type: String, enum: ['any', '18-24', '25-34', '35-44', '45+'], default: 'any' },
   coverImage: { type: String },
+  coverImageAsset: { type: ImageAssetSchema },
   galleryImages: [{ type: String }],
   vibe: { type: String },
   availabilityTag: { type: String },

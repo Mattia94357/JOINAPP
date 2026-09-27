@@ -16,7 +16,7 @@ import { effectiveActivityStatus } from '../utils/activityLifecycle';
 import { completePastActivities } from '../services/activityCompletion';
 import { decodeImageDataUri, ImageInputError } from '../services/imageValidation';
 import { getImageStorage } from '../services/imageStorage';
-import { cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
+import { activityImageUrl, cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
 import { hostRating, reviewCount } from '../services/trust';
 
 const router = express.Router();
@@ -59,7 +59,7 @@ const optionalTrimmedString = (value: unknown) => (typeof value === 'string' ? v
 
 
 
-const historyActivityFields = 'title category location locationPrivacy date visibility status coverImage host participants';
+const historyActivityFields = 'title category location locationPrivacy date visibility status coverImage coverImageAsset host participants';
 const canViewHistoryActivity = (activity: any, viewerId?: string) => (
   activity.visibility !== 'private'
   || activity.host?.toString?.() === viewerId
@@ -76,7 +76,7 @@ const historyActivityPayload = (activity: any, viewerId?: string) => {
   date: activity.date,
   visibility: activity.visibility,
   status: effectiveActivityStatus(activity),
-  coverImage: activity.coverImage,
+  coverImage: activityImageUrl(activity),
   });
 };
 

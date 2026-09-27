@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -11,10 +11,12 @@ import { reportFrontendError } from '../utils/safeError';
 import { activityCategories } from '../utils/categories';
 import { geocodeActivityLocation } from '../utils/mapConfig';
 import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../utils/activityFilters';
+import { ActivityDateSelector, ActivityTimeSelector } from '../components/ActivityDateTimeSelectors';
+import { chooseActivityPhotoSource, pickActivityImage, PhotoSource } from '../utils/mediaPermissions';
+import { resolveActivityImage } from '../utils/activityAssets';
 
 const categoryOptions = activityCategories;
 const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
-const imageUrlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateActivity'>;
 
@@ -35,8 +37,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [maxAttendees, setMaxAttendees] = useState('8');
   const [costType, setCostType] = useState<'Free' | 'Paid'>('Free');
   const [costAmount, setCostAmount] = useState('');
-  const [coverImage, setCoverImage] = useState('');
-  const [galleryImagesText, setGalleryImagesText] = useState('');
+  const [coverImage, setCoverImage] = useState<{ uri: string; data: string }>();
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [ageGroup, setAgeGroup] = useState<ActivityAgeGroup>('any');
   const [hostNote, setHostNote] = useState('');
@@ -48,6 +49,19 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const showError = (message: string) => {
     setErrorMessage(message);
     if (Platform.OS !== 'web') Alert.alert('Check details', message);
+  };
+
+  const selectActivityImage = async (source: PhotoSource) => {
+    try {
+      const asset = await pickActivityImage(source);
+      if (!asset?.base64) return;
+      const bytes = Math.ceil((asset.base64.length * 3) / 4);
+      if (bytes > 4 * 1024 * 1024) return showError('Activity pictures must be 4 MB or smaller.');
+      setCoverImage({ uri: asset.uri, data: `data:image/jpeg;base64,${asset.base64}` });
+    } catch (error) {
+      reportFrontendError('activity_image_prepare_failed', error);
+      showError('Could not prepare that picture. Please choose another image.');
+    }
   };
 
   const handleSubmit = async () => {
@@ -67,14 +81,6 @@ export default function CreateActivityScreen({ navigation }: Props) {
     if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     const normalizedCost = Number(costAmount);
     if (costType === 'Paid' && (!Number.isFinite(normalizedCost) || normalizedCost <= 0)) return showError('Enter a cost amount or choose Free.');
-    const galleryImages = galleryImagesText.split('\n').map((item) => item.trim()).filter(Boolean);
-    if (galleryImages.length > 5) return showError('Use up to 5 gallery image URLs.');
-    if (coverImage.trim() && !imageUrlPattern.test(coverImage.trim())) {
-      return showError('Use a valid JPEG, PNG, or WEBP cover image URL.');
-    }
-    if (galleryImages.some((image) => !imageUrlPattern.test(image))) {
-      return showError('Gallery images must be valid JPEG, PNG, or WEBP URLs.');
-    }
 
     if (!token) {
       Alert.alert('Unauthorized', 'Log in to post an activity.');
@@ -105,13 +111,12 @@ export default function CreateActivityScreen({ navigation }: Props) {
           costType,
           costAmount: costType === 'Paid' ? normalizedCost : 0,
           currency: 'AUD',
-          coverImage: coverImage.trim(),
+          coverImageData: coverImage?.data,
           hostNote: hostNote.trim(),
           cancellationPolicy: cancellationPolicy.trim(),
           vibe,
           visibility,
           joinApproval: visibility === 'private' ? 'manual' : 'auto',
-          galleryImages,
           ageGroup,
         },
         token,
@@ -152,7 +157,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <View style={styles.column}>
           <Text style={styles.label}>Date *</Text>
-          <TextInput value={date} onChangeText={setDate} style={styles.input} placeholder="2026-06-05" placeholderTextColor={colors.textSubtle} />
+          <ActivityDateSelector value={date} onChange={setDate} />
         </View>
         <View style={styles.column}>
           <Text style={styles.label}>Max participants *</Text>
@@ -163,11 +168,11 @@ export default function CreateActivityScreen({ navigation }: Props) {
       <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <View style={styles.column}>
           <Text style={styles.label}>Start time *</Text>
-          <TextInput value={startTime} onChangeText={setStartTime} style={styles.input} placeholder="7:30 PM" placeholderTextColor={colors.textSubtle} />
+          <ActivityTimeSelector label="Start time" value={startTime} onChange={setStartTime} />
         </View>
         <View style={styles.column}>
           <Text style={styles.label}>End time</Text>
-          <TextInput value={endTime} onChangeText={setEndTime} style={styles.input} placeholder="9:30 PM" placeholderTextColor={colors.textSubtle} />
+          <ActivityTimeSelector label="End time" value={endTime} onChange={setEndTime} optional />
         </View>
       </View>
 
@@ -200,10 +205,16 @@ export default function CreateActivityScreen({ navigation }: Props) {
           <TextInput value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
 
           <Text style={styles.label}>Cover photo</Text>
-          <TextInput value={coverImage} onChangeText={setCoverImage} style={styles.input} placeholder="Paste image URL for now" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
-
-          <Text style={styles.label}>More photos</Text>
-          <TextInput value={galleryImagesText} onChangeText={setGalleryImagesText} style={[styles.input, styles.galleryInput]} placeholder="Optional: one image URL per line, up to 5" placeholderTextColor={colors.textSubtle} autoCapitalize="none" multiline />
+          <View style={styles.coverPreview}>
+            <Image source={{ uri: coverImage?.uri || resolveActivityImage({ category }) }} style={styles.coverPreviewImage} />
+            {!coverImage ? <View style={styles.defaultBadge}><Text style={styles.defaultBadgeText}>{category} default</Text></View> : null}
+          </View>
+          <View style={styles.coverActions}>
+            <TouchableOpacity style={styles.coverButton} onPress={() => chooseActivityPhotoSource(selectActivityImage)}>
+              <Text style={styles.coverButtonText}>{coverImage ? 'Change picture' : 'Choose picture'}</Text>
+            </TouchableOpacity>
+            {coverImage ? <TouchableOpacity style={styles.removeCoverButton} onPress={() => setCoverImage(undefined)}><Text style={styles.removeCoverText}>Remove</Text></TouchableOpacity> : null}
+          </View>
 
           <Text style={styles.label}>Vibe</Text>
           <View style={styles.row}>
@@ -318,10 +329,15 @@ const styles = StyleSheet.create({
     minHeight: 112,
     textAlignVertical: 'top',
   },
-  galleryInput: {
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
+  coverPreview: { height: 190, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative' },
+  coverPreviewImage: { width: '100%', height: '100%' },
+  defaultBadge: { position: 'absolute', left: 10, bottom: 10, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.72)', paddingHorizontal: 10, paddingVertical: 6 },
+  defaultBadgeText: { color: colors.text, fontSize: 11, fontWeight: '900' },
+  coverActions: { flexDirection: 'row', marginTop: spacing.sm, gap: spacing.sm },
+  coverButton: { flex: 1, minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.goldBorder, alignItems: 'center', justifyContent: 'center' },
+  coverButtonText: { color: colors.primary, fontWeight: '900' },
+  removeCoverButton: { minHeight: 44, paddingHorizontal: spacing.md, justifyContent: 'center' },
+  removeCoverText: { color: colors.danger, fontWeight: '800' },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',

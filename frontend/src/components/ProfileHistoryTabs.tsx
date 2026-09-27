@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import type { ProfileActivity } from '../api';
 import { colors, spacing } from '../theme';
-import { getActivityCoverImage } from '../utils/activityAssets';
+import { resolveActivityImage } from '../utils/activityAssets';
 
 type Tab = 'joined' | 'hosted';
 type Props = {
@@ -27,7 +27,7 @@ const HistoryList = ({ activities, empty, onPress }: { activities: ProfileActivi
       <Text style={styles.groupTitle}>{label}</Text>
       {items.map((activity) => (
         <TouchableOpacity key={activity._id} style={styles.activityCard} onPress={() => onPress(activity._id)} activeOpacity={0.82}>
-          <Image source={{ uri: activity.coverImage || getActivityCoverImage(activity.category, activity._id) }} style={styles.activityImage} />
+          <Image source={{ uri: resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category }) }} style={styles.activityImage} />
           <View style={styles.activityCopy}>
             <Text style={styles.activityTitle} numberOfLines={1}>{activity.title}</Text>
             <Text style={styles.activityCategory}>{activity.category}</Text>

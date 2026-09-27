@@ -3,7 +3,7 @@ import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, TouchableOpac
 import { Ionicons } from '@expo/vector-icons';
 import AvatarBadge from './AvatarBadge';
 import { useNotifications } from '../context/NotificationContext';
-import { getActivityCoverImage } from '../utils/activityAssets';
+import { getCategoryActivityImage, resolveActivityImage } from '../utils/activityAssets';
 import { colors } from '../theme';
 import LocationPreviewModal from './LocationPreviewModal';
 
@@ -70,8 +70,8 @@ export default function ActivityCard({
   onOpenProfile,
 }: Props) {
   const { width } = useWindowDimensions();
-  const fallbackCoverImage = getActivityCoverImage(activity.category, activity.id);
-  const [coverImage, setCoverImage] = useState(activity.coverImage || fallbackCoverImage);
+  const fallbackCoverImage = getCategoryActivityImage(activity.category);
+  const [coverImage, setCoverImage] = useState(resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category }));
   const [cardHeight, setCardHeight] = useState(0);
   const [locationPreviewVisible, setLocationPreviewVisible] = useState(false);
   const attendees = activity.attendees ?? activity.participants.length;
@@ -92,11 +92,16 @@ export default function ActivityCard({
   const compact = width < 520;
   const dense = cardHeight > 0 && cardHeight < 540;
   const veryDense = cardHeight > 0 && cardHeight < 440;
-  const decisionPairWidth = Math.min(Math.max(width - 36, 0), 430) * 0.25 + 24;
+  // The touch targets remain 56px wide; visual buttons overhang equally on both sides.
+  const decisionPairWidth = 60.632 + 56 + 8;
 
   useEffect(() => {
     Animated.timing(entrance, { toValue: 1, duration: 360, useNativeDriver: true }).start();
   }, [entrance]);
+
+  useEffect(() => {
+    setCoverImage(resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category }));
+  }, [activity.coverImage, activity.category]);
 
   const handleCardLayout = (event: LayoutChangeEvent) => {
     const nextHeight = Math.round(event.nativeEvent.layout.height);
@@ -250,12 +255,17 @@ export default function ActivityCard({
 
               <View style={[styles.divider, dense && styles.dividerDense]} />
 
-              <View style={[styles.aboutRow, dense && styles.aboutRowDense]}>
+              <TouchableOpacity
+                style={[styles.aboutRow, dense && styles.aboutRowDense]}
+                onPress={onPress}
+                accessibilityRole="button"
+                accessibilityLabel="About the activity"
+              >
                 <Text style={styles.aboutLabel}>ABOUT THIS ACTIVITY</Text>
                 <Text style={[styles.aboutText, compact && styles.aboutTextCompact]} numberOfLines={1} ellipsizeMode="tail">
                   {activity.description}
                 </Text>
-              </View>
+              </TouchableOpacity>
 
               <TouchableOpacity style={[styles.peopleRow, dense && styles.peopleRowDense]} onPress={() => onViewParticipants?.(activity)} activeOpacity={0.86}>
                 <View style={styles.avatarStack}>
@@ -500,15 +510,15 @@ const styles = StyleSheet.create({
   },
   decisionPair: {
     position: 'relative',
-    height: 56,
+    height: 61,
   },
   passDecisionControl: {
     position: 'absolute',
-    left: -20,
+    left: 0,
   },
   joinDecisionControl: {
     position: 'absolute',
-    right: -20,
+    right: 0,
   },
   decisionTouchTarget: {
     width: 56,

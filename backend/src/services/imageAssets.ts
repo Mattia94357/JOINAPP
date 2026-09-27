@@ -1,6 +1,7 @@
 import type { ImageAsset } from '../models/ImageAsset';
 import User from '../models/User';
 import Moment from '../models/Moment';
+import Activity from '../models/Activity';
 import { getImageStorage } from './imageStorage';
 
 const safeHttpsUrl = (value: unknown) => {
@@ -24,15 +25,20 @@ export const momentImageUrls = (moment: any) => {
   return (moment?.images || []).map(safeHttpsUrl).filter(Boolean);
 };
 
+export const activityImageUrl = (activity: any) => (
+  safeHttpsUrl(activity?.coverImageAsset?.url) || safeHttpsUrl(activity?.coverImage)
+);
+
 export const cleanupUnreferencedAssets = async (assets: Array<ImageAsset | undefined>) => {
   for (const asset of assets.filter(Boolean) as ImageAsset[]) {
     if (!asset.storageKey || asset.provider === 'legacy-external') continue;
     try {
-      const [users, moments] = await Promise.all([
+      const [users, moments, activities] = await Promise.all([
         User.countDocuments({ 'profileImage.storageKey': asset.storageKey }),
         Moment.countDocuments({ 'imageAssets.storageKey': asset.storageKey }),
+        Activity.countDocuments({ 'coverImageAsset.storageKey': asset.storageKey }),
       ]);
-      if (!users && !moments) await getImageStorage().delete(asset.storageKey);
+      if (!users && !moments && !activities) await getImageStorage().delete(asset.storageKey);
     } catch (error) {
       console.error('[images] Deferred object cleanup failed', { category: 'provider_cleanup' });
     }

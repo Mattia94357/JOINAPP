@@ -3,8 +3,10 @@ import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 import { reportFrontendError } from './safeError';
+import { reverseGeocodeJoinLocation } from './mapConfig';
 
 export type JoinCoordinate = { latitude: number; longitude: number };
+export type JoinPlaceResult = JoinLocationResult & { place?: string };
 
 export type JoinLocationResult = {
   status: 'success';
@@ -158,6 +160,24 @@ export const getCurrentJoinLocation = async (options?: {
 }) => {
   const result = await getCurrentJoinLocationResult(options);
   return result.status === 'success' ? result.coordinate : null;
+};
+
+export const getCurrentJoinPlaceResult = async (options?: {
+  forceRefresh?: boolean;
+  retryDenied?: boolean;
+}): Promise<JoinPlaceResult> => {
+  const result = await getCurrentJoinLocationResult(options);
+  if (result.status === 'failure') return result;
+  try {
+    const [address] = await Location.reverseGeocodeAsync(result.coordinate);
+    const parts = [address?.city || address?.district || address?.subregion, address?.region, address?.country]
+      .filter((part, index, all): part is string => Boolean(part) && all.indexOf(part) === index);
+    const place = parts.join(', ') || await reverseGeocodeJoinLocation(result.coordinate);
+    return { ...result, place: place || undefined };
+  } catch (error) {
+    reportFrontendError('reverse_geocode_failed', error);
+    return { ...result, place: await reverseGeocodeJoinLocation(result.coordinate) };
+  }
 };
 
 export const readLastMapViewport = async () => {

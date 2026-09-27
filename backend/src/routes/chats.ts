@@ -12,7 +12,7 @@ import { confirmedActivityMemberIds } from '../services/activityMembership';
 import { canAccessActivityChat, isActivityChatReadOnly } from '../services/activityChat';
 import { countUnreadMessages, createChatMessage, decodeMessageCursor, getMessagePage,
   latestMessageForChat, markMessagesRead } from '../services/chatMessages';
-import { userImageUrls } from '../services/imageAssets';
+import { activityImageUrl, userImageUrls } from '../services/imageAssets';
 
 const router = express.Router();
 const limiter = rateLimit({ windowMs: 60000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
@@ -65,7 +65,7 @@ const authorize = async (value: string, userId?: string): Promise<any> => {
 const visibleChats = async (userId: string) => {
   await ensureActivityChats(userId);
   const chats: any[] = await Chat.find({ members: userId })
-    .populate('activity', 'title coverImage host hostDeleted participants status')
+    .populate('activity', 'title coverImage coverImageAsset host hostDeleted participants status')
     .populate('members', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl blockedUsers deletionStartedAt deletedAt');
   const output = [];
   for (const chat of chats) {
@@ -91,9 +91,9 @@ const lists = async (userId: string) => {
     const other = activityChat ? null : chat.members.find((person: any) => person && id(person) !== userId);
     return { id: chat.id, type: activityChat ? 'activity' : 'direct', state: chat.directState || 'active',
       title: activityChat ? chat.activity?.title || 'Activity chat' : other?.name || 'Former JOIN member',
-      image: activityChat ? chat.activity?.coverImage : userImageUrls(other).avatar,
+      image: activityChat ? activityImageUrl(chat.activity) : userImageUrls(other).avatar,
       activity: activityChat && chat.activity ? { id: id(chat.activity), title: chat.activity.title,
-        coverImage: chat.activity.coverImage, status: chat.activity.status } : undefined,
+        coverImage: activityImageUrl(chat.activity), status: chat.activity.status } : undefined,
       user: other ? { id: id(other), name: other.name, avatar: userImageUrls(other).avatar } : undefined,
       latestMessage: latest?.text || '', latestMessageAt: latest?.createdAt || chat.lastMessageAt || chat.updatedAt,
       unread: unreadCount > 0, unreadCount, readOnly: activityChat && isActivityChatReadOnly(chat.activity, chat),

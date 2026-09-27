@@ -17,7 +17,7 @@ import {
 } from '../utils/activityPrivacy';
 import { decodeImageDataUri, ImageInputError } from '../services/imageValidation';
 import { getImageStorage } from '../services/imageStorage';
-import { cleanupUnreferencedAssets, momentImageUrls, userImageUrls } from '../services/imageAssets';
+import { activityImageUrl, cleanupUnreferencedAssets, momentImageUrls, userImageUrls } from '../services/imageAssets';
 import type { ImageAsset } from '../models/ImageAsset';
 
 const router = express.Router();
@@ -74,7 +74,7 @@ const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = [
     category: moment.activity?.category,
     date: moment.activity?.date,
     location: visibleActivityLocation(moment.activity, viewerId),
-    coverImage: moment.activity?.coverImage,
+    coverImage: activityImageUrl(moment.activity),
     visibility: moment.activity?.visibility,
   },
   images: momentImageUrls(moment),
@@ -90,7 +90,7 @@ const momentPayload = (moment: any, viewerId?: string, latestComments: any[] = [
 
 const populatedMoment = (query: any) => query
   .populate('creator', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl')
-  .populate('activity', 'title category date location locationPrivacy coverImage visibility host participants');
+  .populate('activity', 'title category date location locationPrivacy coverImage coverImageAsset visibility host participants');
 
 const populatedComments = (query: any) => query
   .populate('author', 'name profileImage +avatar +profilePictureUrl +profileThumbnailUrl');
