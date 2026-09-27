@@ -17,6 +17,7 @@ import { completePastActivities } from '../services/activityCompletion';
 import { decodeImageDataUri, ImageInputError } from '../services/imageValidation';
 import { getImageStorage } from '../services/imageStorage';
 import { cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
+import { hostRating, reviewCount } from '../services/trust';
 
 const router = express.Router();
 
@@ -101,9 +102,9 @@ const userPayload = (user: IUser) => ({
   ageRange: user.ageRange,
   gender: user.gender,
   publicGender: Boolean(user.publicGender),
-  hostRating: user.hostRating,
+  hostRating: hostRating(user),
   activityRating: user.activityRating,
-  reviewCount: user.reviewCount,
+  reviewCount: reviewCount(user.reviewCount),
   hostedCount: user.hostedCount,
   joinedCount: user.joinedCount,
   hasCompletedOnboardingTutorial: Boolean(user.hasCompletedOnboardingTutorial),
@@ -124,9 +125,9 @@ const publicUserPayload = (user: IUser) => ({
   instagram: user.instagram,
   gender: publicGenderValue(user),
   verified: user.verified,
-  hostRating: user.hostRating,
+  hostRating: hostRating(user),
   activityRating: user.activityRating,
-  reviewCount: user.reviewCount,
+  reviewCount: reviewCount(user.reviewCount),
   hostedCount: user.hostedCount,
   joinedCount: user.joinedCount,
 });

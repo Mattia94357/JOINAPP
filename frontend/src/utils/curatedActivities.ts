@@ -1,3 +1,4 @@
+// DEVELOPMENT/TEST FIXTURE ONLY. Production screens must never import this module.
 import { ActivityResponse } from '../api';
 import { getActivityCoverImage } from './activityAssets';
 

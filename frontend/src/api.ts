@@ -37,6 +37,19 @@ const getExpoExtraApiUrl = () =>
 
 const getPublicEnvApiUrl = () => cleanUrl(process.env.EXPO_PUBLIC_API_URL);
 
+const releaseApiError = (value: string | null) => {
+  if (!value) return 'JOIN API_URL is not configured for this production build.';
+  try {
+    const parsed = new URL(value);
+    const privateHost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1' ||
+      /^10\./.test(parsed.hostname) || /^192\.168\./.test(parsed.hostname) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(parsed.hostname);
+    if (parsed.protocol !== 'https:' || privateHost) return 'JOIN API_URL must be a public HTTPS URL for production builds.';
+  } catch {
+    return 'JOIN API_URL must be a valid absolute HTTPS URL.';
+  }
+  return null;
+};
+
 const getExpoHostAddress = () => {
   const hostUri =
     (Constants.expoConfig as any)?.hostUri ||
@@ -54,10 +67,14 @@ const resolveApiConfig = (): ApiConfigStatus => {
   const publicEnvApiUrl = getPublicEnvApiUrl();
 
   if (expoExtraApiUrl) {
+    const error = !isDev ? releaseApiError(expoExtraApiUrl) : null;
+    if (error) return { apiUrl: null, source: 'missing', isDev, hasExpoExtraApiUrl: true, error };
     return { apiUrl: expoExtraApiUrl, source: 'expo-extra', isDev, hasExpoExtraApiUrl: true };
   }
 
   if (publicEnvApiUrl) {
+    const error = !isDev ? releaseApiError(publicEnvApiUrl) : null;
+    if (error) return { apiUrl: null, source: 'missing', isDev, hasExpoExtraApiUrl: false, error };
     return { apiUrl: publicEnvApiUrl, source: 'public-env', isDev, hasExpoExtraApiUrl: false };
   }
 

@@ -39,12 +39,12 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
       const responseMessage = response.data.message || 'If an account exists, reset instructions are on the way.';
       setMessage(responseMessage);
 
-      if (response.data.resetToken) {
+      if (__DEV__ && response.data.resetToken) {
         navigation.navigate('ResetPassword', { token: response.data.resetToken });
         return;
       }
 
-      if (response.data.resetUrl) {
+      if (__DEV__ && response.data.resetUrl) {
         const token = response.data.resetUrl.split('token=').pop();
         if (token) {
           navigation.navigate('ResetPassword', { token });

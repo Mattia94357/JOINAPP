@@ -28,14 +28,14 @@ async function backfillActivityCoordinates() {
     const query = encodeURIComponent(activity.location);
     const response = await fetch(`https://api.maptiler.com/geocoding/${query}.json?key=${encodeURIComponent(apiKey)}&language=en&limit=1`);
     if (!response.ok) {
-      console.warn(`[coordinates] ${activity.title}: geocoder returned ${response.status}`);
+      console.warn('[coordinates] Geocoder request failed', { activityId: activity.id, status: response.status });
       continue;
     }
 
     const data = await response.json() as GeocodingResponse;
     const [longitude, latitude] = data.features?.[0]?.center || [];
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      console.warn(`[coordinates] ${activity.title}: no reliable result for "${activity.location}"`);
+      console.warn('[coordinates] No reliable result', { activityId: activity.id });
       continue;
     }
 
@@ -51,7 +51,7 @@ async function backfillActivityCoordinates() {
 }
 
 backfillActivityCoordinates().catch(async (error) => {
-  console.error('[coordinates] Backfill failed:', error instanceof Error ? error.message : 'Unknown error');
+  console.error('[coordinates] Backfill failed', { errorName: error instanceof Error ? error.name : 'UnknownError' });
   await mongoose.disconnect().catch(() => undefined);
   process.exit(1);
 });

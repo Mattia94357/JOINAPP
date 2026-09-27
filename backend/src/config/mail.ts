@@ -9,7 +9,6 @@ export const missingMailEnv = () => requiredMailEnv.filter((key) => !process.env
 export const smtpErrorDetails = (error: unknown) => {
   const details: {
     name?: string;
-    message?: string;
     code?: string | number;
     responseCode?: number;
     command?: string;
@@ -17,7 +16,6 @@ export const smtpErrorDetails = (error: unknown) => {
 
   if (error instanceof Error) {
     details.name = error.name;
-    details.message = error.message;
   }
 
   if (typeof error === 'object' && error !== null) {

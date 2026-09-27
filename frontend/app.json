@@ -1,21 +1,17 @@
 {
   "expo": {
-    "name": "JoinApp",
+    "name": "JOIN",
     "slug": "joinapp",
+    "scheme": "join",
     "version": "1.0.0",
     "sdkVersion": "48.0.0",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
     "ios": {
-      "infoPlist": {
-        "NSCameraUsageDescription": "JOIN needs camera access so you can take a profile picture.",
-        "NSPhotoLibraryUsageDescription": "JOIN needs photo library access so you can choose a profile picture.",
-        "NSPhotoLibraryAddUsageDescription": "JOIN needs photo library access so you can choose a profile picture.",
-        "NSLocationWhenInUseUsageDescription": "JOIN uses your location to center Map Mode on nearby activities."
-      }
+      "buildNumber": "1"
     },
     "android": {
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "versionCode": 1
     },
     "splash": {
       "backgroundColor": "#0B0B0B"

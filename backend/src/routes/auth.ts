@@ -11,6 +11,8 @@ import { isDevelopment } from '../config/env';
 import { getJwtSecret } from '../config/security';
 import { rateLimit } from 'express-rate-limit';
 import { userImageUrls } from '../services/imageAssets';
+import { hostRating, reviewCount } from '../services/trust';
+import { passwordResetBaseUrl } from '../config/urls';
 
 const router = express.Router();
 const resetTokenMinutes = 30;
@@ -21,16 +23,10 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHea
 const hashResetToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 const isProduction = () => process.env.NODE_ENV === 'production';
-const logAuthDebug = (message: string, error?: unknown) => {
+const logAuthDebug = (message: string) => {
   if (!isProduction()) {
-    error ? console.warn(message, error) : console.log(message);
+    console.log(message);
   }
-};
-
-const getFrontendUrl = () => {
-  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-  if (!isProduction()) return 'http://localhost:19007';
-  return '';
 };
 
 const isStrongPassword = (password: unknown) => typeof password === 'string' && password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
@@ -49,9 +45,9 @@ const publicUserPayload = (user: any) => ({
   languages: user.languages || [],
   instagram: user.instagram,
   ageRange: user.ageRange,
-  hostRating: user.hostRating,
+  hostRating: hostRating(user),
   activityRating: user.activityRating,
-  reviewCount: user.reviewCount,
+  reviewCount: reviewCount(user.reviewCount),
   hostedCount: user.hostedCount,
   joinedCount: user.joinedCount,
   savedActivities: user.savedActivities || [],
@@ -115,12 +111,12 @@ router.post(
     await user.save();
     logAuthDebug(`[auth:forgot-password] Reset token saved. Expires in ${resetTokenMinutes} minutes.`);
 
-    const frontendUrl = getFrontendUrl();
-    if (!frontendUrl) {
-      console.warn('[auth:forgot-password] FRONTEND_URL missing in production.');
+    const resetBaseUrl = passwordResetBaseUrl();
+    if (!resetBaseUrl) {
+      console.warn('[auth:forgot-password] PASSWORD_RESET_BASE_URL missing in production.');
       return res.status(503).json({ message: 'Password reset is temporarily unavailable. Contact support.' });
     }
-    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    const resetUrl = `${resetBaseUrl}/reset-password?token=${resetToken}`;
 
     try {
       logAuthDebug(`[auth:forgot-password] Reset email send attempted. SMTP configured: ${isMailConfigured()}`);

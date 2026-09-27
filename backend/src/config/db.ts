@@ -1,11 +1,10 @@
 import mongoose from 'mongoose';
 
 const mongoErrorDetails = (error: unknown) => {
-  const details: { name?: string; message?: string; code?: string | number } = {};
+  const details: { name?: string; code?: string | number } = {};
 
   if (error instanceof Error) {
     details.name = error.name;
-    details.message = error.message;
   }
 
   if (typeof error === 'object' && error !== null && 'code' in error) {

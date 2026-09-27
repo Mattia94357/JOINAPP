@@ -1,6 +1,7 @@
 import { isMailConfigured, missingMailEnv } from './mail';
+import { validateConfiguredUrls } from './urls';
 
-const requiredCoreEnv = ['MONGODB_URI', 'JWT_SECRET', 'FRONTEND_URL'];
+const requiredCoreEnv = ['MONGODB_URI', 'JWT_SECRET', 'CORS_ORIGINS', 'PUBLIC_APP_URL', 'PASSWORD_RESET_BASE_URL'];
 
 export const isDevelopment = () => process.env.NODE_ENV === 'development';
 
@@ -38,5 +39,6 @@ export const assertProductionEnvironment = () => {
     }
     const missingImages = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'].filter((key) => !process.env[key]);
     if (missingImages.length) throw new Error(`Missing required image storage variables: ${missingImages.join(', ')}`);
+    validateConfiguredUrls();
   }
 };

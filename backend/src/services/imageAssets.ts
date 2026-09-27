@@ -34,7 +34,7 @@ export const cleanupUnreferencedAssets = async (assets: Array<ImageAsset | undef
       ]);
       if (!users && !moments) await getImageStorage().delete(asset.storageKey);
     } catch (error) {
-      console.error('[images] Deferred object cleanup failed', { storageKey: asset.storageKey });
+      console.error('[images] Deferred object cleanup failed', { category: 'provider_cleanup' });
     }
   }
 };

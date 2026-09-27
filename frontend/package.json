@@ -1,6 +1,10 @@
 {
   "name": "joinapp-frontend",
   "private": true,
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10 <11"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -12,6 +16,8 @@
     "test:safety": "node tests/safety.test.js",
     "test:messaging": "node tests/messaging.test.js && node tests/messagingUnread.test.js",
     "test:images": "node tests/imageUploads.test.js",
+    "test:production-cleanup": "node tests/productionCleanup.test.js",
+    "test:native-release-config": "node tests/nativeReleaseConfig.test.js",
     "serve:web": "npm run build && node scripts/serve-web-build.js"
   },
   "dependencies": {

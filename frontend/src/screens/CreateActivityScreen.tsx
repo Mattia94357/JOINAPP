@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import BottomNavigation from '../components/BottomNavigation';
 import { createActivityRequest } from '../api';
 import { colors, spacing } from '../theme';
+import { reportFrontendError } from '../utils/safeError';
 import { activityCategories } from '../utils/categories';
 import { geocodeActivityLocation } from '../utils/mapConfig';
 import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../utils/activityFilters';
@@ -118,7 +119,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
       Alert.alert('Plan created', 'Your plan is live.');
       navigation.navigate('Home');
     } catch (error: any) {
-      console.warn(error);
+      reportFrontendError('activity_create_failed', error);
       showError(error?.response?.data?.message || 'Could not post activity. Please try again later.');
     } finally {
       setLoading(false);

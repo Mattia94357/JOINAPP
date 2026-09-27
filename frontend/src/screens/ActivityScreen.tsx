@@ -39,12 +39,12 @@ import {
 import AvatarBadge from '../components/AvatarBadge';
 import ParticipantsModal from '../components/ParticipantsModal';
 import { getActivityCoverImage } from '../utils/activityAssets';
-import { getCuratedActivity } from '../utils/curatedActivities';
 import MomentCard from '../components/MomentCard';
 import ReportButton from '../components/ReportButton';
 import CreateMomentModal from '../components/CreateMomentModal';
 import MomentCommentsSection from '../components/MomentCommentsSection';
 import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
+import { reportFrontendError } from '../utils/safeError';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Activity'>;
 
@@ -105,6 +105,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const [activity, setActivity] = useState<ActivityDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [participantsVisible, setParticipantsVisible] = useState(false);
   const [photoRequiredVisible, setPhotoRequiredVisible] = useState(false);
   const [moments, setMoments] = useState<MomentResponse[]>([]);
@@ -125,17 +126,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
       setLoading(true);
       setErrorMessage('');
 
-      const curatedActivity = getCuratedActivity(activityId);
-      if (curatedActivity) {
-        setActivity(curatedActivity);
-        setLoading(false);
-        return;
-      }
-
       try {
         const result = await fetchActivity(activityId, token || undefined, inviteCode);
         setActivity(result);
       } catch (error) {
+        reportFrontendError('activity_load_failed', error);
         setActivity(null);
         setErrorMessage('This activity could not be loaded. Check that the backend is running, then try again.');
       } finally {
@@ -144,12 +139,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
     };
 
     loadActivity();
-  }, [activityId, inviteCode, token]);
+  }, [activityId, inviteCode, loadAttempt, token]);
 
   useEffect(() => {
     let active = true;
     const loadMoments = async () => {
-      if (getCuratedActivity(activityId)) return;
       setMomentsLoading(true);
       setMomentError('');
       try {
@@ -170,13 +164,11 @@ export default function ActivityScreen({ route, navigation }: Props) {
 
   const handleJoin = async () => {
     if (joiningRef.current) return;
-    if (getCuratedActivity(activityId)) {
-      Alert.alert('Joined', 'You joined this curated activity.');
-      return;
-    }
-
     if (!token) {
-      Alert.alert('Please log in', 'You must be signed in to join this activity.');
+      Alert.alert('Please log in', 'You must be signed in to join this activity.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Log in', onPress: () => navigation.navigate('Login', { mode: 'login' }) },
+      ]);
       return;
     }
 
@@ -202,7 +194,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
       const result = await fetchActivity(activityId, token, inviteCode);
       setActivity(result);
     } catch (error: any) {
-      console.warn(error);
+      reportFrontendError('activity_join_failed', error);
       if (error?.response?.data?.code === 'PROFILE_PHOTO_REQUIRED') {
         setPhotoRequiredVisible(true);
         return;
@@ -232,6 +224,9 @@ export default function ActivityScreen({ route, navigation }: Props) {
         <TouchableOpacity style={styles.errorButton} onPress={() => navigation.goBack()}>
           <Text style={styles.errorButtonText}>Back to activities</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.errorButton} onPress={() => setLoadAttempt((attempt) => attempt + 1)} accessibilityRole="button" accessibilityLabel="Retry loading activity">
+          <Text style={styles.errorButtonText}>Try again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -252,7 +247,8 @@ export default function ActivityScreen({ route, navigation }: Props) {
   const isPastOrCompleted = activity.status === 'completed' || hasActivityStarted;
   const canCreateMoment = Boolean(token && (alreadyJoined || isHost) && !isCancelled && hasActivityStarted);
   const canOpenChat = alreadyJoined || isHost;
-  const hostRating = activity.hostRating ? activity.hostRating.toFixed(1) : 'New';
+  const hasHostReviews = Boolean(activity.hostReviewCount && activity.hostReviewCount > 0 && typeof activity.hostRating === 'number');
+  const hostRating = hasHostReviews ? activity.hostRating!.toFixed(1) : undefined;
   const joinLabel = alreadyJoined
     ? (isHost ? 'Already joined' : 'Leave Activity')
     : requestDeclined
@@ -617,18 +613,16 @@ export default function ActivityScreen({ route, navigation }: Props) {
             <Text style={styles.hostLabel}>Hosted by</Text>
             <Text style={styles.hostName}>{activity.host}</Text>
             <Text style={styles.hostMeta}>
-              {hostRating} rating - {activity.hostHostedCount || 0} hosted - {activity.hostJoinedCount || 0} joined
+              {hostRating && activity.hostReviewCount
+                ? `${hostRating} rating (${activity.hostReviewCount} reviews)`
+                : 'No reviews yet'}{' - '}{activity.hostHostedCount || 0} hosted{' - '}{activity.hostJoinedCount || 0} joined
             </Text>
-          </View>
-          <View style={styles.hostBadge}>
-            <Ionicons name="shield-checkmark-outline" size={15} color="#050505" />
-            <Text style={styles.hostBadgeText}>{activity.hostVerified ? 'Verified host' : 'Profile reviewed'}</Text>
           </View>
         </View>
 
         <View style={styles.positioningCard}>
           <Text style={styles.positioningTitle}>See who's going before you join</Text>
-          <Text style={styles.positioningText}>JOIN is built for small-group social plans with trusted hosts and real people around the table, trail, class, or beach.</Text>
+          <Text style={styles.positioningText}>JOIN is built for small-group social plans with real people around the table, trail, class, or beach.</Text>
         </View>
 
         <View style={styles.section}>
@@ -714,7 +708,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
-        {isHost && !isCancelled && !isPastOrCompleted && !getCuratedActivity(activity.id) ? (
+        {isHost && !isCancelled && !isPastOrCompleted ? (
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => navigation.navigate('EditActivity', { activityId: activity.id })}
@@ -808,7 +802,7 @@ export default function ActivityScreen({ route, navigation }: Props) {
         visible={participantsVisible}
         participants={activity.participants}
         hostId={activity.hostId}
-        canManage={isHost && !isCancelled && !isPastOrCompleted && !getCuratedActivity(activity.id)}
+        canManage={isHost && !isCancelled && !isPastOrCompleted}
         removingParticipantId={removingParticipantId}
         onRemoveParticipant={handleRemoveParticipant}
         onClose={() => setParticipantsVisible(false)}

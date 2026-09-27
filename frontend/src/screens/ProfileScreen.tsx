@@ -38,6 +38,7 @@ import BottomNavigation, {
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 import LatestMomentSection from '../components/LatestMomentSection';
 import ProfileMomentsModal from '../components/ProfileMomentsModal';
+import { ratingLabel } from '../utils/rating';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -103,15 +104,14 @@ export default function ProfileScreen({ navigation }: Props) {
   const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
   const displayHostedCount = hostedCount;
   const displayJoinedCount = joinedCount;
-  const displayRating = user?.hostRating ? user.hostRating.toFixed(1) : 'New';
+  const displayRating = ratingLabel(user?.hostRating, user?.reviewCount);
 
   const badges = useMemo(
     () => [
-      { icon: 'shield-checkmark-outline', label: user?.verified ? 'Identity verified' : 'Profile basics' },
       { icon: 'camera-outline', label: hasProfilePhoto ? 'Profile photo added' : 'Photo required' },
       { icon: 'people-outline', label: `${displayJoinedCount} joined` },
     ],
-    [displayJoinedCount, hasProfilePhoto, user?.verified],
+    [displayJoinedCount, hasProfilePhoto],
   );
   const latestMoment = useMemo(() => [...moments].sort((a, b) => (
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -345,11 +345,6 @@ export default function ProfileScreen({ navigation }: Props) {
         <View style={[styles.profileCopy, compact && styles.profileCopyCompact]}>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{user?.name || 'Guest'}</Text>
-            {user?.verified ? (
-              <View style={styles.verifiedDot}>
-                <Ionicons name="checkmark" size={14} color={colors.primaryText} />
-              </View>
-            ) : null}
           </View>
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={14} color={colors.primary} />

@@ -12,4 +12,4 @@ const run = async () => {
   console.log(`Migrated ${migrated} chats. Safe to run again.`);
   process.exit(0);
 };
-run().catch((error) => { console.error(error); process.exit(1); });
+run().catch((error) => { console.error('[chat-migration] Failed', { errorName: error instanceof Error ? error.name : 'UnknownError' }); process.exit(1); });

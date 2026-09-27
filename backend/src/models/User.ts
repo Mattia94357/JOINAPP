@@ -67,7 +67,7 @@ const UserSchema = new Schema<IUser>({
   ageRange: { type: String },
   gender: { type: String, enum: ['male', 'female', 'non_binary', 'prefer_not_to_say'] },
   publicGender: { type: Boolean, default: false },
-  hostRating: { type: Number, default: 4.8 },
+  hostRating: { type: Number, min: 0, max: 5 },
   activityRating: { type: Number, default: 0 },
   reviewCount: { type: Number, default: 0 },
   hostedCount: { type: Number, default: 0 },

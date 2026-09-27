@@ -17,6 +17,8 @@ import { startPushWorker } from './services/pushDelivery';
 import { startNotificationWorker } from './services/notifications';
 import { assertProductionEnvironment, printStartupWarnings } from './config/env';
 import { localImageDirectory } from './services/imageStorage';
+import { requestContext } from './middleware/requestContext';
+import { allowedCorsOrigins } from './config/urls';
 
 dotenv.config();
 
@@ -33,13 +35,11 @@ connectDb().then(async () => { await startNotificationWorker(); await startPushW
 // Render terminates TLS and forwards requests to this service.
 app.set('trust proxy', 1);
 
-const allowedOrigins = (process.env.FRONTEND_URL || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = allowedCorsOrigins();
 const developmentOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/;
 
 app.disable('x-powered-by');
+app.use(requestContext);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin(origin, callback) {
@@ -54,6 +54,7 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-Request-ID'],
 }));
 app.use(express.json({ limit: '6mb' }));
 if (process.env.NODE_ENV !== 'production' && process.env.IMAGE_STORAGE_PROVIDER === 'local') {

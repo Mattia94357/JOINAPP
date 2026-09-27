@@ -6,6 +6,7 @@ import { resetPasswordRequest } from '../api';
 import { colors, spacing } from '../theme';
 import ResponsiveAppContainer from '../components/ResponsiveAppContainer';
 import Logo from '../components/Logo';
+import { useAuth } from '../context/AuthContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
 
@@ -13,6 +14,7 @@ const passwordStrengthMessage = 'Password must be at least 8 characters and incl
 const isStrongPassword = (value: string) => value.length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value);
 
 export default function ResetPasswordScreen({ route, navigation }: Props) {
+  const { user, logout } = useAuth();
   const routeToken = route.params?.token;
   const initialToken = useMemo(() => {
     if (routeToken) return routeToken;
@@ -59,7 +61,8 @@ export default function ResetPasswordScreen({ route, navigation }: Props) {
     try {
       const response = await resetPasswordRequest(token, password);
       showMessage('Password updated', response.data.message || 'Password updated. You can now log in.');
-      navigation.replace('Login');
+      if (user) await logout();
+      else navigation.replace('Login');
     } catch (error: any) {
       setMessage(error?.response?.data?.message || 'Reset link is invalid or has expired.');
     } finally {

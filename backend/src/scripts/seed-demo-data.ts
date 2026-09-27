@@ -8,7 +8,17 @@ import User from '../models/User';
 dotenv.config();
 
 const seedTag = 'join-demo';
-const demoPassword = process.env.DEMO_SEED_PASSWORD || 'JoinDemo123';
+const seedConfirmation = 'CREATE_JOIN_TEST_DATA';
+
+export const assertDemoSeedAllowed = (environment: NodeJS.ProcessEnv = process.env) => {
+  if (environment.NODE_ENV === 'production') throw new Error('Demo seeding is disabled in production.');
+  if (environment.DEMO_SEED_CONFIRM !== seedConfirmation) {
+    throw new Error(`Set DEMO_SEED_CONFIRM=${seedConfirmation} to acknowledge creation of synthetic test data.`);
+  }
+  if (!environment.DEMO_SEED_PASSWORD || environment.DEMO_SEED_PASSWORD.length < 12) {
+    throw new Error('DEMO_SEED_PASSWORD must be explicitly set to at least 12 characters.');
+  }
+};
 
 const demoUsers = [
   ['Marco Bianchi', 'Food host, pizza obsessive, easy conversation.'],
@@ -77,6 +87,8 @@ const avatarFor = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=111111&color=F6C445&size=256&bold=true`;
 
 async function seedDemoData() {
+  assertDemoSeedAllowed();
+  const demoPassword = process.env.DEMO_SEED_PASSWORD as string;
   await connectDb();
 
   const hashedPassword = await bcrypt.hash(demoPassword, 10);
@@ -138,8 +150,10 @@ async function seedDemoData() {
   await mongoose.disconnect();
 }
 
-seedDemoData().catch(async (error) => {
-  console.error('[seed] Demo data seed failed:', error instanceof Error ? error.message : 'Unknown error');
-  await mongoose.disconnect().catch(() => undefined);
-  process.exit(1);
-});
+if (require.main === module) {
+  seedDemoData().catch(async (error) => {
+    console.error('[seed] Demo data seed failed:', { errorName: error instanceof Error ? error.name : 'UnknownError' });
+    await mongoose.disconnect().catch(() => undefined);
+    process.exit(1);
+  });
+}

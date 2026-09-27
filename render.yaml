@@ -3,7 +3,7 @@ services:
     name: join-api
     runtime: node
     rootDir: backend
-    buildCommand: "npm install --include=dev && npm run build"
+    buildCommand: "npm ci --include=dev && npm run build"
     startCommand: "npm start"
     healthCheckPath: /api/health
     envVars:
@@ -13,7 +13,11 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: FRONTEND_URL
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: PASSWORD_RESET_BASE_URL
         sync: false
       - key: SMTP_HOST
         sync: false
@@ -26,4 +30,20 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: MAIL_FROM
+        sync: false
+      - key: IMAGE_STORAGE_PROVIDER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: join
+      - key: EXPO_PROJECT_ID
+        sync: false
+      - key: EXPO_PUSH_ENABLED
+        value: false
+      - key: EXPO_ACCESS_TOKEN
         sync: false

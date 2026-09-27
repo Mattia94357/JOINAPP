@@ -1,14 +1,19 @@
 {
   "name": "joinapp",
   "private": true,
+  "packageManager": "npm@10.9.3",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10 <11"
+  },
   "workspaces": [
     "frontend",
     "backend"
   ],
   "scripts": {
-    "start:frontend": "yarn workspace frontend start",
-    "start:backend": "yarn workspace backend dev",
-    "install:all": "yarn install",
+    "start:frontend": "npm run start --workspace frontend",
+    "start:backend": "npm run dev --workspace backend",
+    "install:all": "npm ci",
     "build": "cd frontend && npm run build",
     "vercel-build": "cd frontend && npm run build"
   },

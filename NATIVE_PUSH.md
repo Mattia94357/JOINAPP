@@ -5,7 +5,8 @@ Persistent in-app notifications remain authoritative. No lifecycle request sends
 ## Configuration required before enabling delivery
 
 The repository has no assigned EAS project ID or checked-in native credentials.
-Obtain JOIN's real project UUID from the Expo/EAS project dashboard and configure:
+From `frontend`, sign in to the intended Expo owner and run `eas init`. Obtain
+JOIN's real project UUID from the resulting EAS project/dashboard and configure:
 
 | Location | Variable | Value |
 | --- | --- | --- |

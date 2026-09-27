@@ -46,6 +46,7 @@ import {
 } from '../services/activityEditing';
 import { activityCreateConsistencyIssue, unsupportedActivityCreateFields } from '../services/activityCreation';
 import { userImageUrls } from '../services/imageAssets';
+import { hostRating, reviewCount } from '../services/trust';
 
 const router = express.Router();
 type ActivityIdParams = { id: string };
@@ -147,10 +148,10 @@ const publicPersonPayload = (user: any) => ({
   ...userImageUrls(user),
   verified: user?.verified,
   gender: publicGenderValue(user),
-  hostRating: user?.hostRating,
+  hostRating: hostRating(user || {}),
   hostedCount: user?.hostedCount,
   joinedCount: user?.joinedCount,
-  reviewCount: user?.reviewCount,
+  reviewCount: reviewCount(user?.reviewCount),
 });
 
 const activityPayload = (activity: any, viewerId?: string, options: { includeHostInviteCode?: boolean } = {}) => {
@@ -406,7 +407,7 @@ router.post(
     return res.status(404).json({ message: 'Activity not found' });
   }
 
-  const user = await User.findById(req.userId);
+  const user = await User.findById(req.userId).select('+profilePictureUrl +profileThumbnailUrl +avatar');
   if (!user) return res.status(404).json({ message: 'User not found' });
   const requesterId = req.userId as string;
 

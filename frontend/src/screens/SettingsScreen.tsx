@@ -13,7 +13,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 export default function SettingsScreen({ navigation }: Props) {
   const { token, logout } = useAuth();
 
-  const openPolicyLink = (key: 'PRIVACY_POLICY_URL' | 'TERMS_URL' | 'COMMUNITY_GUIDELINES_URL') => {
+  const openPolicyLink = (key: 'PRIVACY_POLICY_URL' | 'TERMS_URL' | 'COMMUNITY_GUIDELINES_URL' | 'SUPPORT_URL') => {
     const url = (Constants.expoConfig?.extra as any)?.[key];
     if (!url) {
       Alert.alert('Link unavailable', 'This policy link is not configured yet. Please contact support.');
@@ -82,6 +82,10 @@ export default function SettingsScreen({ navigation }: Props) {
         </TouchableOpacity>
         <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('COMMUNITY_GUIDELINES_URL')}>
           <Text style={styles.rowText}>Community Guidelines</Text>
+          <Ionicons name="open-outline" size={18} color={colors.textSubtle} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.row} onPress={() => openPolicyLink('SUPPORT_URL')}>
+          <Text style={styles.rowText}>Support</Text>
           <Ionicons name="open-outline" size={18} color={colors.textSubtle} />
         </TouchableOpacity>
       </View>

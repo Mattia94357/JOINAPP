@@ -2,6 +2,10 @@
   "name": "joinapp-backend",
   "private": true,
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10 <11"
+  },
   "main": "dist/index.js",
   "scripts": {
     "dev": "set NODE_ENV=development&& ts-node-dev --respawn --transpile-only src/index.ts",
@@ -24,10 +28,12 @@
     "start": "node dist/index.js",
     "test:smtp": "node dist/scripts/test-smtp.js",
     "seed:demo": "node dist/scripts/seed-demo-data.js",
-    "backfill:activity-coordinates": "node dist/scripts/backfill-activity-coordinates.js"
-    ,"migrate:chat-messages": "npm run build && node dist/scripts/migrate-chat-messages.js",
+    "backfill:activity-coordinates": "node dist/scripts/backfill-activity-coordinates.js",
+    "migrate:chat-messages": "npm run build && node dist/scripts/migrate-chat-messages.js",
     "migrate:image-assets": "npm run build && node dist/scripts/migrate-image-assets.js",
-    "test:images": "npm run build && node tests/imageHardening.test.js"
+    "test:images": "npm run build && node tests/imageHardening.test.js",
+    "test:production-cleanup": "npm run build && node tests/productionCleanup.test.js",
+    "test:native-release-config": "npm run build && node tests/nativeReleaseConfig.test.js"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.2",

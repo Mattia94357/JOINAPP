@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -68,9 +68,9 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const getLinkingPrefixes = () => {
-  const configuredUrl = (Constants.expoConfig?.extra as any)?.FRONTEND_URL;
-  const productionPrefixes = [configuredUrl || 'https://joinapp.app'];
-  const developmentPrefixes = ['http://localhost:19007', 'http://10.180.219.20:19007'];
+  const configuredUrl = (Constants.expoConfig?.extra as any)?.PUBLIC_APP_URL;
+  const productionPrefixes = ['join://', ...(configuredUrl ? [configuredUrl] : [])];
+  const developmentPrefixes = ['http://localhost:19007'];
 
   return __DEV__ ? [...developmentPrefixes, ...productionPrefixes] : productionPrefixes;
 };
@@ -82,13 +82,28 @@ type AppNavigatorProps = {
 function AppNavigator({ onRouteChange }: AppNavigatorProps) {
   const { user, loading } = useAuth();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const pendingActivityRef = useRef<RootStackParamList['Activity']>();
   const pushNavigationReady = useNativePushRouting(navigationRef);
   const initialRouteName = user ? 'Home' : 'Onboarding';
 
   const reportActiveRoute = () => {
-    const routeName = navigationRef.getCurrentRoute()?.name as keyof RootStackParamList | undefined;
+    const route = navigationRef.getCurrentRoute();
+    const routeName = route?.name as keyof RootStackParamList | undefined;
+    if (!user && routeName === 'Activity') pendingActivityRef.current = route?.params as RootStackParamList['Activity'];
+    if (!user && routeName === 'Onboarding') pendingActivityRef.current = undefined;
     onRouteChange(routeName || initialRouteName);
   };
+
+  useEffect(() => {
+    if (!user || !pendingActivityRef.current) return;
+    const destination = pendingActivityRef.current;
+    const timeout = setTimeout(() => {
+      if (!navigationRef.isReady()) return;
+      navigationRef.navigate('Activity', destination);
+      pendingActivityRef.current = undefined;
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [navigationRef, user]);
 
   if (loading) {
     return (
@@ -111,7 +126,10 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             ForgotPassword: 'forgot-password',
             ResetPassword: 'reset-password',
             PublicProfile: 'users/:userId',
-            Activity: 'activities/:activityId',
+            Activity: {
+              path: 'activities/:activityId',
+              parse: { activityId: String, inviteCode: String },
+            },
           },
         },
       }}
@@ -135,6 +153,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
               options={{ headerShown: false, animation: 'none' }}
             />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{ title: 'Reset Password' }} />
             <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
             <Stack.Screen name="EditActivity" component={EditActivityScreen} options={{ title: 'Edit Activity' }} />
             <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
@@ -149,6 +168,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
               component={PublicProfileScreen}
               options={{ title: 'Profile' }}
             />
+            <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
           </>
         ) : (
           <>

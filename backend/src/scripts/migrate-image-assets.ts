@@ -67,7 +67,7 @@ if (require.main === module) {
     console.log('[images] Migration complete', result);
     return mongoose.disconnect();
   }).catch(async (error) => {
-    console.error('[images] Migration failed; original database fields were retained.', error instanceof Error ? error.message : error);
+    console.error('[images] Migration failed; original database fields were retained.', { errorName: error instanceof Error ? error.name : 'UnknownError' });
     await mongoose.disconnect();
     process.exitCode = 1;
   });

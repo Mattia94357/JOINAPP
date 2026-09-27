@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
+import { reportFrontendError } from './safeError';
 
 export type JoinCoordinate = { latitude: number; longitude: number };
 
@@ -72,7 +73,7 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
             : error.code === error.TIMEOUT
               ? 'timeout'
               : 'unknown';
-        console.warn('JOIN geolocation error', { code: error.code, message: error.message });
+        reportFrontendError('geolocation_failed', { name: 'GeolocationError', code: String(error.code) });
         resolve({
           status: 'failure',
           reason,

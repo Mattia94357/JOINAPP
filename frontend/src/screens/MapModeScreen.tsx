@@ -21,7 +21,6 @@ import type { MapActivity } from '../components/MapModeMap.types';
 import AvatarBadge from '../components/AvatarBadge';
 import { colors } from '../theme';
 import { getActivityCoverImage } from '../utils/activityAssets';
-import { curatedActivities } from '../utils/curatedActivities';
 import { getMapTilerConfig } from '../utils/mapConfig';
 import { activityCategories } from '../utils/categories';
 import {
@@ -31,17 +30,20 @@ import {
   readLastMapViewport,
   saveLastMapViewport,
 } from '../utils/locationService';
+import { ActivityResponse, fetchActivities } from '../api';
+import { useAuth } from '../context/AuthContext';
+import { reportFrontendError } from '../utils/safeError';
 
 const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
+type ContentProps = Props & { realActivities: ActivityResponse[] };
 
-// Legacy Phuket center retained only as the final no-context/no-location fallback.
-const FINAL_FALLBACK_REGION: Region = {
-  latitude: 7.8804,
-  longitude: 98.3923,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+const GLOBAL_FALLBACK_REGION: Region = {
+  latitude: 0,
+  longitude: 0,
+  latitudeDelta: 120,
+  longitudeDelta: 120,
 };
 
 let sessionMapViewport: Region | null = null;
@@ -63,10 +65,46 @@ const distanceBetween = (
   return distanceKm < 10 ? `${distanceKm.toFixed(1)} km away` : `${Math.round(distanceKm)} km away`;
 };
 
-export default function MapModeScreen({ navigation, route }: Props) {
+export default function MapModeScreen(props: Props) {
+  const { token } = useAuth();
+  const routedActivities = useMemo(() => props.route.params?.activities?.length
+    ? props.route.params.activities
+    : props.route.params?.activity ? [props.route.params.activity] : [],
+  [props.route.params?.activities, props.route.params?.activity]);
+  const [realActivities, setRealActivities] = useState<ActivityResponse[]>(routedActivities);
+  const [loadingActivities, setLoadingActivities] = useState(routedActivities.length === 0);
+  const [activityError, setActivityError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    if (routedActivities.length) {
+      setRealActivities(routedActivities);
+      setLoadingActivities(false);
+      setActivityError('');
+      return;
+    }
+    let active = true;
+    setLoadingActivities(true);
+    setActivityError('');
+    fetchActivities(token || undefined).then((activities) => {
+      if (active) setRealActivities(activities);
+    }).catch((error) => {
+      reportFrontendError('map_activities_load_failed', error);
+      if (active) { setRealActivities([]); setActivityError('Map activities could not be loaded.'); }
+    }).finally(() => { if (active) setLoadingActivities(false); });
+    return () => { active = false; };
+  }, [loadAttempt, routedActivities, token]);
+
+  if (loadingActivities) return <View style={styles.dataState}><ActivityIndicator color={colors.primary} /><Text style={styles.dataStateText}>Loading map activities...</Text></View>;
+  if (activityError) return <View style={styles.dataState}><Ionicons name="cloud-offline-outline" size={30} color={colors.primary} /><Text style={styles.dataStateTitle}>Activities unavailable</Text><Text style={styles.dataStateText}>{activityError}</Text><TouchableOpacity style={styles.dataStateButton} onPress={() => setLoadAttempt((value) => value + 1)} accessibilityRole="button" accessibilityLabel="Retry loading map activities"><Text style={styles.dataStateButtonText}>Try again</Text></TouchableOpacity></View>;
+  if (!realActivities.length) return <View style={styles.dataState}><Ionicons name="map-outline" size={30} color={colors.primary} /><Text style={styles.dataStateTitle}>No activities to map yet</Text><Text style={styles.dataStateText}>Real activities with locations will appear here.</Text></View>;
+  return <MapModeContent {...props} realActivities={realActivities} />;
+}
+
+function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const initialActivities = route.params?.activities?.length
     ? route.params.activities
-    : curatedActivities;
+    : realActivities;
   const initialActivity = route.params?.activity || initialActivities[0];
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,12 +131,12 @@ export default function MapModeScreen({ navigation, route }: Props) {
     const requestedActivity = route.params?.activity;
     const activities = route.params?.activities?.length
       ? route.params.activities
-      : curatedActivities;
+      : realActivities;
     if (!requestedActivity) return activities;
     return activities.some((activity) => activity.id === requestedActivity.id)
       ? activities
       : [requestedActivity, ...activities];
-  }, [route.params?.activities, route.params?.activity]);
+  }, [realActivities, route.params?.activities, route.params?.activity]);
 
   const filteredActivities = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -127,6 +165,9 @@ export default function MapModeScreen({ navigation, route }: Props) {
       longitude: activity.longitude as number,
       coverImage: activity.coverImage || getActivityCoverImage(activity.category, activity.id),
     })), [filteredActivities]);
+  const initialMappedActivity = useMemo(() => realActivities.find((activity) => (
+    activity.locationPrivacy !== 'private' && Number.isFinite(activity.latitude) && Number.isFinite(activity.longitude)
+  )), [realActivities]);
 
   useEffect(() => {
     if (filteredActivities.some((activity) => activity.id === selectedActivity.id)) return;
@@ -197,10 +238,10 @@ export default function MapModeScreen({ navigation, route }: Props) {
 
   const rememberMapViewport = useCallback((region: Region) => {
     if (!isValidMapRegion(region)) return;
-    const isUntouchedPhuketFallback = fallbackViewportActive.current
-      && Math.abs(region.latitude - FINAL_FALLBACK_REGION.latitude) < 0.0001
-      && Math.abs(region.longitude - FINAL_FALLBACK_REGION.longitude) < 0.0001;
-    if (isUntouchedPhuketFallback) return;
+    const isUntouchedGlobalFallback = fallbackViewportActive.current
+      && Math.abs(region.latitude - GLOBAL_FALLBACK_REGION.latitude) < 0.0001
+      && Math.abs(region.longitude - GLOBAL_FALLBACK_REGION.longitude) < 0.0001;
+    if (isUntouchedGlobalFallback) return;
     fallbackViewportActive.current = false;
     sessionMapViewport = region;
     if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
@@ -241,7 +282,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
           applyCurrentCoordinate(coordinate);
         },
         (error) => {
-          console.warn('JOIN geolocation error', { code: error.code, message: error.message });
+          reportFrontendError('map_geolocation_failed', { name: 'GeolocationError', code: String(error.code) });
           setLocationState('unavailable');
         },
         { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
@@ -297,8 +338,13 @@ export default function MapModeScreen({ navigation, route }: Props) {
         return;
       }
 
+      const firstMappedActivity = initialMappedActivity;
+      if (firstMappedActivity) {
+        setMapRegion({ latitude: firstMappedActivity.latitude as number, longitude: firstMappedActivity.longitude as number, latitudeDelta: 0.08, longitudeDelta: 0.08 });
+        return;
+      }
       fallbackViewportActive.current = true;
-      setMapRegion(FINAL_FALLBACK_REGION);
+      setMapRegion(GLOBAL_FALLBACK_REGION);
     };
 
     initializeMap();
@@ -307,7 +353,7 @@ export default function MapModeScreen({ navigation, route }: Props) {
       active = false;
       if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
-  }, []);
+  }, [initialMappedActivity]);
 
   return (
     <View style={styles.container}>
@@ -487,6 +533,17 @@ export default function MapModeScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  dataState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#111310',
+  },
+  dataStateTitle: { color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 12 },
+  dataStateText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 8 },
+  dataStateButton: { marginTop: 16, backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 11 },
+  dataStateButtonText: { color: colors.primaryText, fontWeight: '900' },
   container: {
     flex: 1,
     minHeight: 0,

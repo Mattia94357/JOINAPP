@@ -21,6 +21,7 @@ import { colors, spacing } from '../theme';
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 import LatestMomentSection from '../components/LatestMomentSection';
 import ProfileMomentsModal from '../components/ProfileMomentsModal';
+import { hasRealRating, ratingLabel } from '../utils/rating';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PublicProfile'>;
 
@@ -77,6 +78,7 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
   const languages = profile?.languages || [];
   const targetUserId = profile?.id || userId;
   const genderLabel = profile?.gender === 'male' ? 'Male' : profile?.gender === 'female' ? 'Female' : profile?.gender === 'non_binary' ? 'Non-binary' : undefined;
+  const hasRating = hasRealRating(profile?.hostRating, profile?.reviewCount);
 
   const handleBlock = async () => {
     if (!token || !targetUserId) {
@@ -149,9 +151,8 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
 
       <View style={styles.badges}>
         <View style={styles.badge}><Ionicons name="camera-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.profilePictureUrl ? 'Profile photo' : 'Photo pending'}</Text></View>
-        <View style={styles.badge}><Ionicons name="shield-checkmark-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile?.verified ? 'Verified' : 'Community Active'}</Text></View>
-        {profile?.hostRating ? (
-          <View style={styles.badge}><Ionicons name="star-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile.hostRating} rating</Text></View>
+        {hasRating ? (
+          <View style={styles.badge}><Ionicons name="star-outline" size={15} color={colors.primary} /><Text style={styles.badgeText}>{profile!.hostRating!.toFixed(1)} rating · {profile!.reviewCount} reviews</Text></View>
         ) : null}
       </View>
 
@@ -183,7 +184,7 @@ export default function PublicProfileScreen({ route, navigation }: Props) {
       <View style={styles.stats}>
         <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostedCount ?? 0}</Text><Text style={styles.statLabel}>Hosted</Text></View>
         <View style={styles.stat}><Text style={styles.statValue}>{profile?.joinedCount ?? 0}</Text><Text style={styles.statLabel}>Joined</Text></View>
-        <View style={styles.stat}><Text style={styles.statValue}>{profile?.hostRating ?? 'New'}</Text><Text style={styles.statLabel}>Rating</Text></View>
+        <View style={styles.stat}><Text style={styles.statValue}>{ratingLabel(profile?.hostRating, profile?.reviewCount)}</Text><Text style={styles.statLabel}>Rating</Text></View>
       </View>
 
       <LatestMomentSection

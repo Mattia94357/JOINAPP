@@ -25,7 +25,6 @@ import BottomNavigation, {
 import { useAuth } from '../context/AuthContext';
 import { ActivityResponse, fetchActivities, joinActivityRequest, saveActivityRequest, updateProfileRequest } from '../api';
 import { activityViewerFlags, viewerCanStartJoin } from '../utils/activityViewerState';
-import { curatedActivities } from '../utils/curatedActivities';
 import { activityStartDate } from '../utils/activityFilters';
 import { activityCategories } from '../utils/categories';
 import { colors, spacing } from '../theme';
@@ -49,6 +48,7 @@ import {
   timeOptions,
 } from '../utils/activityFilters';
 import { getCurrentJoinLocation } from '../utils/locationService';
+import { reportFrontendError } from '../utils/safeError';
 
 const categories = ['All', ...activityCategories];
 const quickFilterChips = categories.slice(0, 8).map((category) => ({ label: category, value: category }));
@@ -74,6 +74,8 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [activities, setActivities] = useState<ActivityResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [participantsActivity, setParticipantsActivity] = useState<ActivityResponse | null>(null);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialDismissedForUserId, setTutorialDismissedForUserId] = useState<string | null>(null);
@@ -86,19 +88,14 @@ export default function HomeScreen({ navigation, route }: Props) {
     { icon: 'add-circle-outline', title: 'Host', text: 'Want to create your own plan? Tap Host.', highlight: 'Host' },
   ];
 
-  const discoveryActivities = useMemo(() => {
-    const existingIds = new Set(activities.map((activity) => activity.id));
-    return [...activities, ...curatedActivities.filter((activity) => !existingIds.has(activity.id))];
-  }, [activities]);
-
   const visibleFeed = useMemo(() => filterAndSortActivities(
-    discoveryActivities,
+    activities,
     appliedFilters,
     userCoordinate,
   ).map((activity) => ({
     ...activity,
     distance: formatDistance(activityDistanceKm(activity, userCoordinate)),
-  })), [appliedFilters, discoveryActivities, userCoordinate]);
+  })), [activities, appliedFilters, userCoordinate]);
 
   const activeFilterCount = activeExploreFilterCount(appliedFilters);
 
@@ -112,19 +109,22 @@ export default function HomeScreen({ navigation, route }: Props) {
     const load = async () => {
       setLoading(true);
       setToastMessage('');
+      setLoadError('');
 
       try {
         const result = await fetchActivities(token || undefined);
         setActivities(markJoinedActivities(result));
       } catch (error) {
-        setToastMessage('Showing curated plans.');
+        reportFrontendError('activities_load_failed', error);
+        setActivities([]);
+        setLoadError('Activities could not be loaded. Check your connection and try again.');
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, [token, user?.id, user?.name]);
+  }, [loadAttempt, token, user?.id, user?.name]);
 
   useEffect(() => {
     if (!toastMessage) return undefined;
@@ -155,7 +155,8 @@ export default function HomeScreen({ navigation, route }: Props) {
       const result = await fetchActivities(token || undefined);
       setActivities(markJoinedActivities(result));
     } catch (error) {
-      console.warn(error);
+      reportFrontendError('activities_refresh_failed', error);
+      setToastMessage('Activities could not be refreshed.');
     }
   };
 
@@ -268,7 +269,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       );
       return false;
     } catch (error: any) {
-      console.warn(error);
+      reportFrontendError('activity_join_failed', error);
       if (error?.response?.data?.code === 'PROFILE_PHOTO_REQUIRED') {
         showProfilePhotoRequired();
         return false;
@@ -313,7 +314,7 @@ export default function HomeScreen({ navigation, route }: Props) {
       const response = await updateProfileRequest({ hasCompletedOnboardingTutorial: true }, token);
       await updateUser(response.data);
     } catch (error) {
-      console.warn('Unable to finish onboarding tutorial', error);
+      reportFrontendError('tutorial_update_failed', error);
       setToastMessage('Tutorial dismissed.');
     }
   };
@@ -397,7 +398,8 @@ export default function HomeScreen({ navigation, route }: Props) {
     });
   };
 
-  const hasNoFilterResults = !loading && visibleFeed.length === 0;
+  const hasNoActivities = !loading && !loadError && activities.length === 0;
+  const hasNoFilterResults = !loading && !loadError && activities.length > 0 && visibleFeed.length === 0;
 
   return (
     <SafeAreaView style={[styles.container, Platform.OS === 'web' && styles.containerWeb, compact && styles.containerCompact]}>
@@ -445,6 +447,21 @@ export default function HomeScreen({ navigation, route }: Props) {
               {[0, 1, 2].map((item) => <View key={item} style={styles.skeletonAvatar} />)}
             </View>
             <ActivityIndicator color={colors.primary} size="small" />
+          </View>
+        ) : loadError ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="cloud-offline-outline" size={28} color={colors.primary} />
+            <Text style={styles.emptyStateTitle}>Activities unavailable</Text>
+            <Text style={styles.emptyStateText}>{loadError}</Text>
+            <TouchableOpacity style={styles.emptyResetButton} onPress={() => setLoadAttempt((attempt) => attempt + 1)} accessibilityRole="button" accessibilityLabel="Retry loading activities">
+              <Text style={styles.emptyResetText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : hasNoActivities ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="calendar-outline" size={28} color={colors.primary} />
+            <Text style={styles.emptyStateTitle}>No activities yet</Text>
+            <Text style={styles.emptyStateText}>Real activities will appear here when someone hosts one.</Text>
           </View>
         ) : hasNoFilterResults ? (
           <View style={styles.emptyState}>
