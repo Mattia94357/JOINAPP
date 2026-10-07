@@ -49,6 +49,8 @@ import { activityImageUrl, cleanupUnreferencedAssets, userImageUrls } from '../s
 import { decodeImageDataUri } from '../services/imageValidation';
 import { getImageStorage } from '../services/imageStorage';
 import type { ImageAsset } from '../models/ImageAsset';
+import { checkImageUploadRequest, prepareBoundedImage, reserveImageUpload } from '../services/imageUploadLimits';
+import { acquireImageUploadClaim, completeImageUploadClaim, releaseImageUploadClaim, waitForImageUploadClaim } from '../services/imageUploadClaims';
 import { hostRating, reviewCount } from '../services/trust';
 
 const router = express.Router();
@@ -70,6 +72,7 @@ type CreateActivityBody = {
   ageGroup?: string;
   vibe?: string;
   coverImageData?: string;
+  clientRequestId?: string;
   maxAttendees: number;
   venueName?: string;
   exactAddress?: string;
@@ -171,6 +174,7 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
     spotsLeft: activity.maxAttendees ? Math.max(activity.maxAttendees - participants.length, 0) : undefined,
   }, activity, viewerId, options);
   delete safePayload.coverImageAsset;
+  delete safePayload.clientRequestId;
 
   if (viewerId) safePayload.viewerJoinStatus = activityViewerJoinStatus(activity, viewerId);
 
@@ -220,6 +224,7 @@ router.post(
   body('ageGroup').optional().isIn(['any', '18-24', '25-34', '35-44', '45+']),
   body('maxAttendees').isInt({ min: 2 }),
   body('coverImageData').optional().isString(),
+  body('clientRequestId').optional().isString().isLength({ min: 8, max: 64 }),
   body('vibe').optional().isString().trim().isLength({ max: 80 }),
   body('venueName').optional({ checkFalsy: true }).isString().trim().isLength({ max: 120 }),
   body('exactAddress').optional({ checkFalsy: true }).isString().trim().isLength({ max: 240 }),
@@ -251,6 +256,7 @@ router.post(
       ageGroup,
       vibe,
       coverImageData,
+      clientRequestId,
       maxAttendees,
       venueName,
       exactAddress,
@@ -283,55 +289,82 @@ router.post(
     if (consistencyIssue === 'paid_cost_required') {
       return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
     }
+    if (clientRequestId) {
+      const existing = await Activity.findOne({ host: req.userId, clientRequestId })
+        .populate('host', `${participantFields} gender publicGender`).populate('participants', participantFields);
+      if (existing) return res.status(200).json(activityPayload(existing, req.userId, { includeHostInviteCode: true }));
+    }
+    const claim = clientRequestId ? await acquireImageUploadClaim(req.userId as string, 'activity', clientRequestId) : undefined;
+    if (claim && !claim.acquired) {
+      await waitForImageUploadClaim(claim.id);
+      const existing = await Activity.findOne({ host: req.userId, clientRequestId })
+        .populate('host', `${participantFields} gender publicGender`).populate('participants', participantFields);
+      if (existing) return res.status(200).json(activityPayload(existing, req.userId, { includeHostInviteCode: true }));
+      return res.status(409).json({ message: 'An activity upload is in progress. Please retry shortly.' });
+    }
     let coverImageAsset: ImageAsset | undefined;
-    if (coverImageData) {
-      const image = decodeImageDataUri(coverImageData, 4 * 1024 * 1024);
-      coverImageAsset = await getImageStorage().upload({ image, kind: 'activity', ownerId: req.userId as string });
-    }
-
-    const activity = new Activity({
-      title: cleanText(title, 120),
-      category: category && allowedCategories.includes(category) ? category : 'Other',
-      location: cleanText(location, 120),
-      locationName: cleanText(locationName || venueName || location, 120),
-      latitude: normalizedLatitude,
-      longitude: normalizedLongitude,
-      isApproximateLocation: Boolean(isApproximateLocation),
-      locationPrivacy: ['public', 'approximate', 'private'].includes(locationPrivacy || '')
-        ? locationPrivacy
-        : 'public',
-      description: cleanText(description, 3000),
-      date: scheduledDate,
-      endDate: scheduledEnd,
-      ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
-      vibe: cleanText(vibe, 80),
-      coverImageAsset,
-      maxAttendees,
-      visibility: visibility === 'private' ? 'private' : 'public',
-      joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
-      status: 'active',
-      inviteCode: visibility === 'private' ? generateActivityInviteCode() : undefined,
-      venueName: cleanText(venueName, 120),
-      exactAddress: cleanText(exactAddress, 240),
-      costType: normalizedCostType,
-      costAmount: normalizedCostAmount,
-      currency: 'AUD',
-      hostNote: cleanText(hostNote, 500),
-      cancellationPolicy: cleanText(cancellationPolicy, 500),
-      host: req.userId,
-      participants: [req.userId],
-    });
-
+    let releaseReservation: (() => Promise<void>) | undefined;
+    let saved = false;
     try {
+      if (coverImageData) {
+        const image = decodeImageDataUri(coverImageData, 4 * 1024 * 1024);
+        await checkImageUploadRequest(req.userId as string, req.ip || 'unknown');
+        const preparedVariants = await prepareBoundedImage(image, 'activity');
+        releaseReservation = await reserveImageUpload(req.userId as string, 1, preparedVariants.reduce((sum, variant) => sum + variant.buffer.length, 0));
+        coverImageAsset = await getImageStorage().upload({ image, kind: 'activity', ownerId: req.userId as string, preparedVariants });
+      }
+
+      const activity = new Activity({
+        title: cleanText(title, 120),
+        category: category && allowedCategories.includes(category) ? category : 'Other',
+        location: cleanText(location, 120),
+        locationName: cleanText(locationName || venueName || location, 120),
+        latitude: normalizedLatitude,
+        longitude: normalizedLongitude,
+        isApproximateLocation: Boolean(isApproximateLocation),
+        locationPrivacy: ['public', 'approximate', 'private'].includes(locationPrivacy || '') ? locationPrivacy : 'public',
+        description: cleanText(description, 3000),
+        date: scheduledDate,
+        endDate: scheduledEnd,
+        ageGroup: ['18-24', '25-34', '35-44', '45+'].includes(ageGroup || '') ? ageGroup : 'any',
+        vibe: cleanText(vibe, 80),
+        coverImageAsset,
+        clientRequestId,
+        maxAttendees,
+        visibility: visibility === 'private' ? 'private' : 'public',
+        joinApproval: joinApproval === 'manual' ? 'manual' : 'auto',
+        status: 'active',
+        inviteCode: visibility === 'private' ? generateActivityInviteCode() : undefined,
+        venueName: cleanText(venueName, 120),
+        exactAddress: cleanText(exactAddress, 240),
+        costType: normalizedCostType,
+        costAmount: normalizedCostAmount,
+        currency: 'AUD',
+        hostNote: cleanText(hostNote, 500),
+        cancellationPolicy: cleanText(cancellationPolicy, 500),
+        host: req.userId,
+        participants: [req.userId],
+      });
+
       await activity.save();
-    } catch (error) {
-      await cleanupUnreferencedAssets([coverImageAsset]);
+      saved = true;
+      if (claim) await completeImageUploadClaim(claim.id, activity.id);
+      const populated = await Activity.findById(activity.id)
+        .populate('host', `${participantFields} gender publicGender`)
+        .populate('participants', participantFields);
+      res.status(201).json(activityPayload(populated || activity, req.userId, { includeHostInviteCode: true }));
+    } catch (error: any) {
+      if (!saved) await cleanupUnreferencedAssets([coverImageAsset]);
+      if (claim) await releaseImageUploadClaim(claim.id);
+      if (error?.code === 11000 && clientRequestId) {
+        const existing = await Activity.findOne({ host: req.userId, clientRequestId })
+          .populate('host', `${participantFields} gender publicGender`).populate('participants', participantFields);
+        if (existing) return res.status(200).json(activityPayload(existing, req.userId, { includeHostInviteCode: true }));
+      }
       throw error;
+    } finally {
+      if (releaseReservation) await releaseReservation();
     }
-    const populated = await Activity.findById(activity.id)
-      .populate('host', `${participantFields} gender publicGender`)
-      .populate('participants', participantFields);
-    res.status(201).json(activityPayload(populated || activity, req.userId, { includeHostInviteCode: true }));
   })
 );
 

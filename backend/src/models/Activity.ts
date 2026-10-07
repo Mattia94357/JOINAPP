@@ -24,6 +24,7 @@ export interface IActivity extends Document {
   ageGroup?: 'any' | '18-24' | '25-34' | '35-44' | '45+';
   coverImage?: string;
   coverImageAsset?: ImageAsset;
+  clientRequestId?: string;
   galleryImages?: string[];
   vibe?: string;
   availabilityTag?: string;
@@ -67,6 +68,7 @@ const ActivitySchema = new Schema<IActivity>({
   ageGroup: { type: String, enum: ['any', '18-24', '25-34', '35-44', '45+'], default: 'any' },
   coverImage: { type: String },
   coverImageAsset: { type: ImageAssetSchema },
+  clientRequestId: { type: String, maxlength: 64 },
   galleryImages: [{ type: String }],
   vibe: { type: String },
   availabilityTag: { type: String },
@@ -95,6 +97,7 @@ const ActivitySchema = new Schema<IActivity>({
 
 ActivitySchema.index({ createdAt: -1 });
 ActivitySchema.index({ host: 1, createdAt: -1 });
+ActivitySchema.index({ host: 1, clientRequestId: 1 }, { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } });
 ActivitySchema.index({ participants: 1, createdAt: -1 });
 ActivitySchema.index({ visibility: 1, status: 1, createdAt: -1 });
 ActivitySchema.index({ category: 1, status: 1, date: 1 });

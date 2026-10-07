@@ -632,6 +632,7 @@ export const createActivityRequest = async (
     vibe?: string;
     coverImage?: string;
     coverImageData?: string;
+    clientRequestId?: string;
     maxAttendees?: number;
     venueName?: string;
     exactAddress?: string;

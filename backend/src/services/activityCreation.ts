@@ -3,7 +3,7 @@ export const creatableActivityFields = [
   'isApproximateLocation', 'locationPrivacy', 'description', 'date', 'endDate',
   'ageGroup', 'vibe', 'coverImageData', 'maxAttendees', 'venueName', 'exactAddress',
   'costType', 'costAmount', 'currency', 'hostNote', 'cancellationPolicy',
-  'visibility', 'joinApproval',
+  'visibility', 'joinApproval', 'clientRequestId',
 ] as const;
 
 const creatableFieldSet = new Set<string>(creatableActivityFields);

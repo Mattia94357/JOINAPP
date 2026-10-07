@@ -31,7 +31,8 @@ export const activityImageUrl = (activity: any) => (
 
 export const cleanupUnreferencedAssets = async (assets: Array<ImageAsset | undefined>) => {
   for (const asset of assets.filter(Boolean) as ImageAsset[]) {
-    if (!asset.storageKey || asset.provider === 'legacy-external') continue;
+    if (!asset.storageKey || asset.provider === 'legacy-external' || asset.provider === 'cloudinary') continue;
+    if (asset.provider === 'local' && process.env.IMAGE_STORAGE_PROVIDER !== 'local') continue;
     try {
       const [users, moments, activities] = await Promise.all([
         User.countDocuments({ 'profileImage.storageKey': asset.storageKey }),

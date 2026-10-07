@@ -3,12 +3,14 @@ const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { MongoMemoryServer } = require('mongodb-memory-server');
+const sharp = require('sharp');
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 async function run() {
   process.env.JWT_SECRET = 'image-tests-only-secret-with-32-characters';
   process.env.NODE_ENV = 'production';
+  process.env.IMAGE_UPLOAD_SHORT_WINDOW_LIMIT = '100';
   const mongo = await MongoMemoryServer.create();
   let server;
   try {
@@ -29,8 +31,8 @@ async function run() {
       async upload({ image, kind, ownerId, deterministicKey }) {
         if (failUpload) throw new Error('mock provider unavailable');
         const storageKey = deterministicKey || `${kind}/${ownerId}/mock-${++sequence}`;
-        return { url: `https://cdn.example.test/${storageKey}.jpg`, thumbnailUrl: kind === 'profile' ? `https://cdn.example.test/${storageKey}-thumb.jpg` : undefined,
-          storageKey, provider: 'cloudinary', mimeType: image.mimeType, bytes: image.buffer.length, width: image.width, height: image.height };
+        return { url: `https://cdn.example.test/${storageKey}.webp`, thumbnailUrl: kind === 'profile' ? `https://cdn.example.test/${storageKey}-thumb.webp` : undefined,
+          storageKey, provider: 'r2', mimeType: 'image/webp', bytes: image.buffer.length, width: image.width, height: image.height };
       },
       async delete(key) { deleted.push(key); },
     });
@@ -50,12 +52,17 @@ async function run() {
     };
     const makeUser = (name) => User.create({ name, email: `${name}-${sequence++}@example.test`, password: 'test', profileCompleted: false });
     const owner = await makeUser('owner');
+    const otherPng = `data:image/png;base64,${(await sharp({ create: { width: 2, height: 2, channels: 3, background: '#ee4433' } }).png().toBuffer()).toString('base64')}`;
 
     const activityInput = {
       title: 'Provider backed activity picture', category: 'Food', location: 'Perth',
       description: 'A properly bounded activity image upload regression test.',
       date: new Date(Date.now() + 86400000).toISOString(), maxAttendees: 8, coverImageData: PNG,
     };
+    const unauthenticated = await fetch(`http://127.0.0.1:${server.address().port}/api/activities`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(activityInput),
+    });
+    assert.equal(unauthenticated.status, 401);
     const activityPicture = await call(owner, '/activities', 'POST', activityInput);
     assert.equal(activityPicture.status, 201);
     assert.match(activityPicture.data.coverImage, /^https:\/\/cdn\.example\.test\/activity\//);
@@ -64,6 +71,15 @@ async function run() {
     const storedActivityPicture = await Activity.findById(activityPicture.data._id);
     assert.match(storedActivityPicture.coverImageAsset.storageKey, /^activity\//);
     assert.equal(storedActivityPicture.coverImage, undefined);
+    const activityRetry = await call(owner, '/activities', 'POST', { ...activityInput, clientRequestId: 'activity-image-retry-1' });
+    assert.equal(activityRetry.status, 201);
+    const activityRetryAgain = await call(owner, '/activities', 'POST', { ...activityInput, clientRequestId: 'activity-image-retry-1' });
+    assert.equal(activityRetryAgain.status, 200);
+    assert.equal(activityRetryAgain.data._id, activityRetry.data._id);
+    const activityConcurrent = await Promise.all(Array.from({ length: 2 }, () => call(owner, '/activities', 'POST',
+      { ...activityInput, clientRequestId: 'activity-image-concurrent-1' })));
+    assert.ok(activityConcurrent.every((result) => [200, 201].includes(result.status)));
+    assert.equal(activityConcurrent[0].data._id, activityConcurrent[1].data._id);
     assert.equal((await call(owner, '/activities', 'POST', { ...activityInput, coverImageData: undefined, coverImage: 'https://attacker.test/a.jpg' })).status, 400);
     assert.equal((await call(owner, '/activities', 'POST', { ...activityInput, coverImageData: undefined, galleryImages: ['https://attacker.test/a.jpg'] })).status, 400);
     const activityCountBeforeFailure = await Activity.countDocuments();
@@ -91,11 +107,11 @@ async function run() {
     assert.throws(() => decodeImageDataUri(`data:image/png;base64,${'A'.repeat(6 * 1024 * 1024)}`, 4 * 1024 * 1024), /smaller/);
 
     const firstKey = savedOwner.profileImage.storageKey;
-    assert.equal((await call(owner, '/users/me/profile-photo', 'PATCH', { profilePictureUrl: PNG })).status, 200);
+    assert.equal((await call(owner, '/users/me/profile-photo', 'PATCH', { profilePictureUrl: otherPng })).status, 200);
     assert.ok(deleted.includes(firstKey), 'replacement cleans the unreferenced prior object');
     const sharedAsset = (await User.findById(owner.id)).profileImage.toObject();
     const sharingUser = await makeUser('sharing'); sharingUser.profileImage = sharedAsset; sharingUser.profileCompleted = true; await sharingUser.save();
-    assert.equal((await call(owner, '/users/me/profile-photo', 'PATCH', { profilePictureUrl: PNG })).status, 200);
+    assert.equal((await call(owner, '/users/me/profile-photo', 'PATCH', { profilePictureUrl: otherPng })).status, 200);
     assert.ok(!deleted.includes(sharedAsset.storageKey), 'cleanup preserves objects still referenced by another record');
     const keyBeforeFailure = (await User.findById(owner.id)).profileImage.storageKey;
     failUpload = true;
@@ -105,6 +121,7 @@ async function run() {
 
     const activity = await Activity.create({ title: 'Past plan', description: 'Done', location: 'Perth', category: 'Outdoors', host: owner._id,
       participants: [owner._id], maxAttendees: 3, date: new Date(Date.now() - 86400000), status: 'completed' });
+    assert.equal((await call(owner, '/moments', 'POST', { activityId: activity.id, images: [PNG, PNG, PNG, PNG] })).status, 400);
     const created = await call(owner, '/moments', 'POST', { activityId: activity.id, images: [PNG], caption: 'memory', clientRequestId: 'image-test-draft-1' });
     assert.equal(created.status, 201);
     assert.match(created.data.images[0], /^https:\/\/cdn\.example\.test\//);
@@ -113,6 +130,11 @@ async function run() {
     assert.equal(retry.status, 200);
     assert.equal(retry.data.id, created.data.id);
     assert.equal(await Moment.countDocuments({ clientRequestId: 'image-test-draft-1' }), 1);
+    const concurrent = await Promise.all(Array.from({ length: 2 }, () => call(owner, '/moments', 'POST',
+      { activityId: activity.id, images: [PNG], caption: 'concurrent', clientRequestId: 'image-test-concurrent-1' })));
+    assert.ok(concurrent.every((result) => [200, 201].includes(result.status)));
+    assert.equal(concurrent[0].data.id, concurrent[1].data.id);
+    assert.equal(await Moment.countDocuments({ clientRequestId: 'image-test-concurrent-1' }), 1);
     const other = await makeUser('other');
     assert.equal((await call(other, `/moments/${created.data.id}`, 'DELETE')).status, 403);
     const momentKey = (await Moment.findById(created.data.id)).imageAssets[0].storageKey;
@@ -128,13 +150,13 @@ async function run() {
     assert.equal((await Moment.findById(legacyMoment.id)).imageAssets.length, 1);
 
     const deletionUser = await makeUser('delete');
-    deletionUser.profileImage = { url: 'https://cdn.example.test/delete.jpg', storageKey: 'profile/delete/key', provider: 'cloudinary', mimeType: 'image/jpeg', bytes: 10, width: 10, height: 10 };
+    deletionUser.profileImage = { url: 'https://cdn.example.test/delete.webp', storageKey: 'profiles/delete-key', provider: 'r2', mimeType: 'image/webp', bytes: 10, width: 10, height: 10 };
     deletionUser.profileCompleted = true;
     await deletionUser.save();
-    await Moment.create({ creator: deletionUser._id, activity: activity._id, imageAssets: [{ url: 'https://cdn.example.test/delete-moment.jpg', storageKey: 'moment/delete/key', provider: 'cloudinary', mimeType: 'image/jpeg', bytes: 10, width: 10, height: 10 }] });
+    await Moment.create({ creator: deletionUser._id, activity: activity._id, imageAssets: [{ url: 'https://cdn.example.test/delete-moment.webp', storageKey: 'moments/delete-key', provider: 'r2', mimeType: 'image/webp', bytes: 10, width: 10, height: 10 }] });
     await deleteAccount(deletionUser.id);
-    assert.ok(deleted.includes('profile/delete/key'));
-    assert.ok(deleted.includes('moment/delete/key'));
+    assert.ok(deleted.includes('profiles/delete-key'));
+    assert.ok(deleted.includes('moments/delete-key'));
 
     console.log('Image hardening regression tests passed.');
   } finally {

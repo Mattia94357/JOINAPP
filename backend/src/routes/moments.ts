@@ -19,10 +19,11 @@ import { decodeImageDataUri, ImageInputError } from '../services/imageValidation
 import { getImageStorage } from '../services/imageStorage';
 import { activityImageUrl, cleanupUnreferencedAssets, momentImageUrls, userImageUrls } from '../services/imageAssets';
 import type { ImageAsset } from '../models/ImageAsset';
+import { checkImageUploadRequest, prepareBoundedImage, reserveImageUpload } from '../services/imageUploadLimits';
+import { acquireImageUploadClaim, completeImageUploadClaim, releaseImageUploadClaim, waitForImageUploadClaim } from '../services/imageUploadClaims';
 
 const router = express.Router();
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
-const imageUploadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many photo uploads. Please try again later.' } });
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 1280 * 1024;
 
@@ -98,7 +99,6 @@ const populatedComments = (query: any) => query
 router.post(
   '/',
   auth,
-  imageUploadLimiter,
   body('activityId').isMongoId(),
   body('images').isArray({ min: 1, max: MAX_IMAGES }),
   body('images.*').isString().withMessage('Moment photos must be JPEG, PNG, or WEBP images.'),
@@ -127,34 +127,51 @@ router.post(
     let decoded;
     try { decoded = req.body.images.map((value) => decodeImageDataUri(value, MAX_IMAGE_BYTES)); }
     catch (error) { if (error instanceof ImageInputError) return res.status(error.status).json({ message: error.message }); throw error; }
-    const imageAssets: ImageAsset[] = [];
-    try {
-      for (const image of decoded) imageAssets.push(await getImageStorage().upload({ image, kind: 'moment', ownerId: req.userId as string }));
-    } catch (error) {
-      await cleanupUnreferencedAssets(imageAssets);
-      throw error;
+    const claim = req.body.clientRequestId
+      ? await acquireImageUploadClaim(req.userId as string, 'moment', req.body.clientRequestId)
+      : undefined;
+    if (claim && !claim.acquired) {
+      await waitForImageUploadClaim(claim.id);
+      const existing = await populatedMoment(Moment.findOne({ creator: req.userId, clientRequestId: req.body.clientRequestId }));
+      if (existing) return res.status(200).json(momentPayload(existing, req.userId));
+      return res.status(409).json({ message: 'An image upload is in progress. Please retry shortly.' });
     }
-    let moment;
+    const imageAssets: ImageAsset[] = [];
+    let saved = false;
     try {
-      moment = await Moment.create({
-        creator: req.userId,
-        activity: activity._id,
-        imageAssets,
-        clientRequestId: req.body.clientRequestId,
-        caption: typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 280) : undefined,
-        likes: [],
-        commentCount: 0,
-      });
+      await checkImageUploadRequest(req.userId as string, req.ip || 'unknown');
+      const prepared = await Promise.all(decoded.map((image) => prepareBoundedImage(image, 'moment')));
+      const bytes = prepared.flat().reduce((sum, variant) => sum + variant.buffer.length, 0);
+      const releaseReservation = await reserveImageUpload(req.userId as string, decoded.length, bytes);
+      try {
+        for (let index = 0; index < decoded.length; index += 1) {
+          imageAssets.push(await getImageStorage().upload({ image: decoded[index], kind: 'moment', ownerId: req.userId as string, preparedVariants: prepared[index] }));
+        }
+        const moment = await Moment.create({
+          creator: req.userId,
+          activity: activity._id,
+          imageAssets,
+          clientRequestId: req.body.clientRequestId,
+          caption: typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 280) : undefined,
+          likes: [],
+          commentCount: 0,
+        });
+        saved = true;
+        if (claim) await completeImageUploadClaim(claim.id, moment.id);
+        const populated = await populatedMoment(Moment.findById(moment.id));
+        return res.status(201).json(momentPayload(populated, req.userId));
+      } finally {
+        await releaseReservation();
+      }
     } catch (error: any) {
-      await cleanupUnreferencedAssets(imageAssets);
+      if (!saved) await cleanupUnreferencedAssets(imageAssets);
+      if (claim) await releaseImageUploadClaim(claim.id);
       if (error?.code === 11000 && req.body.clientRequestId) {
         const existing = await populatedMoment(Moment.findOne({ creator: req.userId, clientRequestId: req.body.clientRequestId }));
         if (existing) return res.status(200).json(momentPayload(existing, req.userId));
       }
       throw error;
     }
-    const populated = await populatedMoment(Moment.findById(moment.id));
-    return res.status(201).json(momentPayload(populated, req.userId));
   }),
 );
 

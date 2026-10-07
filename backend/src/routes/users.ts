@@ -11,6 +11,7 @@ import auth, { AuthRequest } from '../middleware/auth';
 import User, { IUser } from '../models/User';
 import Activity from '../models/Activity';
 import { rateLimit } from 'express-rate-limit';
+import crypto from 'crypto';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import { effectiveActivityStatus } from '../utils/activityLifecycle';
 import { completePastActivities } from '../services/activityCompletion';
@@ -18,6 +19,8 @@ import { decodeImageDataUri, ImageInputError } from '../services/imageValidation
 import { getImageStorage } from '../services/imageStorage';
 import { activityImageUrl, cleanupUnreferencedAssets, userImageUrls } from '../services/imageAssets';
 import { hostRating, reviewCount } from '../services/trust';
+import { checkImageUploadRequest, prepareBoundedImage, reserveImageUpload } from '../services/imageUploadLimits';
+import { acquireImageUploadClaim, completeImageUploadClaim, releaseImageUploadClaim, waitForImageUploadClaim } from '../services/imageUploadClaims';
 
 const router = express.Router();
 
@@ -50,7 +53,6 @@ const maxProfileImageBytes = 4 * 1024 * 1024;
 const allowedGenders = ['male', 'female', 'non_binary', 'prefer_not_to_say'] as const;
 type Gender = typeof allowedGenders[number];
 const moderationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Please try again later.' } });
-const imageUploadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many photo uploads. Please try again later.' } });
 
 const isAllowedGender = (value: unknown): value is Gender =>
   typeof value === 'string' && (allowedGenders as readonly string[]).includes(value);
@@ -204,7 +206,6 @@ router.get('/me/history', auth, asyncHandler(async (req: AuthRequest, res: ApiRe
 router.patch(
   '/me/profile-photo',
   auth,
-  imageUploadLimiter,
   body('profilePictureUrl').isString().withMessage('Upload a JPEG, PNG, or WEBP image.'),
   asyncHandler(async (req: AuthRequest<NoParams, unknown, ProfilePhotoBody>, res: ApiResponse) => {
     const errors = validationResult(req);
@@ -216,22 +217,53 @@ router.patch(
     const user = await User.findById(req.userId).select('+avatar +profilePictureUrl +profileThumbnailUrl');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const previous = user.profileImage;
-    const uploaded = await getImageStorage().upload({ image, kind: 'profile', ownerId: user.id });
+    const sourceHash = crypto.createHash('sha256').update(image.buffer).digest('hex');
+    if (user.profileImage?.sourceHash === sourceHash) return res.json(userPayload(user));
+    const claim = await acquireImageUploadClaim(user.id, 'profile', 'current-photo', true);
+    if (!claim.acquired) {
+      await waitForImageUploadClaim(claim.id);
+      const current = await User.findById(req.userId);
+      if (current?.profileImage?.sourceHash === sourceHash) return res.json(userPayload(current));
+      return res.status(409).json({ message: 'An image upload is in progress. Please retry shortly.' });
+    }
+    const latest = await User.findById(req.userId).select('+avatar +profilePictureUrl +profileThumbnailUrl');
+    if (latest?.profileImage?.sourceHash === sourceHash) {
+      await releaseImageUploadClaim(claim.id);
+      return res.json(userPayload(latest));
+    }
+    if (!latest) {
+      await releaseImageUploadClaim(claim.id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const previous = latest.profileImage;
     try {
-      user.profileImage = uploaded;
-      user.profilePictureUrl = undefined;
-      user.profileThumbnailUrl = undefined;
-      user.avatar = undefined;
-      user.profileCompleted = true;
-      await user.save();
+      await checkImageUploadRequest(user.id, req.ip || 'unknown');
+      const preparedVariants = await prepareBoundedImage(image, 'profile');
+      const releaseReservation = await reserveImageUpload(user.id, 1, preparedVariants.reduce((sum, variant) => sum + variant.buffer.length, 0), Boolean(previous));
+      let uploaded;
+      try {
+        uploaded = await getImageStorage().upload({ image, kind: 'profile', ownerId: user.id, preparedVariants });
+        uploaded.sourceHash = sourceHash;
+        latest.profileImage = uploaded;
+        latest.profilePictureUrl = undefined;
+        latest.profileThumbnailUrl = undefined;
+        latest.avatar = undefined;
+        latest.profileCompleted = true;
+        await latest.save();
+      } catch (error) {
+        await cleanupUnreferencedAssets([uploaded]);
+        throw error;
+      } finally {
+        await releaseReservation();
+      }
+      await completeImageUploadClaim(claim.id, user.id);
+      await cleanupUnreferencedAssets([previous]);
+      res.json(userPayload(latest));
     } catch (error) {
-      await cleanupUnreferencedAssets([uploaded]);
+      await releaseImageUploadClaim(claim.id);
       throw error;
     }
-    await cleanupUnreferencedAssets([previous]);
-
-    res.json(userPayload(user));
   }),
 );
 

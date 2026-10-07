@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import * as Crypto from 'expo-crypto';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -45,6 +46,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const clientRequest = useRef<{ fingerprint: string; id: string }>();
 
   const showError = (message: string) => {
     setErrorMessage(message);
@@ -93,8 +95,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
         .filter(Boolean)
         .join(', ');
       const coordinate = await geocodeActivityLocation(geocodingQuery);
-      await createActivityRequest(
-        {
+      const payload: Omit<Parameters<typeof createActivityRequest>[0], 'clientRequestId'> = {
           title: title.trim(),
           location: location.trim(),
           locationName: venueName.trim() || location.trim(),
@@ -118,9 +119,10 @@ export default function CreateActivityScreen({ navigation }: Props) {
           visibility,
           joinApproval: visibility === 'private' ? 'manual' : 'auto',
           ageGroup,
-        },
-        token,
-      );
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (clientRequest.current?.fingerprint !== fingerprint) clientRequest.current = { fingerprint, id: Crypto.randomUUID() };
+      await createActivityRequest({ ...payload, clientRequestId: clientRequest.current.id }, token);
       Alert.alert('Plan created', 'Your plan is live.');
       navigation.navigate('Home');
     } catch (error: any) {

@@ -1,7 +1,11 @@
 import { ErrorRequestHandler } from 'express';
+import { ImageUploadLimitError } from '../services/imageUploadLimits';
+import { ImageInputError } from '../services/imageValidation';
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
   if (res.headersSent) return next(error);
+  if (error instanceof ImageUploadLimitError) return res.status(error.status).json({ message: error.message });
+  if (error instanceof ImageInputError) return res.status(error.status).json({ message: error.message });
   if (error?.type === 'entity.too.large') return res.status(413).json({ message: 'Request is too large.' });
   if (error?.type === 'entity.parse.failed') return res.status(400).json({ message: 'Invalid JSON body.' });
   if (error?.name === 'CastError' || error?.name === 'ValidationError') {

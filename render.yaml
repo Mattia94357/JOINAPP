@@ -3,7 +3,7 @@ services:
     name: join-api
     runtime: node
     rootDir: backend
-    buildCommand: "npm ci --include=dev && npm run build"
+    buildCommand: "MONGOMS_DISABLE_POSTINSTALL=1 npm ci --include=dev && npm run build"
     startCommand: "npm start"
     healthCheckPath: /api/health
     envVars:
@@ -32,15 +32,19 @@ services:
       - key: MAIL_FROM
         sync: false
       - key: IMAGE_STORAGE_PROVIDER
-        value: cloudinary
-      - key: CLOUDINARY_CLOUD_NAME
+        value: r2
+      - key: R2_ACCOUNT_ID
         sync: false
-      - key: CLOUDINARY_API_KEY
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      - key: CLOUDINARY_API_SECRET
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
-      - key: CLOUDINARY_FOLDER
-        value: join
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
+      - key: IMAGE_UPLOADS_ENABLED
+        value: "false"
       - key: EXPO_PROJECT_ID
         sync: false
       - key: EXPO_PUSH_ENABLED
