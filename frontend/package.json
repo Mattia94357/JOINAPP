@@ -12,6 +12,7 @@
     "web": "expo start --web",
     "build": "expo export:web",
     "test:notifications": "node tests/notifications.test.js",
+    "test:navigation": "node tests/navigation.test.js && node tests/notifications.test.js && node tests/push.test.js",
     "test:push": "node tests/push.test.js",
     "test:safety": "node tests/safety.test.js",
     "test:messaging": "node tests/messaging.test.js && node tests/messagingUnread.test.js",

@@ -168,7 +168,6 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
               component={PublicProfileScreen}
               options={{ title: 'Profile' }}
             />
-            <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
           </>
         ) : (
           <>
@@ -197,6 +196,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
               component={PublicProfileScreen}
               options={{ title: 'Profile' }}
             />
+            <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
           </>
         )}
       </Stack.Navigator>
