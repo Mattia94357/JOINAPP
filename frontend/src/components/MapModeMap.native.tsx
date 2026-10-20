@@ -46,7 +46,7 @@ export default function MapModeMap(props: MapModeMapProps) {
     latitude: initialRegion.latitude,
     longitude: initialRegion.longitude,
     activities,
-    selectedActivityId,
+    selectedActivityId: selectedActivityId || '',
     showsUserLocation,
     userCoordinate,
     apiKey: mapTilerApiKey,

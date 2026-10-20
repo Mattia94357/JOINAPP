@@ -8,11 +8,12 @@ const { create, act } = require('react-test-renderer');
 
 global.__DEV__ = false;
 const originalLoad = Module._load;
-const fixture = () => ({ id: 'me', name: 'Alex', bio: 'Original bio', aboutMe: 'Original bio', languages: ['English', 'Sardinian'], interests: ['Food'], instagram: '@alex', ageRange: '25-34', gender: 'prefer_not_to_say', location: 'Perth, Western Australia, Australia', savedActivities: [] });
+const fixture = () => ({ id: 'me', name: 'Alex', bio: 'Original bio', aboutMe: 'Original bio', languages: ['English', 'Sardinian'], interests: ['Food'], instagram: '@alex', ageRange: '25-34', gender: 'prefer_not_to_say', location: 'Old manually stored city', savedActivities: [] });
 let user = fixture();
 let calls = [];
 let alerts = [];
 let saveFails = false;
+let locationResult;
 const Insets = React.createContext({ bottom: 0 });
 Module._load = function(name, parent, main) {
   if (name === 'react-native') return {
@@ -26,7 +27,7 @@ Module._load = function(name, parent, main) {
   if (name === '@expo/vector-icons') return { Ionicons: () => null };
   if (name === 'expo-image-picker') return {};
   if (name === '../context/AuthContext') return { useAuth: () => ({ user, token: 'auth-token', updateUser: async next => { user = next; } }) };
-  if (name === '../utils/locationService') return { getCurrentJoinPlaceResult: async () => ({ status: 'success', place: fixture().location }) };
+  if (name === '../utils/locationService') return { getCurrentJoinPlaceResult: async () => locationResult || ({ status: 'success', place: 'Perth, Western Australia, Australia' }) };
   if (name === '../utils/mediaPermissions') return { choosePhotoSource() {}, pickProfileImage: async () => null };
   if (name === '../api') return {
     fetchOwnActivityHistoryRequest: async () => ({ data: { hostedActivities: [], joinedActivities: [], hostedCount: 0, joinedCount: 0 } }),
@@ -58,15 +59,28 @@ const flatten = style => Object.assign({}, ...(Array.isArray(style) ? style.flat
 
 test('Profile editing and shared activity selectors', async t => {
   t.after(() => { Module._load = originalLoad; });
-  t.beforeEach(() => { user = fixture(); calls = []; alerts = []; saveFails = false; });
+  t.beforeEach(() => { user = fixture(); calls = []; alerts = []; saveFails = false; locationResult = undefined; });
   await t.test('Profile details remains read-only by default, with original content and navigation', async () => {
     const view = await mount();
-    for (const value of ['Profile details', 'Original bio', 'English, Sardinian', '25-34', '@alex', fixture().location]) assert.ok(body(view).includes(value), value);
+    for (const value of ['Profile details', 'Original bio', 'English, Sardinian', '25-34', '@alex', 'Perth, Western Australia, Australia']) assert.ok(body(view).includes(value), value);
     assert.ok(button(view, 'Edit profile')); assert.ok(button(view, 'Change location'));
+    assert.doesNotMatch(body(view), /No reviews yet|Rating|Old manually stored city/);
+    assert.match(body(view), /Hosted/); assert.match(body(view), /Joined/);
+    assert.ok(button(view, 'Retry current location'));
     assert.equal(view.root.findAllByType('Input').length, 0);
     assert.equal(view.root.findAllByType('BottomNavigation').length, 1); assert.equal(calls.length, 0);
     await press(view, 'Edit profile'); assert.ok(input(view, 'About me')); assert.ok(button(view, 'Save profile')); assert.ok(button(view, 'Cancel profile edits'));
     assert.equal(button(view, 'Edit profile'), undefined); await unmount(view);
+  });
+  await t.test('denied location is retryable and granted coordinates with no label are not reported as missing coordinates', async () => {
+    locationResult = { status: 'failure', reason: 'permission-denied' };
+    const view = await mount();
+    assert.match(body(view), /Location permission denied/); assert.doesNotMatch(body(view), /Old manually stored city/);
+    locationResult = { status: 'success', placeError: 'Place labels are not configured on the server.' };
+    await press(view, 'Retry current location'); assert.match(body(view), /Current area found/);
+    assert.doesNotMatch(body(view), /Current location unavailable/); assert.match(body(view), /Place labels are not configured/);
+    locationResult = undefined; await press(view, 'Retry current location');
+    assert.match(body(view), /Perth, Western Australia, Australia/); await unmount(view);
   });
   await t.test('Languages is searchable, preserves existing custom values, confirms to draft and saves the same API model', async () => {
     const view = await mount(); await press(view, 'Edit profile'); await press(view, 'Languages');
@@ -89,7 +103,7 @@ test('Profile editing and shared activity selectors', async t => {
   });
   await t.test('Current location stays device-derived and read-only, and Change location retains Passport Mode explanation', async () => {
     const view = await mount(); await press(view, 'Edit profile');
-    assert.ok(body(view).includes(fixture().location)); assert.equal(input(view, 'Location'), undefined);
+    assert.ok(body(view).includes('Perth, Western Australia, Australia')); assert.equal(input(view, 'Location'), undefined);
     await press(view, 'Change location'); assert.match(body(view), /Passport Mode/); assert.match(body(view), /will require an upgrade and is not available yet/);
     assert.equal(view.root.findAllByType('Input').filter(node => /location/i.test(node.props.accessibilityLabel || '')).length, 0);
     assert.equal(calls.length, 0); await unmount(view);

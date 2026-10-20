@@ -52,10 +52,11 @@ async function run() {
     };
     const makeUser = (name) => User.create({ name, email: `${name}-${sequence++}@example.test`, password: 'test', profileCompleted: false });
     const owner = await makeUser('owner');
+    await require('../dist/services/currentRegion').DeviceRegion.create({ _id: owner.id, latitude: -31.95, longitude: 115.86, radiusKm: 50, expiresAt: new Date(Date.now() + 1800000) });
     const otherPng = `data:image/png;base64,${(await sharp({ create: { width: 2, height: 2, channels: 3, background: '#ee4433' } }).png().toBuffer()).toString('base64')}`;
 
     const activityInput = {
-      title: 'Provider backed activity picture', category: 'Food', location: 'Perth',
+      title: 'Provider backed activity picture', category: 'Food', location: 'Perth', latitude: -31.95, longitude: 115.86,
       description: 'A properly bounded activity image upload regression test.',
       date: new Date(Date.now() + 86400000).toISOString(), maxAttendees: 8, coverImageData: PNG,
     };

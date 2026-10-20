@@ -88,10 +88,10 @@ export default function MapModeScreen(props: Props) {
     return () => { active = false; };
   }, [loadAttempt, routedActivities, token]);
 
-  if (loadingActivities) return <View style={styles.dataState}><ActivityIndicator color={colors.primary} /><Text style={styles.dataStateText}>Loading map activities...</Text></View>;
-  if (activityError) return <View style={styles.dataState}><Ionicons name="cloud-offline-outline" size={30} color={colors.primary} /><Text style={styles.dataStateTitle}>Activities unavailable</Text><Text style={styles.dataStateText}>{activityError}</Text><TouchableOpacity style={styles.dataStateButton} onPress={() => setLoadAttempt((value) => value + 1)} accessibilityRole="button" accessibilityLabel="Retry loading map activities"><Text style={styles.dataStateButtonText}>Try again</Text></TouchableOpacity></View>;
-  if (!realActivities.length) return <View style={styles.dataState}><Ionicons name="map-outline" size={30} color={colors.primary} /><Text style={styles.dataStateTitle}>No activities to map yet</Text><Text style={styles.dataStateText}>Real activities with locations will appear here.</Text></View>;
-  return <MapModeContent {...props} realActivities={realActivities} />;
+  return <View style={{ flex: 1 }}><MapModeContent {...props} realActivities={realActivities} />
+    {loadingActivities ? <Text style={{ position: 'absolute', bottom: 24, alignSelf: 'center', color: colors.textMuted }}>Loading nearby activities...</Text> : null}
+    {activityError ? <TouchableOpacity style={{ position: 'absolute', bottom: 24, alignSelf: 'center' }} onPress={() => setLoadAttempt(n => n + 1)} accessibilityRole="button"><Text style={{ color: colors.primary }}>{activityError} Retry</Text></TouchableOpacity> : null}
+  </View>;
 }
 
 function MapModeContent({ navigation, route, realActivities }: ContentProps) {
@@ -101,7 +101,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const initialActivity = route.params?.activity || initialActivities[0];
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedActivity, setSelectedActivity] = useState(initialActivity);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityResponse | undefined>(initialActivity);
   const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -109,12 +109,12 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { height } = useWindowDimensions();
-  const attendees = selectedActivity.attendees ?? selectedActivity.participants.length;
-  const spotsLeft = selectedActivity.maxAttendees
-    ? Math.max(selectedActivity.maxAttendees - attendees, 0)
+  const attendees = selectedActivity?.attendees ?? selectedActivity?.participants?.length ?? 0;
+  const spotsLeft = selectedActivity?.maxAttendees
+    ? Math.max(selectedActivity?.maxAttendees - attendees, 0)
     : null;
-  const coverImage = resolveActivityImage({ uploadedImage: selectedActivity.coverImage, category: selectedActivity.category });
-  const creatorName = selectedActivity.host?.trim() || 'JOIN member';
+  const coverImage = resolveActivityImage({ uploadedImage: selectedActivity?.coverImage, category: selectedActivity?.category });
+  const creatorName = selectedActivity?.host?.trim() || 'JOIN member';
   const creatorDisplayName = creatorName.split(/\s+/)[0];
   const compactHeight = height < 760;
   const mapTilerConfig = useMemo(() => getMapTilerConfig(), []);
@@ -158,9 +158,9 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       coverImage: resolveActivityImage({ uploadedImage: activity.coverImage, category: activity.category }),
     })), [filteredActivities]);
   useEffect(() => {
-    if (filteredActivities.some((activity) => activity.id === selectedActivity.id)) return;
-    if (filteredActivities[0]) setSelectedActivity(filteredActivities[0]);
-  }, [filteredActivities, selectedActivity.id]);
+    if (filteredActivities.some((activity) => activity.id === selectedActivity?.id)) return;
+    setSelectedActivity(filteredActivities[0]);
+  }, [filteredActivities, selectedActivity?.id]);
 
   const selectMapActivity = useCallback((activityId: string) => {
     const activity = availableActivities.find((candidate) => candidate.id === activityId);
@@ -175,7 +175,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
     if (!result) return;
 
     if (result.decision === 'join') {
-      setSelectedActivity((activity) => activity.id === result.activityId
+      setSelectedActivity((activity) => activity?.id === result.activityId
         ? {
           ...activity,
           joined: result.joinStatus === 'joined',
@@ -188,12 +188,13 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
     }
 
     setSelectedActivity((activity) => {
-      if (activity.id !== result.activityId) return activity;
+      if (activity?.id !== result.activityId) return activity;
       return filteredActivities.find((candidate) => candidate.id !== result.activityId) || activity;
     });
   }, [filteredActivities, route.params?.decisionResult]);
 
   const openDecisionCard = useCallback(() => {
+    if (!selectedActivity) return;
     navigation.push('Home', {
       source: 'map',
       mapDecisionActivity: selectedActivity,
@@ -202,27 +203,28 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   }, [navigation, route.key, selectedActivity]);
 
   const openCreatorProfile = useCallback(() => {
+    if (!selectedActivity) return;
     navigation.navigate('PublicProfile', {
-      userId: selectedActivity.hostId || undefined,
+      userId: selectedActivity?.hostId || undefined,
       fallbackName: creatorName,
-      fallbackAvatar: selectedActivity.hostAvatar,
+      fallbackAvatar: selectedActivity?.hostAvatar,
     });
-  }, [creatorName, navigation, selectedActivity.hostAvatar, selectedActivity.hostId]);
+  }, [creatorName, navigation, selectedActivity?.hostAvatar, selectedActivity?.hostId]);
 
   const distanceText = useMemo(() => {
     if (
       userCoordinate
-      && Number.isFinite(selectedActivity.latitude)
-      && Number.isFinite(selectedActivity.longitude)
+      && Number.isFinite(selectedActivity?.latitude)
+      && Number.isFinite(selectedActivity?.longitude)
     ) {
       return distanceBetween(userCoordinate, {
-        latitude: selectedActivity.latitude as number,
-        longitude: selectedActivity.longitude as number,
+        latitude: selectedActivity?.latitude as number,
+        longitude: selectedActivity?.longitude as number,
       });
     }
 
     return 'Distance unavailable';
-  }, [selectedActivity.latitude, selectedActivity.longitude, userCoordinate]);
+  }, [selectedActivity?.latitude, selectedActivity?.longitude, userCoordinate]);
 
   const rememberMapViewport = useCallback((region: Region) => {
     if (!isValidMapRegion(region)) return;
@@ -315,7 +317,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
           userCoordinate={userCoordinate}
           recenterRequest={recenterRequest}
           activities={mapActivities}
-          selectedActivityId={selectedActivity.id}
+          selectedActivityId={selectedActivity?.id}
           onSelectActivity={selectMapActivity}
           onSelectCluster={setSelectedClusterCount}
           onViewportChange={rememberMapViewport}
@@ -438,26 +440,26 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
             </View>
             <Ionicons name="chevron-up" size={18} color={colors.primary} />
           </View>
-        ) : <TouchableOpacity
+        ) : !selectedActivity ? <View style={styles.locationUnavailableBadge}><Text style={styles.locationUnavailableText}>No activities nearby yet</Text></View> : <TouchableOpacity
           style={[styles.previewCard, compactHeight && styles.previewCardCompact]}
           onPress={openDecisionCard}
           activeOpacity={0.9}
           accessibilityRole="button"
-          accessibilityLabel={`Open ${selectedActivity.title} decision card`}
+          accessibilityLabel={`Open ${selectedActivity?.title} decision card`}
         >
         <Image source={{ uri: coverImage }} style={[styles.previewImage, compactHeight && styles.previewImageCompact]} />
 
         <View
           style={styles.previewContent}
-          accessibilityLabel={`Activity preview: ${selectedActivity.title}`}
+          accessibilityLabel={`Activity preview: ${selectedActivity?.title}`}
         >
-          <Text style={styles.previewTitle} numberOfLines={1}>{selectedActivity.title}</Text>
+          <Text style={styles.previewTitle} numberOfLines={1}>{selectedActivity?.title}</Text>
           <Text style={styles.previewDistance}>{distanceText}</Text>
           <View style={styles.previewMetaRow}>
             <View style={styles.previewMetaList}>
               <View style={styles.previewMetaItem}>
                 <Ionicons name="time-outline" size={14} color={colors.primary} />
-                <Text style={styles.previewMetaText} numberOfLines={1}>{selectedActivity.time || 'Anytime'}</Text>
+                <Text style={styles.previewMetaText} numberOfLines={1}>{selectedActivity?.time || 'Anytime'}</Text>
               </View>
               <View style={styles.previewMetaItem}>
                 <Ionicons name="people-outline" size={14} color={colors.primary} />
@@ -476,7 +478,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
               accessibilityRole="button"
               accessibilityLabel={`Open ${creatorName}'s profile`}
             >
-              <AvatarBadge name={creatorName} avatarUrl={selectedActivity.hostAvatar} size={26} />
+              <AvatarBadge name={creatorName} avatarUrl={selectedActivity?.hostAvatar} size={26} />
               <Text style={styles.creatorName} numberOfLines={1}>{creatorDisplayName}</Text>
             </TouchableOpacity>
           </View>

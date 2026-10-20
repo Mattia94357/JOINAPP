@@ -1,3 +1,4 @@
+import { loadCurrentRegion, locationIssue, regionActivityFilter } from '../services/currentRegion';
 import { isBlockedBetween, socialAccessDenied } from '../services/blocking';
 import { cancelActivity } from '../services/activityCancellation';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -187,14 +188,17 @@ const activityPayload = (activity: any, viewerId?: string, options: { includeHos
   return safePayload;
 };
 
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', auth, asyncHandler(async (req: AuthRequest, res) => {
   const now = new Date();
   await completePastActivities(now, { visibility: 'public' });
-  const userId = await getRequesterId(req);
+  const userId = req.userId!;
   const hostGender = typeof req.query.hostGender === 'string' ? req.query.hostGender : undefined;
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
   const page = Math.max(Number(req.query.page) || 1, 1);
-  const activities = await Activity.find({ visibility: 'public', ...upcomingActivityFilter(now) })
+  const currentRegion = await loadCurrentRegion(userId);
+  if (!currentRegion) return res.status(403).json({ message: 'Refresh your current device location to discover local activities.' });
+  const localFilter = regionActivityFilter(currentRegion);
+  const activities = await Activity.find({ visibility: 'public', ...upcomingActivityFilter(now), ...localFilter })
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
@@ -237,7 +241,7 @@ router.post(
   body('joinApproval').optional().isIn(['auto', 'manual']),
   asyncHandler(async (req: AuthRequest<Record<string, never>, unknown, CreateActivityBody>, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ message: 'Check your activity details.', errors: errors.array().map((error: any) => ({ field: error.path, message: `Check ${error.path}.` })) });
     const unsupported = unsupportedActivityCreateFields(req.body);
     if (unsupported.length) return res.status(400).json({ message: `These activity fields cannot be set: ${unsupported.join(', ')}.` });
 
@@ -273,8 +277,11 @@ router.post(
     if (hasLatitude !== hasLongitude) {
       return res.status(400).json({ message: 'Both latitude and longitude are required for an activity location.' });
     }
+    if (!hasLatitude) return res.status(400).json({ message: 'Select a local meeting point before publishing.' });
     const normalizedLatitude = hasLatitude ? Number(latitude) : undefined;
     const normalizedLongitude = hasLongitude ? Number(longitude) : undefined;
+    const regionIssue = locationIssue(await loadCurrentRegion(req.userId), { latitude: normalizedLatitude!, longitude: normalizedLongitude! });
+    if (regionIssue) return res.status(403).json({ message: regionIssue });
     const scheduledDate = new Date(date as string);
     if (!isScheduledStartInFuture(scheduledDate)) {
       return res.status(400).json({ message: 'Activity start time must be in the future.' });
@@ -408,6 +415,10 @@ router.patch('/:id', auth, activityWriteLimiter, asyncHandler(async (req: AuthRe
   if (issue === 'end_before_start') return res.status(400).json({ message: 'Activity end time must be after its start time.' });
   if (issue === 'paid_cost_required') return res.status(400).json({ message: 'Paid activities require a cost greater than zero.' });
 
+  if (edit.latitude !== undefined || edit.longitude !== undefined) {
+    const regionIssue = locationIssue(await loadCurrentRegion(req.userId), { latitude: edit.latitude ?? activity.latitude!, longitude: edit.longitude ?? activity.longitude! });
+    if (regionIssue) return res.status(403).json({ message: regionIssue });
+  }
   const updated = await editUpcomingActivityAtomically(req.params.id, req.userId as string, edit, now);
   if (!updated) {
     const latest = await Activity.findById(req.params.id);

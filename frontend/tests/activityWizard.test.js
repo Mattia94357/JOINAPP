@@ -55,6 +55,7 @@ Module._load = function(name, parent, main) {
   if (name === '../utils/locationService') return { getCurrentJoinLocation: async () => ({ latitude: -31.95, longitude: 115.86 }) };
   if (name === '../utils/safeError') return { reportFrontendError() {} };
   if (name === '../utils/mediaPermissions') return { chooseActivityPhotoSource: callback => callback('library'), pickActivityImage: async () => photo };
+  if (name === '../components/ActivityLocationPicker') return { __esModule: true, default: props => React.createElement('Input', { accessibilityLabel: 'Location', value: props.value, onChangeText: value => { props.onChangeText(value); props.onSelect({ label: value, name: '', latitude: -31.95, longitude: 115.86 }); } }) };
   if (name === '../components/SwipeDeck') return { __esModule: true, default: props => React.createElement('Deck', props) };
   if (name === '../components/ParticipantsModal') return { __esModule: true, default: () => null };
   if (name === '../components/BottomNavigation') return { __esModule: true, default: () => React.createElement('BottomNavigation'), BOTTOM_NAV_HEIGHT: 64 };
@@ -196,7 +197,7 @@ test('JOIN Explore and Create Activity behavior', async t => {
     assert.equal(view.root.findByProps({ accessibilityLabel: 'Review cover image' }).props.source.uri, photo.uri);
     await press(view, 'Publish plan'); assert.equal(apiCalls.length, 1);
     const [payload, auth] = apiCalls[0]; assert.equal(auth, 'auth-token');
-    assert.deepEqual(queries, ['12 Example St, Local cafe, Northbridge']);
+    assert.deepEqual(queries, [], 'publishing uses the selected coordinate without a late geocoding dependency');
     assert.equal(payload.date, new Date(`${futureDate}T10:30:00`).toISOString()); assert.equal(payload.endDate, new Date(`${futureDate}T12:00:00`).toISOString());
     assert.equal(payload.maxAttendees, 6); assert.equal(payload.visibility, 'private'); assert.equal(payload.locationPrivacy, 'private'); assert.equal(payload.joinApproval, 'manual');
     assert.equal(payload.latitude, -31.95); assert.equal(payload.longitude, 115.86); assert.equal(payload.isApproximateLocation, false);
@@ -228,13 +229,18 @@ test('JOIN Explore and Create Activity behavior', async t => {
     await act(async () => nav.handlers.get('beforeRemove')({ preventDefault() {}, data: { action: { type: 'GO_BACK' } } }));
     await press(view, 'Discard draft'); assert.deepEqual(nav.calls.at(-1), ['dispatch', { type: 'GO_BACK' }]); await unmount(view);
   });
-  await t.test('geocoding failure cannot call the creation API and keeps the review retryable', async () => {
+  await t.test('regression: a missing or failing geocoder at review no longer prevents publishing a selected local place', async () => {
     apiCalls = []; const { view, nav } = await mount(); await toReview(view); geocodeFailure = true;
     try {
-      await press(view, 'Publish plan'); assert.equal(apiCalls.length, 0); assert.deepEqual(nav.calls, []);
-      assert.match(body(view), /Review your plan/); assert.match(body(view), /Coffee & conversation/);
-      assert.match(body(view), /Could not post activity/); assert.equal(button(view, 'Publish plan').props.disabled, false);
+      await press(view, 'Publish plan'); assert.equal(apiCalls.length, 1); assert.deepEqual(nav.calls.at(-1), ['navigate', 'Home']);
     } finally { geocodeFailure = false; await unmount(view); }
+  });
+  await t.test('field-specific API validation messages are safe and visible on review', async () => {
+    const previous = submit;
+    submit = async () => { throw { response: { data: { errors: [{ field: 'title', message: 'Title must be at least 3 characters.' }] } } }; };
+    const { view } = await mount(); await toReview(view);
+    try { await press(view, 'Publish plan'); assert.match(body(view), /Title must be at least 3 characters/); }
+    finally { submit = previous; await unmount(view); }
   });
   await t.test('Publish revalidates a start time that expires while the review is open', async () => {
     apiCalls = []; const { view } = await mount(); await toReview(view);

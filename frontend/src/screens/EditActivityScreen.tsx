@@ -146,7 +146,7 @@ export default function EditActivityScreen({ route, navigation }: Props) {
 
     if (location.trim() !== original.location || locationName.trim() !== (original.venueName || original.locationName || '') || exactAddress.trim() !== (original.exactAddress || '')) {
       try {
-        const coordinate = await geocodeActivityLocation([exactAddress.trim(), locationName.trim(), location.trim()].filter(Boolean).join(', '));
+        const coordinate = await geocodeActivityLocation([exactAddress.trim(), locationName.trim(), location.trim()].filter(Boolean).join(', '), token);
         payload.latitude = coordinate.latitude;
         payload.longitude = coordinate.longitude;
       } catch (geocodeError: any) {

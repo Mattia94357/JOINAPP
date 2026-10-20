@@ -12,7 +12,8 @@ import { createActivityRequest } from '../api';
 import { colors } from '../theme';
 import { reportFrontendError } from '../utils/safeError';
 import { activityCategories } from '../utils/categories';
-import { geocodeActivityLocation } from '../utils/mapConfig';
+import ActivityLocationPicker from '../components/ActivityLocationPicker';
+import type { Coordinate } from '../utils/currentRegion';
 import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../utils/activityFilters';
 import { ActivityDateSelector, ActivityTimeSelector, activityTimeOptions, formatActivityDate } from '../components/ActivityDateTimeSelectors';
 import { chooseActivityPhotoSource, pickActivityImage, PhotoSource } from '../utils/mediaPermissions';
@@ -43,6 +44,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [title, setTitle] = useState('');
   const [venueName, setVenueName] = useState('');
   const [location, setLocation] = useState('');
+  const [selectedCoordinate, setSelectedCoordinate] = useState<Coordinate>();
   const [exactAddress, setExactAddress] = useState('');
   const [category, setCategory] = useState('Wellness');
   const [vibe, setVibe] = useState('Laid-back');
@@ -93,9 +95,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
   };
 
   const validateStep = (index: number): string | undefined => {
-    if (index === 0 && !title.trim()) return 'Activity title is required.';
+    if (index === 0 && title.trim().length < 3) return 'Activity title must be at least 3 characters.';
     if (index === 1 && !categoryOptions.includes(category)) return 'Choose a category.';
-    if (index === 2 && !location.trim()) return 'Location is required.';
+    if (index === 2 && (!location.trim() || !selectedCoordinate)) return 'Select a local place from suggestions or on the map.';
     if (index === 3) {
       if (!date.trim() || !startTime.trim()) return 'Date and start time are required.';
       const start = combineLocalDateAndTime(date, startTime);
@@ -138,10 +140,7 @@ export default function CreateActivityScreen({ navigation }: Props) {
     publishing.current = true;
     setLoading(true);
     try {
-      const geocodingQuery = [exactAddress.trim(), venueName.trim(), location.trim()]
-        .filter(Boolean)
-        .join(', ');
-      const coordinate = await geocodeActivityLocation(geocodingQuery);
+      const coordinate = selectedCoordinate!;
       const payload: Omit<Parameters<typeof createActivityRequest>[0], 'clientRequestId'> = {
           title: title.trim(),
           location: location.trim(),
@@ -175,7 +174,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
       navigation.navigate('Home');
     } catch (error: any) {
       reportFrontendError('activity_create_failed', error);
-      showError(error?.response?.data?.message || 'Could not post activity. Please try again later.');
+      const details = error?.response?.data;
+      const validationMessage = details?.errors?.map((item: any) => item.message || `Check ${item.field || item.path || 'activity details'}.`).join(' ');
+      showError(details?.message && validationMessage ? `${details.message} ${validationMessage}` : details?.message || validationMessage || 'Could not post activity. Check your connection and try again.');
     } finally {
       publishing.current = false;
       setLoading(false);
@@ -273,7 +274,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
           {step === 1 && <View style={styles.categoryGrid}>{categoryOptions.map(option => <ChoiceCard key={option} label={option} selected={category === option} onPress={() => setCategory(option)} style={styles.category} />)}</View>}
 
           {step === 2 && <>
-            <Text style={styles.label}>Location *</Text><SoftTextInput accessibilityLabel="Location" value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Location *</Text><ActivityLocationPicker token={token} value={location} selected={selectedCoordinate}
+              onChangeText={value => { setLocation(value); setSelectedCoordinate(undefined); }}
+              onSelect={place => { setLocation(place.label); setVenueName(place.name); setSelectedCoordinate({ latitude: place.latitude, longitude: place.longitude }); }} />
             <Text style={styles.label}>Venue name</Text><SoftTextInput accessibilityLabel="Venue name" value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
             <Text style={styles.label}>Meeting point</Text><SoftTextInput accessibilityLabel="Meeting point" value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
           </>}

@@ -9,6 +9,7 @@ import authRoutes from './routes/auth';
 import reportRoutes from './routes/reports';
 import activityRoutes from './routes/activities';
 import chatRoutes from './routes/chats';
+import locationRoutes from './routes/locations';
 import userRoutes from './routes/users';
 import momentRoutes from './routes/moments';
 import notificationRoutes from './routes/notifications';
@@ -65,6 +66,7 @@ app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: 'draf
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/locations', locationRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/moments', momentRoutes);

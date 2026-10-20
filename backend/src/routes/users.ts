@@ -158,8 +158,7 @@ router.patch(
     if (bio !== undefined) user.bio = bio;
     const aboutMe = optionalTrimmedString(req.body.aboutMe);
     if (aboutMe !== undefined) user.aboutMe = aboutMe;
-    const location = optionalTrimmedString(req.body.location);
-    if (location !== undefined) user.location = location;
+    if (req.body.location !== undefined) return res.status(403).json({ message: 'Current location is set from your device. Changing location requires Passport Mode.' });
     const instagram = optionalTrimmedString(req.body.instagram);
     if (instagram !== undefined) user.instagram = instagram;
     const ageRange = optionalTrimmedString(req.body.ageRange);

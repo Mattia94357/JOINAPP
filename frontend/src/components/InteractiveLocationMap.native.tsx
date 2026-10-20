@@ -7,6 +7,8 @@ import { colors } from '../theme';
 type Props = {
   coordinate: { latitude: number; longitude: number };
   approximate: boolean;
+  showMarker?: boolean;
+  onSelectCoordinate?: (coordinate: { latitude: number; longitude: number }) => void;
 };
 
 const darkMapStyle = [
@@ -19,7 +21,7 @@ const darkMapStyle = [
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ] as any;
 
-export default function InteractiveLocationMap({ coordinate, approximate }: Props) {
+export default function InteractiveLocationMap({ coordinate, approximate, showMarker = true, onSelectCoordinate }: Props) {
   const regionDelta = approximate ? 0.12 : 0.045;
   const pinEntrance = useRef(new Animated.Value(0)).current;
   const [pinTracksChanges, setPinTracksChanges] = useState(true);
@@ -39,6 +41,7 @@ export default function InteractiveLocationMap({ coordinate, approximate }: Prop
       style={StyleSheet.absoluteFill}
       initialRegion={{ ...coordinate, latitudeDelta: regionDelta, longitudeDelta: regionDelta }}
       customMapStyle={darkMapStyle}
+      onPress={event => onSelectCoordinate?.(event.nativeEvent.coordinate)}
       zoomEnabled
       scrollEnabled
       pitchEnabled={false}
@@ -46,7 +49,7 @@ export default function InteractiveLocationMap({ coordinate, approximate }: Prop
       toolbarEnabled={false}
       moveOnMarkerPress={false}
     >
-      <Marker coordinate={coordinate} tracksViewChanges={pinTracksChanges}>
+      {showMarker ? <Marker coordinate={coordinate} tracksViewChanges={pinTracksChanges}>
         <Animated.View style={[
           styles.pinCircle,
           {
@@ -59,7 +62,7 @@ export default function InteractiveLocationMap({ coordinate, approximate }: Prop
         ]}>
           <Ionicons name="location" size={28} color={colors.primary} />
         </Animated.View>
-      </Marker>
+      </Marker> : null}
     </MapView>
   );
 }

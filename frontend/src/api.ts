@@ -489,6 +489,11 @@ export const fetchOwnActivityHistoryRequest = (token: string) =>
   api.get<ActivityHistoryResponse>('/api/users/me/history', { headers: { Authorization: `Bearer ${token}` } });
 
 export const fetchActivities = async (token?: string) => {
+  if (token) {
+    const { getCurrentJoinLocationResult } = await import('./utils/locationService');
+    const result = await getCurrentJoinLocationResult();
+    if (result.status === 'success') await registerCurrentRegionRequest(result.coordinate, token);
+  }
   const response = await api.get<RawActivity[]>('/api/activities', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     params: { limit: 50 },
@@ -885,3 +890,8 @@ export const deleteMomentCommentRequest = (momentId: string, commentId: string, 
   api.delete<{ commentCount: number }>(`/api/moments/${momentId}/comments/${commentId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+export const registerCurrentRegionRequest = (coordinate: { latitude: number; longitude: number }, token: string) =>
+  api.post<import('./utils/currentRegion').CurrentRegion>('/api/locations/current', coordinate, { headers: { Authorization: `Bearer ${token}` } });
+export const searchPlacesRequest = (q: string, token: string) =>
+  api.get<import('./utils/currentRegion').PlaceSuggestion[]>('/api/locations/suggestions', { params: { q }, headers: { Authorization: `Bearer ${token}` } });

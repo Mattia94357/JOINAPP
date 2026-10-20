@@ -10,6 +10,7 @@ type Props = {
   loading?: boolean;
   ownProfile?: boolean;
   busy?: boolean;
+  compact?: boolean;
   onActivityPress: (activityId: string) => void;
   onToggleLike?: (moment: MomentResponse) => void;
   onCommentsPress: (moment: MomentResponse) => void;
@@ -22,7 +23,7 @@ const momentDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString([], { day: 'numeric', month: 'short' });
 };
 
-export default function LatestMomentSection({ moment, total, loading, ownProfile, busy, onActivityPress, onToggleLike, onCommentsPress, onViewAll }: Props) {
+export default function LatestMomentSection({ moment, total, loading, ownProfile, busy, compact, onActivityPress, onToggleLike, onCommentsPress, onViewAll }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [moment?.id]);
 
@@ -51,7 +52,7 @@ export default function LatestMomentSection({ moment, total, loading, ownProfile
         <View style={styles.card}>
           {!imageFailed && moment.images[0] ? (
             <View style={styles.imageWrap}>
-              <Image source={{ uri: moment.images[0] }} style={styles.image} resizeMode="cover" onError={() => setImageFailed(true)} />
+              <Image source={{ uri: moment.images[0] }} style={[styles.image, compact && { aspectRatio: 2.4, maxHeight: 190 }]} resizeMode="cover" onError={() => setImageFailed(true)} />
               {moment.images.length > 1 ? (
                 <View style={styles.imageCount}><Ionicons name="images" size={13} color={colors.text} /><Text style={styles.imageCountText}>+{moment.images.length - 1}</Text></View>
               ) : null}

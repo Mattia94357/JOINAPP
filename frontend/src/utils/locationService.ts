@@ -3,10 +3,9 @@ import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type { Region } from 'react-native-maps';
 import { reportFrontendError } from './safeError';
-import { reverseGeocodeJoinLocation } from './mapConfig';
 
 export type JoinCoordinate = { latitude: number; longitude: number };
-export type JoinPlaceResult = JoinLocationResult & { place?: string };
+export type JoinPlaceResult = JoinLocationResult & { place?: string; placeError?: string };
 
 export type JoinLocationResult = {
   status: 'success';
@@ -14,7 +13,7 @@ export type JoinLocationResult = {
   accuracy: number | null;
 } | {
   status: 'failure';
-  reason: 'permission-denied' | 'position-unavailable' | 'timeout' | 'unsupported' | 'unknown';
+  reason: 'permission-denied' | 'position-unavailable' | 'timeout' | 'unsupported' | 'insecure-context' | 'unknown';
   errorCode?: number;
   errorMessage?: string;
 };
@@ -45,6 +44,9 @@ export const isValidMapRegion = (value?: Partial<Region> | null): value is Regio
 };
 
 const browserCurrentPosition = (): Promise<JoinLocationResult> => {
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    return Promise.resolve({ status: 'failure', reason: 'insecure-context' });
+  }
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     return Promise.resolve({
       status: 'failure',
@@ -83,7 +85,7 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
           errorMessage: error.message,
         });
       },
-      { enableHighAccuracy: true, timeout: LOCATION_TIMEOUT_MS, maximumAge: 0 },
+      { enableHighAccuracy: false, timeout: LOCATION_TIMEOUT_MS, maximumAge: CURRENT_LOCATION_MAX_AGE_MS },
     );
   });
 };
@@ -126,7 +128,7 @@ export const getCurrentJoinLocationResult = async (options?: {
     && cachedCurrentLocation
     && now - cachedCurrentLocation.capturedAt <= CURRENT_LOCATION_MAX_AGE_MS
   ) return cachedCurrentLocation.result;
-  if (permissionDeniedThisSession && !options?.retryDenied) {
+  if (permissionDeniedThisSession && Platform.OS !== 'web' && !options?.retryDenied) {
     return { status: 'failure', reason: 'permission-denied' };
   }
   if (locationRequest) return locationRequest;
@@ -135,7 +137,10 @@ export const getCurrentJoinLocationResult = async (options?: {
     const result = Platform.OS === 'web'
       ? await browserCurrentPosition()
       : await nativeCurrentPosition();
-    if (result.status === 'failure') return result;
+    if (result.status === 'failure') {
+      cachedCurrentLocation = null;
+      return result;
+    }
     if (!isValidCoordinate(result.coordinate)) {
       return {
         status: 'failure',
@@ -146,7 +151,11 @@ export const getCurrentJoinLocationResult = async (options?: {
     cachedCurrentLocation = { result, capturedAt: Date.now() };
     permissionDeniedThisSession = false;
     return result;
-  })().finally(() => {
+  })().catch((error): JoinLocationResult => {
+    cachedCurrentLocation = null;
+    reportFrontendError('geolocation_request_failed', error);
+    return { status: 'failure', reason: 'unknown' };
+  }).finally(() => {
     locationRequest = null;
   });
   locationRequest = pendingRequest;
@@ -165,18 +174,30 @@ export const getCurrentJoinLocation = async (options?: {
 export const getCurrentJoinPlaceResult = async (options?: {
   forceRefresh?: boolean;
   retryDenied?: boolean;
+  token?: string;
 }): Promise<JoinPlaceResult> => {
   const result = await getCurrentJoinLocationResult(options);
   if (result.status === 'failure') return result;
+  if (Platform.OS === 'web') {
+    if (!options?.token) return result;
+    try {
+      const { registerCurrentRegionRequest } = await import('../api');
+      const response = await registerCurrentRegionRequest(result.coordinate, options.token);
+      return { ...result, place: response.data.label, placeError: response.data.label ? undefined : response.data.geocodingAvailable === false ? 'Location found. Place labels are not configured on the server.' : 'Location found. The place label service is temporarily unavailable.' };
+    } catch (error) {
+      reportFrontendError('current_region_sync_failed', error);
+      return result;
+    }
+  }
   try {
     const [address] = await Location.reverseGeocodeAsync(result.coordinate);
     const parts = [address?.city || address?.district || address?.subregion, address?.region, address?.country]
       .filter((part, index, all): part is string => Boolean(part) && all.indexOf(part) === index);
-    const place = parts.join(', ') || await reverseGeocodeJoinLocation(result.coordinate);
+    const place = parts.join(', ');
     return { ...result, place: place || undefined };
   } catch (error) {
     reportFrontendError('reverse_geocode_failed', error);
-    return { ...result, place: await reverseGeocodeJoinLocation(result.coordinate) };
+    return result;
   }
 };
 

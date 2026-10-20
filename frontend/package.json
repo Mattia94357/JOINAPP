@@ -22,7 +22,9 @@
     "test:product-refinements": "node tests/productRefinements.test.js",
     "serve:web": "npm run build && node scripts/serve-web-build.js",
     "test:activity-wizard": "node tests/activityWizard.test.js",
-    "test:profile": "node tests/profileSelectors.test.js"
+    "test:profile": "node tests/profileSelectors.test.js",
+    "test:location": "node tests/locationAndMap.test.js",
+    "test:map": "node tests/locationAndMap.test.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^13.0.0",

@@ -39,7 +39,7 @@ import BottomNavigation, {
 import ProfileHistoryTabs from '../components/ProfileHistoryTabs';
 import LatestMomentSection from '../components/LatestMomentSection';
 import ProfileMomentsModal from '../components/ProfileMomentsModal';
-import { ratingLabel } from '../utils/rating';
+import { locationFailureMessage } from '../utils/currentRegion';
 import { getCurrentJoinPlaceResult } from '../utils/locationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
@@ -82,6 +82,8 @@ export default function ProfileScreen({ navigation }: Props) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [passportVisible, setPassportVisible] = useState(false);
+  const [locationAttempt, setLocationAttempt] = useState(0);
+  const [locationError, setLocationError] = useState('');
   const [deviceLocation, setDeviceLocation] = useState('Finding current location…');
   const [aboutMe, setAboutMe] = useState(user?.aboutMe || user?.bio || '');
   const [languagesText, setLanguagesText] = useState((user?.languages || []).join(', '));
@@ -107,15 +109,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const profileImage = user?.profileThumbnailUrl || user?.profilePictureUrl;
   const displayHostedCount = hostedCount;
   const displayJoinedCount = joinedCount;
-  const displayRating = ratingLabel(user?.hostRating, user?.reviewCount);
 
-  const badges = useMemo(
-    () => [
-      { icon: 'camera-outline', label: hasProfilePhoto ? 'Profile photo added' : 'Photo required' },
-      { icon: 'people-outline', label: `${displayJoinedCount} joined` },
-    ],
-    [displayJoinedCount, hasProfilePhoto],
-  );
   const latestMoment = useMemo(() => [...moments].sort((a, b) => (
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   ))[0], [moments]);
@@ -135,24 +129,26 @@ export default function ProfileScreen({ navigation }: Props) {
 
   useEffect(() => {
     let active = true;
-    void getCurrentJoinPlaceResult().then(async (result) => {
+    setDeviceLocation('Finding current location...');
+    void getCurrentJoinPlaceResult({ token: token || undefined, retryDenied: true, forceRefresh: locationAttempt > 0 }).then(async (result) => {
       if (!active) return;
       if (result.status !== 'success' || !result.place) {
-        setDeviceLocation('Current location unavailable');
+        setDeviceLocation(result.status === 'failure' ? 'Current location unavailable' : 'Current area found');
+        setLocationError(result.status === 'failure' ? locationFailureMessage(result.reason) : result.placeError || 'Location found; the place label is temporarily unavailable. Retry shortly.');
         return;
       }
       setDeviceLocation(result.place);
+      setLocationError('');
       if (token && result.place !== user?.location) {
         try {
-          const response = await updateProfileRequest({ location: result.place }, token);
-          if (active) await updateUser(response.data);
+          if (active && user) await updateUser({ ...user, location: result.place });
         } catch {
           // A reverse-geocoded label is helpful but must never block Profile.
         }
       }
     });
     return () => { active = false; };
-  }, [token, user?.id]);
+  }, [token, user?.id, locationAttempt]);
 
   useEffect(() => {
     let active = true;
@@ -385,10 +381,19 @@ export default function ProfileScreen({ navigation }: Props) {
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={14} color={colors.primary} />
             <Text style={styles.location}>{location}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry current location" onPress={() => setLocationAttempt(n => n + 1)}><Ionicons name="refresh" size={16} color={colors.primary} /></TouchableOpacity>
           </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change location" hitSlop={10} onPress={() => setPassportVisible(true)}>
+            <Text style={[styles.changeLocationText, { marginLeft: 0, marginTop: 8 }]}>Change location</Text>
+          </TouchableOpacity>
           <Text style={styles.bio} numberOfLines={3}>
-            {user?.bio || 'Add a short bio so people know who they are meeting.'}
+            {user?.aboutMe || user?.bio || 'Add a short bio so people know who they are meeting.'}
           </Text>
+          {!editingProfile ? (
+            <TouchableOpacity style={styles.editProfileButton} accessibilityRole="button" accessibilityLabel="Edit profile" hitSlop={8} onPress={() => setEditingProfile(true)}>
+              <Text style={styles.editProfileText}>Edit profile</Text>
+            </TouchableOpacity>
+          ) : null}
           <View style={[styles.completionPill, hasProfilePhoto ? styles.completionPillReady : styles.completionPillNeeded]}>
             <Ionicons
               name={hasProfilePhoto ? 'checkmark-circle-outline' : 'alert-circle-outline'}
@@ -404,12 +409,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
       {uploadMessage ? <Text style={styles.uploadMessage}>{uploadMessage}</Text> : null}
 
-      <View style={styles.trustCard}>
-        <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
-        <Text style={styles.trustText}>
-          Profile photos are required before joining activities so everyone can see who is attending.
-        </Text>
-      </View>
+      {locationError ? <Text style={styles.emptyText} accessibilityLiveRegion="polite">{locationError}</Text> : null}
 
       <View style={styles.statsRow}>
         <View style={styles.stat}>
@@ -420,10 +420,6 @@ export default function ProfileScreen({ navigation }: Props) {
           <Text style={styles.statValue}>{displayJoinedCount}</Text>
           <Text style={styles.statLabel}>Joined</Text>
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{displayRating}</Text>
-          <Text style={styles.statLabel}>Rating</Text>
-        </View>
       </View>
 
       <LatestMomentSection
@@ -431,6 +427,7 @@ export default function ProfileScreen({ navigation }: Props) {
         total={momentTotal}
         loading={historyLoading}
         ownProfile
+        compact
         busy={busyMomentId === latestMoment?.id}
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
         onToggleLike={toggleMomentLike}
@@ -454,30 +451,15 @@ export default function ProfileScreen({ navigation }: Props) {
         onActivityPress={(activityId) => navigation.navigate('Activity', { activityId })}
       />
 
-      <View style={styles.section}>
+      <View style={[styles.section, styles.profileDetailsSurface]}>
         <View style={styles.profileDetailsHeader}>
           <View>
-            <Text style={styles.profileDetailsEyebrow}>YOUR JOIN STORY</Text>
             <Text style={styles.profileDetailsTitle}>Profile details</Text>
           </View>
-          {!editingProfile ? (
-            <TouchableOpacity style={styles.editProfileButton} accessibilityRole="button" accessibilityLabel="Edit profile" hitSlop={8} onPress={() => setEditingProfile(true)}>
-              <Text style={styles.editProfileText}>Edit profile</Text>
-            </TouchableOpacity>
-          ) : null}
+
         </View>
 
         <View style={[styles.profileDetailsBody, editingProfile && styles.profileDetailsEditBody]}>
-          <View style={styles.detailLocationRow}>
-            <View style={styles.detailGrow}>
-              <Text style={styles.detailLabel}>CURRENT LOCATION</Text>
-              <Text style={styles.detailValue}>{deviceLocation}</Text>
-            </View>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change location" hitSlop={16} onPress={() => setPassportVisible(true)}>
-              <Text style={styles.changeLocationText}>Change location</Text>
-            </TouchableOpacity>
-          </View>
-
           {editingProfile ? (
             <ProfileDetailsEditor aboutMe={aboutMe} onAboutMeChange={setAboutMe}
               languagesText={languagesText} onLanguagesChange={setLanguagesText}
@@ -487,33 +469,15 @@ export default function ProfileScreen({ navigation }: Props) {
               onSave={handleSaveProfile} onCancel={() => { resetProfileDrafts(); setEditingProfile(false); }} />
           ) : (
             <>
-              <View style={styles.detailDivider} />
-              <Text style={styles.detailLabel}>ABOUT</Text>
-              <Text style={styles.detailValue}>{user?.aboutMe || user?.bio || 'Add a little about yourself.'}</Text>
               <View style={styles.detailPair}>
                 <View style={styles.detailGrow}><Text style={styles.detailLabel}>LANGUAGES</Text><Text style={styles.detailValue}>{user?.languages?.join(', ') || 'Not added'}</Text></View>
                 <View style={styles.detailGrow}><Text style={styles.detailLabel}>AGE RANGE</Text><Text style={styles.detailValue}>{user?.ageRange || 'Not added'}</Text></View>
               </View>
-              <Text style={styles.detailLabel}>INSTAGRAM</Text>
-              <Text style={styles.detailValue}>{user?.instagram || 'Not connected'}</Text>
+              {user?.instagram ? <><Text style={styles.detailLabel}>INSTAGRAM</Text>
+              <Text style={styles.detailValue}>{user.instagram}</Text></> : null}
             </>
           )}
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Verification</Text>
-        <View style={styles.badgeGrid}>
-          {badges.map((badge) => (
-            <View key={badge.label} style={styles.badge}>
-              <Ionicons name={badge.icon as any} size={16} color={colors.primary} />
-              <Text style={styles.badgeText}>{badge.label}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Interests</Text>
         <View style={styles.interestTags}>
           {interests.length ? interests.map((interest) => (
@@ -522,7 +486,6 @@ export default function ProfileScreen({ navigation }: Props) {
             </View>
           )) : <Text style={styles.emptyText}>Add interests to help people understand your vibe.</Text>}
         </View>
-      </View>
 
       <View style={styles.activityColumns}>
         <View style={styles.activityColumn}>
@@ -538,6 +501,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
       </View>
 
+      </View>
       <View style={styles.actions}>
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('CreateActivity')}>
           <Ionicons name="add-circle-outline" size={18} color={colors.primaryText} />
@@ -700,6 +664,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     marginLeft: 5,
+    flexShrink: 1,
   },
   bio: {
     color: colors.textMuted,
@@ -803,10 +768,11 @@ const styles = StyleSheet.create({
   },
   profileDetailsEyebrow: { color: colors.primary, fontSize: 10, fontWeight: '900', letterSpacing: 1.6 },
   profileDetailsTitle: { color: colors.text, fontSize: 24, fontWeight: '900', marginTop: 3 },
-  editProfileButton: { borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
+  editProfileButton: { alignSelf: 'flex-start', marginTop: 12, borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
   editProfileText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
   profileDetailsEditBody: { backgroundColor: 'transparent', padding: 0, paddingTop: 8 },
-  profileDetailsBody: { backgroundColor: colors.surfaceSoft, borderRadius: 16, padding: spacing.md },
+  profileDetailsSurface: { backgroundColor: colors.surfaceSoft, borderRadius: 18, padding: spacing.lg, marginTop: spacing.lg },
+  profileDetailsBody: { paddingBottom: spacing.lg },
   detailLocationRow: { flexDirection: 'row', alignItems: 'center' },
   detailGrow: { flex: 1 },
   detailLabel: { color: colors.textSubtle, fontSize: 10, fontWeight: '900', letterSpacing: 1.2, marginTop: spacing.sm, marginBottom: 4 },

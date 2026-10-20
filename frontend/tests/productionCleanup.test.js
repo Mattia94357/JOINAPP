@@ -26,7 +26,7 @@ assert.match(home, /Retry loading activities/);
 assert.match(home, /ExploreEmptyState/);
 assert.match(source('components/ExploreEmptyState.tsx'), /No activities yet/);
 assert.match(map, /Map activities could not be loaded/);
-assert.match(map, /No activities to map yet/);
+assert.match(map, /No activities nearby yet/);
 assert.doesNotMatch(details, /You joined this curated activity|getCuratedActivity/);
 assert.doesNotMatch(details + profile + publicProfile, /Profile reviewed|Community Active/);
 assert.match(details, /No reviews yet/);

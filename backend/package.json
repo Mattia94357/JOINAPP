@@ -35,7 +35,8 @@
     "test:image-upload-limits": "npm run build && node tests/imageUploadLimits.test.js",
     "test:r2": "npm run build && node tests/r2ImageStorage.test.js",
     "test:production-cleanup": "npm run build && node tests/productionCleanup.test.js",
-    "test:native-release-config": "npm run build && node tests/nativeReleaseConfig.test.js"
+    "test:native-release-config": "npm run build && node tests/nativeReleaseConfig.test.js",
+    "test:location": "npm run build && node tests/currentRegion.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",

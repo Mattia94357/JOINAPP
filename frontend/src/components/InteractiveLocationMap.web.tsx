@@ -1,16 +1,29 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { colors } from '../theme';
 
 type Props = {
   coordinate: { latitude: number; longitude: number };
   approximate: boolean;
+  showMarker?: boolean;
+  onSelectCoordinate?: (coordinate: { latitude: number; longitude: number }) => void;
 };
 
-export default function InteractiveLocationMap({ coordinate, approximate }: Props) {
+export default function InteractiveLocationMap({ coordinate, approximate, showMarker = true, onSelectCoordinate }: Props) {
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  useEffect(() => {
+    const listener = (event: MessageEvent) => {
+      if (!onSelectCoordinate || event.source !== frame.current?.contentWindow || event.data?.type !== 'join-map-select') return;
+      const { latitude, longitude } = event.data;
+      if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) onSelectCoordinate({ latitude, longitude });
+    };
+    window.addEventListener('message', listener);
+    return () => window.removeEventListener('message', listener);
+  }, [onSelectCoordinate]);
   const zoom = approximate ? 11 : 13;
-  const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{height:100%;margin:0;background:#1d1d1a}.leaflet-control-attribution{font-size:9px;background:rgba(10,10,10,.72)!important;color:#aaa}.leaflet-control-attribution a{color:#d8b75c}@keyframes pin-drop{0%{opacity:0;transform:translateY(-16px) rotate(-45deg) scale(.92)}72%{opacity:1;transform:translateY(2px) rotate(-45deg) scale(1.04)}100%{opacity:1;transform:translateY(0) rotate(-45deg) scale(1)}}.join-pin{position:relative;width:28px;height:28px;border-radius:50% 50% 50% 0;background:${colors.primary};border:3px solid #171512;box-shadow:0 2px 10px rgba(0,0,0,.55);transform:rotate(-45deg);animation:pin-drop 360ms cubic-bezier(.2,.75,.3,1) both}.join-pin:after{content:'';position:absolute;width:8px;height:8px;border-radius:50%;background:#171512;left:7px;top:7px}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const map=L.map('map',{zoomControl:true,attributionControl:true}).setView([${coordinate.latitude},${coordinate.longitude}],${zoom});L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);const icon=L.divIcon({className:'',html:'<div class="join-pin"></div>',iconSize:[30,36],iconAnchor:[15,34]});L.marker([${coordinate.latitude},${coordinate.longitude}],{icon}).addTo(map);</script></body></html>`;
+  const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{height:100%;margin:0;background:#1d1d1a}.leaflet-control-attribution{font-size:9px;background:rgba(10,10,10,.72)!important;color:#aaa}.leaflet-control-attribution a{color:#d8b75c}@keyframes pin-drop{0%{opacity:0;transform:translateY(-16px) rotate(-45deg) scale(.92)}72%{opacity:1;transform:translateY(2px) rotate(-45deg) scale(1.04)}100%{opacity:1;transform:translateY(0) rotate(-45deg) scale(1)}}.join-pin{position:relative;width:28px;height:28px;border-radius:50% 50% 50% 0;background:${colors.primary};border:3px solid #171512;box-shadow:0 2px 10px rgba(0,0,0,.55);transform:rotate(-45deg);animation:pin-drop 360ms cubic-bezier(.2,.75,.3,1) both}.join-pin:after{content:'';position:absolute;width:8px;height:8px;border-radius:50%;background:#171512;left:7px;top:7px}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const map=L.map('map',{zoomControl:true,attributionControl:true}).setView([${coordinate.latitude},${coordinate.longitude}],${zoom});L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);const icon=L.divIcon({className:'',html:'<div class="join-pin"></div>',iconSize:[30,36],iconAnchor:[15,34]});if(${showMarker})L.marker([${coordinate.latitude},${coordinate.longitude}],{icon}).addTo(map);${onSelectCoordinate ? "map.on('click',e=>parent.postMessage({type:'join-map-select',latitude:e.latlng.lat,longitude:e.latlng.lng},'*'));" : ''}</script></body></html>`;
 
   return React.createElement('iframe', {
+    ref: frame,
     title: 'Interactive activity map',
     srcDoc: html,
     style: { width: '100%', height: '100%', border: 0 },
