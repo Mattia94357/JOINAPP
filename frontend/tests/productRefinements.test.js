@@ -18,7 +18,7 @@ assert.ok((card.match(/onPress=\{onPress\}/g) || []).length >= 2, 'top/details i
 assert.match(map, /getCurrentJoinLocationResult/);
 assert.doesNotMatch(map, /Phuket|GLOBAL_FALLBACK_REGION|firstMappedActivity/);
 assert.match(map, /previousSessionViewport/);
-assert.match(map, /setMapRegion\(null\)/);
+assert.match(map, /setMapRegion\(WORLD_MAP_VIEWPORT\)/);
 assert.match(map, /onViewportChange=\{rememberMapViewport\}/);
 assert.equal((map.match(/setRecenterRequest/g) || []).length, 2, 'recenter occurs only through explicit current-location handling');
 assert.match(map, /locationResult\.status === 'success'[\s\S]*?setMapRegion\(region\)/, 'successful location centers the initial map');

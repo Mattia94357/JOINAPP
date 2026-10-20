@@ -69,12 +69,12 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
         resolve(result);
       },
       (error) => {
-        if (error.code === error.PERMISSION_DENIED) permissionDeniedThisSession = true;
-        const reason = error.code === error.PERMISSION_DENIED
+        if (error.code === 1) permissionDeniedThisSession = true;
+        const reason = error.code === 1
           ? 'permission-denied'
-          : error.code === error.POSITION_UNAVAILABLE
+          : error.code === 2
             ? 'position-unavailable'
-            : error.code === error.TIMEOUT
+            : error.code === 3
               ? 'timeout'
               : 'unknown';
         reportFrontendError('geolocation_failed', { name: 'GeolocationError', code: String(error.code) });

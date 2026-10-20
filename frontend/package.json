@@ -24,7 +24,7 @@
     "test:activity-wizard": "node tests/activityWizard.test.js",
     "test:profile": "node tests/profileSelectors.test.js",
     "test:location": "node tests/locationAndMap.test.js",
-    "test:map": "node tests/locationAndMap.test.js"
+    "test:map": "node tests/locationAndMap.test.js && node tests/webMap.test.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^13.0.0",

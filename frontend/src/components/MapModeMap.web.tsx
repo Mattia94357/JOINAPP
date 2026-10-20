@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import * as maptilersdk from '@maptiler/sdk';
 import '@maptiler/sdk/dist/maptiler-sdk.css';
 import './MapModeMap.web.css';
+import { viewportZoom, resolveWebMapConfig, mapDiagnostic } from '../utils/webMap';
 import type { MapActivity, MapModeMapProps } from './MapModeMap.types';
 
-type MapTilerMapProps = MapModeMapProps & { mapTilerApiKey: string };
+type MapTilerMapProps = MapModeMapProps & { mapTilerApiKey: string; onFailure: () => void };
 
 const CLUSTER_SOURCE = 'join-activities';
 const CLUSTER_LAYER = 'join-activity-clusters';
@@ -44,8 +45,11 @@ const activityPin = (activity: MapActivity, selected: boolean, onPress: () => vo
 
 function MapTilerMap({
   initialRegion, showsUserLocation, userCoordinate, recenterRequest, activities, selectedActivityId, onSelectActivity,
-  onSelectCluster, onViewportChange, mapTilerApiKey, mapStyleId,
+  onSelectCluster, onViewportChange, mapTilerApiKey, mapStyleId, onFailure,
 }: MapTilerMapProps) {
+  const [mapVersion, setMapVersion] = useState(0);
+  const initialRegionRef = useRef(initialRegion);
+  initialRegionRef.current = initialRegion;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maptilersdk.Map | null>(null);
   const activityMarkersRef = useRef<Array<{ id: string; marker: maptilersdk.Marker; element: HTMLElement }>>([]);
@@ -61,83 +65,130 @@ function MapTilerMap({
   onViewportChangeRef.current = onViewportChange;
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return undefined;
-    const map = new maptilersdk.Map({
-      container: containerRef.current,
-      apiKey: mapTilerApiKey,
-      style: mapStyleId,
-      language: maptilersdk.Language.ENGLISH,
-      center: [initialRegion.longitude, initialRegion.latitude],
-      zoom: 12.5,
-      attributionControl: {},
-      navigationControl: false,
-    });
-    mapRef.current = map;
-
-    const syncPhotoPins = () => {
-      const visible = map.getZoom() >= PHOTO_PIN_ZOOM;
-      activityMarkersRef.current.forEach(({ element }) => element.classList.toggle('zoom-hidden', !visible));
+    const container = containerRef.current;
+    if (!container) return;
+    let activeMap: maptilersdk.Map | null = null;
+    let disposed = false;
+    let loaded = false;
+    let loadTimer: ReturnType<typeof setTimeout> | undefined;
+    const fail = (reason: string, status?: number) => {
+      if (disposed) return;
+      mapDiagnostic('initialization-failed', { provider: 'maptiler', reason, status });
+      onFailure();
     };
-    const handleLoad = () => {
-      map.addSource(CLUSTER_SOURCE, {
-        type: 'geojson', data: activityGeoJson(activitiesRef.current), cluster: true,
-        clusterMaxZoom: 14, clusterRadius: 58,
-      } as any);
-      map.addLayer({
-        id: CLUSTER_LAYER, type: 'circle', source: CLUSTER_SOURCE, filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': '#171713',
-          'circle-radius': ['step', ['get', 'point_count'], 20, 10, 24, 30, 29, 100, 34],
-          'circle-stroke-width': 2, 'circle-stroke-color': '#F6C445', 'circle-opacity': 0.96,
-        },
-      } as any);
-      map.addLayer({
-        id: CLUSTER_COUNT_LAYER, type: 'symbol', source: CLUSTER_SOURCE, filter: ['has', 'point_count'],
-        layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 14, 'text-font': ['Open Sans Bold'] },
-        paint: { 'text-color': '#F6C445' },
-      } as any);
-      map.addLayer({
-        id: POINT_LAYER, type: 'circle', source: CLUSTER_SOURCE, filter: ['!', ['has', 'point_count']],
-        maxzoom: PHOTO_PIN_ZOOM,
-        paint: { 'circle-color': '#171713', 'circle-radius': 7, 'circle-stroke-width': 2, 'circle-stroke-color': '#F6C445' },
-      } as any);
-      map.on('click', CLUSTER_LAYER, (event: any) => {
-        const feature = event.features?.[0];
-        const clusterId = feature?.properties?.cluster_id;
-        const count = Number(feature?.properties?.point_count || 0);
-        if (clusterId === undefined) return;
-        onSelectClusterRef.current?.(count);
-        const source = map.getSource(CLUSTER_SOURCE) as any;
-        source.getClusterExpansionZoom(clusterId)
-          .then((zoom: number) => map.easeTo({ center: feature.geometry.coordinates, zoom, duration: 500 }))
-          .catch(() => undefined);
-      });
-      map.on('mouseenter', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = ''; });
-      map.on('zoom', syncPhotoPins);
-      syncPhotoPins();
-    };
-    map.on('load', handleLoad);
-    map.on('moveend', () => {
-      const center = map.getCenter();
-      const bounds = map.getBounds();
-      onViewportChangeRef.current?.({
-        latitude: center.lat,
-        longitude: center.lng,
-        latitudeDelta: Math.abs(bounds.getNorth() - bounds.getSouth()),
-        longitudeDelta: Math.abs(bounds.getEast() - bounds.getWest()),
-      });
-    });
+    const start = () => {
+      const { width, height } = container.getBoundingClientRect();
+      mapDiagnostic('container-size', { provider: 'maptiler', width, height });
+      if (activeMap) { if (width > 0 && height > 0) activeMap.resize(); return; }
+      if (width <= 0 || height <= 0 || disposed) return;
+      try {
+        const map = new maptilersdk.Map({
+          container,
+          apiKey: mapTilerApiKey,
+          style: resolveWebMapConfig(mapTilerApiKey, mapStyleId).styleUrl,
+          language: maptilersdk.Language.ENGLISH,
+          center: [initialRegionRef.current.longitude, initialRegionRef.current.latitude],
+          zoom: viewportZoom(initialRegionRef.current),
+          attributionControl: {},
+          navigationControl: false,
+        });
+        activeMap = map;
+        mapRef.current = map;
+        setMapVersion(version => version + 1);
+        loadTimer = setTimeout(() => { if (!loaded) fail('style-load-timeout'); }, 15000);
+        map.on('error', (event: any) => {
+          const status = typeof event.error?.status === 'number' ? event.error.status : undefined;
+          mapDiagnostic('provider-style-error', { provider: 'maptiler', status });
+          if (!loaded) fail('style-load-error', status);
+        });
+        map.getCanvas().addEventListener('webglcontextlost', () => fail('webgl-context-lost'));
 
+        const syncPhotoPins = () => {
+          const visible = map.getZoom() >= PHOTO_PIN_ZOOM;
+          activityMarkersRef.current.forEach(({ element }) => element.classList.toggle('zoom-hidden', !visible));
+        };
+        const handleLoad = () => {
+          loaded = true;
+          clearTimeout(loadTimer);
+          map.resize();
+          mapDiagnostic('ready', { provider: 'maptiler' });
+          map.addSource(CLUSTER_SOURCE, {
+            type: 'geojson', data: activityGeoJson(activitiesRef.current), cluster: true,
+            clusterMaxZoom: 14, clusterRadius: 58,
+          } as any);
+          map.addLayer({
+            id: CLUSTER_LAYER, type: 'circle', source: CLUSTER_SOURCE, filter: ['has', 'point_count'],
+            paint: {
+              'circle-color': '#171713',
+              'circle-radius': ['step', ['get', 'point_count'], 20, 10, 24, 30, 29, 100, 34],
+              'circle-stroke-width': 2, 'circle-stroke-color': '#F6C445', 'circle-opacity': 0.96,
+            },
+          } as any);
+          map.addLayer({
+            id: CLUSTER_COUNT_LAYER, type: 'symbol', source: CLUSTER_SOURCE, filter: ['has', 'point_count'],
+            layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 14, 'text-font': ['Open Sans Bold'] },
+            paint: { 'text-color': '#F6C445' },
+          } as any);
+          map.addLayer({
+            id: POINT_LAYER, type: 'circle', source: CLUSTER_SOURCE, filter: ['!', ['has', 'point_count']],
+            maxzoom: PHOTO_PIN_ZOOM,
+            paint: { 'circle-color': '#171713', 'circle-radius': 7, 'circle-stroke-width': 2, 'circle-stroke-color': '#F6C445' },
+          } as any);
+          map.on('click', CLUSTER_LAYER, (event: any) => {
+            const feature = event.features?.[0];
+            const clusterId = feature?.properties?.cluster_id;
+            const count = Number(feature?.properties?.point_count || 0);
+            if (clusterId === undefined) return;
+            onSelectClusterRef.current?.(count);
+            const source = map.getSource(CLUSTER_SOURCE) as any;
+            source.getClusterExpansionZoom(clusterId)
+              .then((zoom: number) => map.easeTo({ center: feature.geometry.coordinates, zoom, duration: 500 }))
+              .catch(() => undefined);
+          });
+          map.on('mouseenter', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = ''; });
+          map.on('zoom', syncPhotoPins);
+          syncPhotoPins();
+        };
+        map.on('load', handleLoad);
+        map.on('moveend', () => {
+          const center = map.getCenter();
+          const bounds = map.getBounds();
+          onViewportChangeRef.current?.({
+            latitude: center.lat,
+            longitude: center.lng,
+            latitudeDelta: Math.abs(bounds.getNorth() - bounds.getSouth()),
+            longitudeDelta: Math.abs(bounds.getEast() - bounds.getWest()),
+          });
+        });
+
+      } catch { fail('constructor-error'); }
+    };
+    start();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(start) : null;
+    observer?.observe(container);
+    window.addEventListener('resize', start);
+    window.addEventListener('pageshow', start);
+    window.visualViewport?.addEventListener('resize', start);
     return () => {
+      disposed = true;
+      clearTimeout(loadTimer);
+      observer?.disconnect();
+      window.removeEventListener('resize', start);
+      window.removeEventListener('pageshow', start);
+      window.visualViewport?.removeEventListener('resize', start);
       activityMarkersRef.current.forEach(({ marker }) => marker.remove());
       activityMarkersRef.current = [];
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
-      map.remove();
+      activeMap?.remove();
       mapRef.current = null;
     };
-  }, [initialRegion.latitude, initialRegion.longitude, mapStyleId, mapTilerApiKey]);
+  }, [mapStyleId, mapTilerApiKey, onFailure]);
+
+  useEffect(() => {
+    mapRef.current?.easeTo({ center: [initialRegion.longitude, initialRegion.latitude], zoom: viewportZoom(initialRegion), duration: 0 });
+  }, [initialRegion.latitude, initialRegion.longitude, initialRegion.latitudeDelta, initialRegion.longitudeDelta, mapVersion]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -154,7 +205,7 @@ function MapTilerMap({
         .setLngLat([activity.longitude, activity.latitude]).addTo(map);
       return { id: activity.id, marker, element };
     });
-  }, [activities]);
+  }, [activities, mapVersion]);
 
   useEffect(() => {
     activityMarkersRef.current.forEach(({ id, element }) => element.classList.toggle('selected', id === selectedActivityId));
@@ -170,7 +221,7 @@ function MapTilerMap({
     element.className = 'join-map-user-location';
     userMarkerRef.current = new maptilersdk.Marker({ element, anchor: 'center' })
       .setLngLat([userCoordinate.longitude, userCoordinate.latitude]).addTo(map);
-  }, [showsUserLocation, userCoordinate?.latitude, userCoordinate?.longitude]);
+  }, [showsUserLocation, userCoordinate?.latitude, userCoordinate?.longitude, mapVersion]);
 
   useEffect(() => {
     if (!recenterRequest) return;
@@ -187,9 +238,20 @@ function MapTilerMap({
 function OpenStreetMapFallback(props: MapModeMapProps) {
   const { initialRegion, showsUserLocation, userCoordinate, recenterRequest, activities, selectedActivityId, onSelectActivity, onSelectCluster } = props;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [mapError, setMapError] = useState('');
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const syncFrame = useCallback(() => {
+    const current = propsRef.current;
+    const target = iframeRef.current?.contentWindow;
+    target?.postMessage({ type: 'join-map-activities-update', activities: current.activities }, '*');
+    target?.postMessage({ type: 'join-map-activity-highlight', activityId: current.selectedActivityId }, '*');
+    target?.postMessage({ type: 'join-map-user-location', ...current.userCoordinate, visible: current.showsUserLocation && Boolean(current.userCoordinate) }, '*');
+    if (current.recenterRequest) target?.postMessage({ type: 'join-map-recenter', ...current.recenterRequest }, '*');
+  }, []);
   const activityIds = useMemo(() => new Set(activities.map((activity) => activity.id)), [activities]);
-  const safeJson = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
-  const html = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script><style>html,body,#map{height:100%;margin:0;background:#16191b}.leaflet-control-attribution{font:9px sans-serif;background:rgba(10,10,10,.76)!important;color:#aaa}.leaflet-control-attribution a{color:#d8b75c}.leaflet-tile{filter:brightness(.78) saturate(.78) contrast(1.06)}.marker-cluster{display:grid!important;place-items:center;border:2px solid #f6c445;border-radius:50%;background:#171713;color:#f6c445;font:800 14px sans-serif;box-shadow:0 5px 16px #0008}.activity-pin{box-sizing:border-box;width:34px;height:42px;padding:0;border:2px solid #f6c445;border-radius:17px 17px 17px 5px;overflow:hidden;background:#171713;box-shadow:0 5px 14px #0009;transform:rotate(-45deg)}.activity-pin img{width:100%;height:100%;object-fit:cover;transform:rotate(45deg) scale(1.35)}.activity-pin.selected{box-shadow:0 0 0 3px #fff,0 6px 18px #000b}.join-pin{background:transparent;border:0}</style></head><body><div id="map"></div><script>let activities=${safeJson(activities)};let selected=${safeJson(selectedActivityId)};const selectPin=(activityId)=>{selected=activityId;document.querySelectorAll('.activity-pin').forEach((pin)=>pin.classList.toggle('selected',pin.dataset.activityId===activityId))};const map=L.map('map',{zoomControl:false}).setView([${initialRegion.latitude},${initialRegion.longitude}],12.5);let userMarker=null;const setUserLocation=(latitude,longitude)=>{if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;if(!userMarker)userMarker=L.circleMarker([latitude,longitude],{radius:7,color:'#fff',weight:2,fillColor:'#4285f4',fillOpacity:1}).addTo(map);else userMarker.setLatLng([latitude,longitude])};L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; &copy; OpenStreetMap contributors'}).addTo(map);const group=L.markerClusterGroup({maxClusterRadius:58,disableClusteringAtZoom:15,showCoverageOnHover:false,iconCreateFunction:(cluster)=>L.divIcon({className:'marker-cluster',html:String(cluster.getChildCount()),iconSize:[46,46]})});const renderActivities=()=>{group.clearLayers();activities.forEach((a)=>{const photo=a.coverImage?'<img src="'+a.coverImage.replace(/"/g,'&quot;')+'" alt="">':'';const icon=L.divIcon({className:'join-pin',html:'<button data-activity-id="'+a.id+'" aria-label="'+a.title.replace(/"/g,'&quot;')+' activity" class="activity-pin'+(a.id===selected?' selected':'')+'">'+photo+'</button>',iconSize:[34,42],iconAnchor:[17,42]});const marker=L.marker([a.latitude,a.longitude],{icon});marker.on('click',()=>parent.postMessage({type:'join-map-activity-select',activityId:a.id},'*'));group.addLayer(marker)})};addEventListener('message',(event)=>{const message=event.data;if(message?.type==='join-map-activity-highlight')selectPin(message.activityId);if(message?.type==='join-map-recenter')map.flyTo([message.latitude,message.longitude],12.5,{duration:.5});if(message?.type==='join-map-user-location')setUserLocation(Number(message.latitude),Number(message.longitude));if(message?.type==='join-map-activities-update'&&Array.isArray(message.activities)){activities=message.activities;renderActivities()}});group.on('clusterclick',(event)=>parent.postMessage({type:'join-map-cluster-select',activityCount:event.layer.getChildCount()},'*'));map.addLayer(group);renderActivities();${showsUserLocation && userCoordinate ? `setUserLocation(${userCoordinate.latitude},${userCoordinate.longitude});` : ''}map.on('moveend',()=>{const center=map.getCenter();const bounds=map.getBounds();parent.postMessage({type:'join-map-viewport-change',latitude:center.lat,longitude:center.lng,latitudeDelta:Math.abs(bounds.getNorth()-bounds.getSouth()),longitudeDelta:Math.abs(bounds.getEast()-bounds.getWest())},'*')});</script></body></html>`, [initialRegion.latitude, initialRegion.longitude]);
+  const safeJson = (value: unknown) => JSON.stringify(value ?? null).replace(/</g, '\\u003c');
+  const html = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"><script>addEventListener('error',()=>parent.postMessage({type:'join-map-error'},'*'));</script><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script><style>html,body,#map{height:100%;margin:0;background:#16191b}.leaflet-control-attribution{font:9px sans-serif;background:rgba(10,10,10,.76)!important;color:#aaa}.leaflet-control-attribution a{color:#d8b75c}.leaflet-tile{filter:brightness(.78) saturate(.78) contrast(1.06)}.marker-cluster{display:grid!important;place-items:center;border:2px solid #f6c445;border-radius:50%;background:#171713;color:#f6c445;font:800 14px sans-serif;box-shadow:0 5px 16px #0008}.activity-pin{box-sizing:border-box;width:34px;height:42px;padding:0;border:2px solid #f6c445;border-radius:17px 17px 17px 5px;overflow:hidden;background:#171713;box-shadow:0 5px 14px #0009;transform:rotate(-45deg)}.activity-pin img{width:100%;height:100%;object-fit:cover;transform:rotate(45deg) scale(1.35)}.activity-pin.selected{box-shadow:0 0 0 3px #fff,0 6px 18px #000b}.join-pin{background:transparent;border:0}</style></head><body><div id="map"></div><script>let activities=${safeJson(activities)};let selected=${safeJson(selectedActivityId)};const selectPin=(activityId)=>{selected=activityId;document.querySelectorAll('.activity-pin').forEach((pin)=>pin.classList.toggle('selected',pin.dataset.activityId===activityId))};const map=L.map('map',{zoomControl:false}).setView([${initialRegion.latitude},${initialRegion.longitude}],${viewportZoom(initialRegion)});let userMarker=null;const setUserLocation=(latitude,longitude)=>{if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;if(!userMarker)userMarker=L.circleMarker([latitude,longitude],{radius:7,color:'#fff',weight:2,fillColor:'#4285f4',fillOpacity:1}).addTo(map);else userMarker.setLatLng([latitude,longitude])};let tileErrorReported=false;let tileReadyReported=false;L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; &copy; OpenStreetMap contributors'}).on('tileerror',()=>{if(!tileErrorReported){tileErrorReported=true;parent.postMessage({type:'join-map-tile-error'},'*')}}).on('tileload',()=>{if(!tileReadyReported){tileReadyReported=true;parent.postMessage({type:'join-map-ready'},'*')}}).addTo(map);const group=L.markerClusterGroup({maxClusterRadius:58,disableClusteringAtZoom:15,showCoverageOnHover:false,iconCreateFunction:(cluster)=>L.divIcon({className:'marker-cluster',html:String(cluster.getChildCount()),iconSize:[46,46]})});const renderActivities=()=>{group.clearLayers();activities.forEach((a)=>{const photo=a.coverImage?'<img src="'+a.coverImage.replace(/"/g,'&quot;')+'" alt="">':'';const icon=L.divIcon({className:'join-pin',html:'<button data-activity-id="'+a.id+'" aria-label="'+a.title.replace(/"/g,'&quot;')+' activity" class="activity-pin'+(a.id===selected?' selected':'')+'">'+photo+'</button>',iconSize:[34,42],iconAnchor:[17,42]});const marker=L.marker([a.latitude,a.longitude],{icon});marker.on('click',()=>parent.postMessage({type:'join-map-activity-select',activityId:a.id},'*'));group.addLayer(marker)})};addEventListener('message',(event)=>{const message=event.data;if(message?.type==='join-map-activity-highlight')selectPin(message.activityId);if(message?.type==='join-map-recenter')map.flyTo([message.latitude,message.longitude],12.5,{duration:.5});if(message?.type==='join-map-user-location'){if(message.visible===false){if(userMarker)map.removeLayer(userMarker);userMarker=null}else setUserLocation(Number(message.latitude),Number(message.longitude))};if(message?.type==='join-map-activities-update'&&Array.isArray(message.activities)){activities=message.activities;renderActivities()}});group.on('clusterclick',(event)=>parent.postMessage({type:'join-map-cluster-select',activityCount:event.layer.getChildCount()},'*'));map.addLayer(group);renderActivities();${showsUserLocation && userCoordinate ? `setUserLocation(${userCoordinate.latitude},${userCoordinate.longitude});` : ''}const resize=()=>map.invalidateSize({pan:false});addEventListener('resize',resize);if(typeof ResizeObserver!=='undefined')new ResizeObserver(resize).observe(document.getElementById('map'));map.whenReady(()=>{resize();parent.postMessage({type:'join-map-initialized'},'*')});map.on('moveend',()=>{const center=map.getCenter();const bounds=map.getBounds();parent.postMessage({type:'join-map-viewport-change',latitude:center.lat,longitude:center.lng,latitudeDelta:Math.abs(bounds.getNorth()-bounds.getSouth()),longitudeDelta:Math.abs(bounds.getEast()-bounds.getWest())},'*')});</script></body></html>`, [initialRegion.latitude, initialRegion.longitude]);
 
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ type: 'join-map-activity-highlight', activityId: selectedActivityId }, '*');
@@ -200,9 +262,8 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
   }, [activities]);
 
   useEffect(() => {
-    if (!userCoordinate) return;
-    iframeRef.current?.contentWindow?.postMessage({ type: 'join-map-user-location', ...userCoordinate }, '*');
-  }, [userCoordinate?.latitude, userCoordinate?.longitude]);
+    iframeRef.current?.contentWindow?.postMessage({ type: 'join-map-user-location', ...userCoordinate, visible: showsUserLocation && Boolean(userCoordinate) }, '*');
+  }, [showsUserLocation, userCoordinate?.latitude, userCoordinate?.longitude]);
 
   useEffect(() => {
     if (!recenterRequest) return;
@@ -212,6 +273,13 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === 'join-map-initialized' || event.data?.type === 'join-map-ready') {
+        mapDiagnostic('ready', { provider: 'raster' }); setMapError(''); syncFrame(); return;
+      }
+      if (event.data?.type === 'join-map-error' || event.data?.type === 'join-map-tile-error') {
+        mapDiagnostic('provider-style-error', { provider: 'raster', reason: event.data.type === 'join-map-error' ? 'dependency-or-init-error' : 'tile-load-error' });
+        setMapError('Map tiles could not load. Check your connection or content blockers.'); return;
+      }
       if (event.data?.type === 'join-map-cluster-select') {
         onSelectCluster?.(Number(event.data.activityCount) || null);
         return;
@@ -232,11 +300,28 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
     return () => window.removeEventListener('message', handler);
   }, [activityIds, onSelectActivity, onSelectCluster, props.onViewportChange]);
 
-  return <iframe ref={iframeRef} title="Interactive map" srcDoc={html} className="join-map-fallback" sandbox="allow-scripts allow-same-origin" />;
+  return <>
+    <iframe ref={iframeRef} title="Interactive map" srcDoc={html} className="join-map-fallback" sandbox="allow-scripts allow-same-origin"
+      onLoad={() => { const size = iframeRef.current?.getBoundingClientRect(); if (size) mapDiagnostic('container-size', { provider: 'raster', width: size.width, height: size.height }); syncFrame(); }}
+      onError={() => { mapDiagnostic('initialization-failed', { provider: 'raster', reason: 'iframe-load-error' }); setMapError('Map could not load. Check your connection.'); }} />
+    {mapError ? <div className="join-map-status" role="status">{mapError}</div> : null}
+  </>;
 }
 
 export default function MapModeMap(props: MapModeMapProps) {
-  return props.mapTilerApiKey
-    ? <MapTilerMap {...props} mapTilerApiKey={props.mapTilerApiKey} />
-    : <OpenStreetMapFallback {...props} />;
+  const config = useMemo(() => resolveWebMapConfig(props.mapTilerApiKey, props.mapStyleId), [props.mapTilerApiKey, props.mapStyleId]);
+  const [failed, setFailed] = useState(false);
+  const onFailure = useCallback(() => setFailed(true), []);
+  useEffect(() => {
+    if (config.keyIssue) mapDiagnostic('configuration', { reason: config.keyIssue });
+    if (config.styleIssue) mapDiagnostic('configuration', { reason: config.styleIssue });
+  }, [config]);
+  return <div className="join-map-frame" aria-label="Interactive map">
+    {config.apiKey && !failed
+      ? <MapTilerMap {...props} mapStyleId={config.styleId} mapTilerApiKey={config.apiKey} onFailure={onFailure} />
+      : <OpenStreetMapFallback {...props} />}
+    {failed || config.keyIssue || config.styleIssue ? <div className="join-map-status" role="status">
+      {failed ? 'Map provider unavailable. Showing alternate map.' : config.keyIssue ? 'MapTiler key missing or invalid. Showing alternate map.' : 'Map style invalid. Using the default style.'}
+    </div> : null}
+  </div>;
 }

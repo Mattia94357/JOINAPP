@@ -10,7 +10,7 @@ export const insideRegion = (region: CurrentRegion, point: Coordinate) => {
 };
 
 export const locationFailureMessage = (reason: string) => ({
-  'permission-denied': 'Location permission denied. Allow location access in your browser settings, then retry.',
+  'permission-denied': 'Location permission denied. On iPhone, allow Location in Safari Website Settings and enable Location Services for Safari Websites in Settings, then retry.',
   'insecure-context': 'Location requires HTTPS or localhost. Open the secure JOIN website.',
   timeout: 'Finding your location timed out. Please retry.',
   unsupported: 'This browser does not support location access.',

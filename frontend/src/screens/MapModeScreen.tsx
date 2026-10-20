@@ -1,3 +1,5 @@
+import { WORLD_MAP_VIEWPORT } from '../utils/webMap';
+import { locationFailureMessage } from '../utils/currentRegion';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -60,6 +62,7 @@ const distanceBetween = (
 
 export default function MapModeScreen(props: Props) {
   const { token } = useAuth();
+  const { height: viewportHeight } = useWindowDimensions();
   const routedActivities = useMemo(() => props.route.params?.activities?.length
     ? props.route.params.activities
     : props.route.params?.activity ? [props.route.params.activity] : [],
@@ -88,7 +91,7 @@ export default function MapModeScreen(props: Props) {
     return () => { active = false; };
   }, [loadAttempt, routedActivities, token]);
 
-  return <View style={{ flex: 1 }}><MapModeContent {...props} realActivities={realActivities} />
+  return <View style={{ flex: 1, minHeight: 0, width: '100%', ...(Platform.OS === 'web' ? { height: viewportHeight } : {}) }}><MapModeContent {...props} realActivities={realActivities} />
     {loadingActivities ? <Text style={{ position: 'absolute', bottom: 24, alignSelf: 'center', color: colors.textMuted }}>Loading nearby activities...</Text> : null}
     {activityError ? <TouchableOpacity style={{ position: 'absolute', bottom: 24, alignSelf: 'center' }} onPress={() => setLoadAttempt(n => n + 1)} accessibilityRole="button"><Text style={{ color: colors.primary }}>{activityError} Retry</Text></TouchableOpacity> : null}
   </View>;
@@ -103,9 +106,10 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivity, setSelectedActivity] = useState<ActivityResponse | undefined>(initialActivity);
   const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
-  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const [mapRegion, setMapRegion] = useState<Region>(sessionMapViewport || WORLD_MAP_VIEWPORT);
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
+  const [locationExplanation, setLocationExplanation] = useState('');
   const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { height } = useWindowDimensions();
@@ -240,6 +244,8 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
     }
 
     setUserCoordinate(coordinate);
+    setLocationExplanation('');
+    setMapRegion({ ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 });
     setLocationState('ready');
     const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
     sessionMapViewport = region;
@@ -257,6 +263,8 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         applyCurrentCoordinate(result.coordinate);
         return;
       }
+      setUserCoordinate(null);
+      setLocationExplanation(locationFailureMessage(result.reason));
       setLocationState('unavailable');
     });
   }, [applyCurrentCoordinate]);
@@ -266,16 +274,23 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
     const initializeMap = async () => {
       const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
-      const storedViewportPromise = readLastMapViewport();
+      // Restore storage without waiting for a permission prompt or the GPS timeout.
+      let acquiredCurrentLocation = false;
+      const storedViewportPromise = readLastMapViewport().then(stored => {
+        if (active && !acquiredCurrentLocation && !previousSessionViewport && isValidMapRegion(stored)) setMapRegion(stored);
+        return stored;
+      });
       const locationResult = await getCurrentJoinLocationResult({
         forceRefresh: true,
         retryDenied: true,
       });
       if (!active) return;
       if (locationResult.status === 'success') {
+        acquiredCurrentLocation = true;
         const { coordinate } = locationResult;
         const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
         setUserCoordinate(coordinate);
+        setLocationExplanation('');
         setLocationState('ready');
         setMapRegion(region);
         sessionMapViewport = region;
@@ -284,6 +299,8 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       }
 
       setLocationState('unavailable');
+      setUserCoordinate(null);
+      setLocationExplanation(locationFailureMessage(locationResult.reason));
       if (previousSessionViewport) {
         setMapRegion(previousSessionViewport);
         return;
@@ -297,7 +314,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         return;
       }
 
-      setMapRegion(null);
+      setMapRegion(WORLD_MAP_VIEWPORT);
     };
 
     initializeMap();
@@ -310,36 +327,19 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
   return (
     <View style={styles.container}>
-      {mapRegion ? (
-        <MapModeMap
-          initialRegion={mapRegion}
-          showsUserLocation={Boolean(userCoordinate)}
-          userCoordinate={userCoordinate}
-          recenterRequest={recenterRequest}
-          activities={mapActivities}
-          selectedActivityId={selectedActivity?.id}
-          onSelectActivity={selectMapActivity}
-          onSelectCluster={setSelectedClusterCount}
-          onViewportChange={rememberMapViewport}
-          mapTilerApiKey={mapTilerConfig.apiKey}
-          mapStyleId={mapTilerConfig.styleId}
-        />
-      ) : (
-        <View style={styles.mapLoading}>
-          {locationState === 'loading' ? (
-            <>
-              <ActivityIndicator color={colors.primary} size="small" />
-              <Text style={styles.mapLoadingText}>Finding your current location…</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="location-outline" size={28} color={colors.primary} />
-              <Text style={styles.mapLoadingText}>Location unavailable</Text>
-              <Text style={styles.mapLoadingHint}>Enable foreground location access, then try again.</Text>
-            </>
-          )}
-        </View>
-      )}
+      <MapModeMap
+        initialRegion={mapRegion}
+        showsUserLocation={Boolean(userCoordinate)}
+        userCoordinate={userCoordinate}
+        recenterRequest={recenterRequest}
+        activities={mapActivities}
+        selectedActivityId={selectedActivity?.id}
+        onSelectActivity={selectMapActivity}
+        onSelectCluster={setSelectedClusterCount}
+        onViewportChange={rememberMapViewport}
+        mapTilerApiKey={mapTilerConfig.apiKey}
+        mapStyleId={mapTilerConfig.styleId}
+      />
 
       <SafeAreaView style={styles.safeOverlay} pointerEvents="box-none">
         <View style={styles.topOverlay} pointerEvents="box-none">
@@ -405,8 +405,10 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
         <View style={styles.locationControlArea} pointerEvents="box-none">
           {locationState === 'unavailable' ? (
-            <View style={styles.locationUnavailableBadge} pointerEvents="none">
+            <View style={styles.locationUnavailableBadge}>
               <Text style={styles.locationUnavailableText}>Location unavailable</Text>
+              <Text style={[styles.locationUnavailableText, { maxWidth: 245, marginTop: 4 }]}>{locationExplanation}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry current location" onPress={recenterOnCurrentLocation}><Text style={[styles.locationUnavailableText, { color: colors.primary, marginTop: 6 }]}>Retry location</Text></TouchableOpacity>
             </View>
           ) : null}
           <TouchableOpacity
@@ -514,7 +516,7 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#111310',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ height: '100dvh' } as any) : {}),
+    ...(Platform.OS === 'web' ? ({ height: '100%' } as any) : {}),
   },
   mapLoading: {
     ...StyleSheet.absoluteFillObject,
