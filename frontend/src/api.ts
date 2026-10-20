@@ -488,8 +488,8 @@ export const fetchCurrentUserRequest = (token: string) =>
 export const fetchOwnActivityHistoryRequest = (token: string) =>
   api.get<ActivityHistoryResponse>('/api/users/me/history', { headers: { Authorization: `Bearer ${token}` } });
 
-export const fetchActivities = async (token?: string) => {
-  if (token) {
+export const fetchActivities = async (token?: string, options?: { requestLocation?: boolean }) => {
+  if (token && options?.requestLocation !== false) {
     const { getCurrentJoinLocationResult } = await import('./utils/locationService');
     const result = await getCurrentJoinLocationResult();
     if (result.status === 'success') await registerCurrentRegionRequest(result.coordinate, token, result.capturedAt);

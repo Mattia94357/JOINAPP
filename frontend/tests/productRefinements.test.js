@@ -18,10 +18,10 @@ assert.ok((card.match(/onPress=\{onPress\}/g) || []).length >= 2, 'top/details i
 assert.match(map, /getCurrentJoinLocationResult/);
 assert.doesNotMatch(map, /Phuket|GLOBAL_FALLBACK_REGION|firstMappedActivity/);
 assert.match(map, /previousSessionViewport/);
-assert.match(map, /setMapRegion\(WORLD_MAP_VIEWPORT\)/);
+assert.match(map, /sessionMapViewport \|\| WORLD_MAP_VIEWPORT/);
 assert.match(map, /onViewportChange=\{rememberMapViewport\}/);
 assert.equal((map.match(/setRecenterRequest/g) || []).length, 2, 'recenter occurs only through explicit current-location handling');
-assert.match(map, /locationResult\.status === 'success'[\s\S]*?setMapRegion\(region\)/, 'successful location centers the initial map');
+assert.match(map, /applyCurrentCoordinate\(result\.coordinate\)/, 'successful location centers the map');
 assert.match(locationService, /reason: 'permission-denied'/, 'denied permissions return a safe result');
 assert.match(locationService, /\? 'position-unavailable'/, 'unavailable positions return a safe result');
 

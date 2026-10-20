@@ -239,6 +239,11 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
   const { initialRegion, showsUserLocation, userCoordinate, recenterRequest, activities, selectedActivityId, onSelectActivity, onSelectCluster } = props;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [mapError, setMapError] = useState('');
+  useEffect(() => {
+    if (!mapError) return;
+    const timer = setTimeout(() => setMapError(''), 6000);
+    return () => clearTimeout(timer);
+  }, [mapError]);
   const propsRef = useRef(props);
   propsRef.current = props;
   const syncFrame = useCallback(() => {
@@ -278,7 +283,7 @@ function OpenStreetMapFallback(props: MapModeMapProps) {
       }
       if (event.data?.type === 'join-map-error' || event.data?.type === 'join-map-tile-error') {
         mapDiagnostic('provider-style-error', { provider: 'raster', reason: event.data.type === 'join-map-error' ? 'dependency-or-init-error' : 'tile-load-error' });
-        setMapError('Map tiles could not load. Check your connection or content blockers.'); return;
+        setMapError("Couldn't load the map. Check your connection."); return;
       }
       if (event.data?.type === 'join-map-cluster-select') {
         onSelectCluster?.(Number(event.data.activityCount) || null);
@@ -320,8 +325,6 @@ export default function MapModeMap(props: MapModeMapProps) {
     {config.apiKey && !failed
       ? <MapTilerMap {...props} mapStyleId={config.styleId} mapTilerApiKey={config.apiKey} onFailure={onFailure} />
       : <OpenStreetMapFallback {...props} />}
-    {failed || config.keyIssue || config.styleIssue ? <div className="join-map-status" role="status">
-      {failed ? 'Map provider unavailable. Showing alternate map.' : config.keyIssue ? 'MapTiler key missing or invalid. Showing alternate map.' : 'Map style invalid. Using the default style.'}
-    </div> : null}
+
   </div>;
 }

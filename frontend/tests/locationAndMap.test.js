@@ -10,6 +10,8 @@ global.__DEV__ = false;
 global.window = { isSecureContext: true };
 const local = { latitude: -31.95, longitude: 115.86 };
 const region = { ...local, radiusKm: 50, expiresAt: new Date(Date.now() + 1800000).toISOString(), label: 'Perth, Western Australia, Australia' };
+let permissionObservation = null;
+let mapPermission = 'unknown'; let mapFeedFailure = false; let mapFeedCalls = []; let mapGeoCalls = 0; let mapFailureReason = 'permission-denied';
 let reverseFailure = false;
 let pendingMapPosition = null;
 let browserPositionRequests = 0;
@@ -22,8 +24,9 @@ Object.defineProperty(global, 'navigator', { configurable: true, value: { geoloc
 } } } });
 Module._load = function(name, parent, main) {
   if (name === 'react-native') return { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', Image: 'Image', SafeAreaView: 'SafeAreaView',
-    ScrollView: 'ScrollView', ActivityIndicator: 'Spinner', Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
+    ScrollView: 'ScrollView', Modal: props => props.visible ? React.createElement('Modal', props, props.children) : null, ActivityIndicator: 'Spinner', Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
     StyleSheet: { create: x => x, absoluteFillObject: {} } };
+  if (name === '../utils/mapLocationPermission') return { inspectMapPermission: async () => permissionObservation || mapPermission };
   if (name === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView' };
   if (name === '@expo/vector-icons') return { Ionicons: () => null };
   if (name === 'expo-location') return { reverseGeocodeAsync: () => { throw new Error('Expo reverse geocoder must not run on web'); } };
@@ -36,10 +39,10 @@ Module._load = function(name, parent, main) {
   if (name === './InteractiveLocationMap') return { __esModule: true, default: props => React.createElement('LocationMap', props) };
   if (name === '../utils/locationService' && parent?.filename.includes('MapModeScreen')) return {
     ...require('../src/utils/locationService'),
-    getCurrentJoinLocationResult: async () => pendingMapPosition || (mapDenied ? { status: 'failure', reason: 'permission-denied' } : { status: 'success', coordinate: local }),
+    getCurrentJoinLocationResult: async () => { mapGeoCalls++; return pendingMapPosition || (mapDenied ? { status: 'failure', reason: mapFailureReason } : { status: 'success', coordinate: local, capturedAt: Date.now() }); },
   };
   if (name === '../api') return {
-    registerCurrentRegionRequest: async () => { if (reverseFailure) throw { response: { status: 403, data: { message: 'Place provider unavailable' } } }; return { data: region }; }, fetchActivities: async () => [],
+    registerCurrentRegionRequest: async () => { if (reverseFailure) throw { response: { status: 403, data: { message: 'Place provider unavailable' } } }; return { data: region }; }, fetchActivities: async (...args) => { mapFeedCalls.push(args); if (mapFeedFailure) throw Error('offline'); return []; },
     searchPlacesRequest: async q => { requests.push(q); return { data: [
       { ...local, id: 'local', name: 'Cafe', label: 'Cafe, Northbridge, Perth' },
       { latitude: 7.88, longitude: 98.39, id: 'remote', name: 'Remote', label: 'Remote city' },
@@ -151,56 +154,85 @@ test('browser location, autocomplete and empty map regressions', async t => {
     }
     assert.equal(blocked, true); assert.ok(calls <= 12);
   });
-  await t.test('denied map without any valid viewport renders the neutral world map', async () => {
-    mapDenied = true; storedViewport = null; let view;
-    await act(async () => { view = create(React.createElement(MapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    const map = view.root.findByType('DiscoveryMap');
-    assert.equal(map.props.initialRegion.longitudeDelta, 360); assert.equal(map.props.showsUserLocation, false);
-    assert.equal(map.props.activities.length, 0);
-    assert.match(text(view.toJSON()), /Location unavailable/);
-    assert.doesNotMatch(text(view.toJSON()), /Phuket/);
-    await act(async () => view.unmount()); mapDenied = false;
-  });
-  await t.test('a pending Safari permission prompt never delays rendering the map', async () => {
-    let finish; pendingMapPosition = new Promise(resolve => { finish = resolve; }); let view;
-    await act(async () => { view = create(React.createElement(MapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    assert.equal(view.root.findByType('DiscoveryMap').props.initialRegion.longitudeDelta, 360);
-    await act(async () => { finish({ status: 'failure', reason: 'timeout' }); });
-    await act(async () => view.unmount()); pendingMapPosition = null;
-  });
-  await t.test('a valid stored viewport is restored on a cold mount when permission is denied', async () => {
-    mapDenied = true; storedViewport = JSON.stringify({ latitude: 7.88, longitude: 98.39, latitudeDelta: 2, longitudeDelta: 3 });
+  const freshMap = async () => {
     delete require.cache[require.resolve('../src/screens/MapModeScreen')];
-    const FreshMapScreen = require('../src/screens/MapModeScreen').default; let view;
-    await act(async () => { view = create(React.createElement(FreshMapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.initialRegion.latitude, 7.88);
-    assert.match(text(view.toJSON()), /Previous map view only. Not your current location/);
-    assert.equal(map.props.userCoordinate, null);
-    assert.equal(map.props.initialRegion.longitudeDelta, 3); assert.equal(map.props.showsUserLocation, false);
-    await act(async () => view.unmount()); storedViewport = null;
+    const Screen = require('../src/screens/MapModeScreen').default; let view;
+    await act(async () => { view = create(React.createElement(Screen, { navigation: { goBack() {} }, route: { params: {} } })); });
+    return { view, Screen };
+  };
+  const pressMap = async (view, label) => {
+    const button = view.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
+    assert.ok(button, label); await act(async () => { button.props.onPress(); });
+  };
+  const resetMap = () => { permissionObservation = null; mapPermission = 'unknown'; mapDenied = false; mapFeedFailure = false; mapFeedCalls = []; mapGeoCalls = 0; storedViewport = null; mapFailureReason = 'permission-denied'; };
+  await t.test('first visit prompts without requesting location; Not now leaves a clean map and does not nag on rerender/remount', async () => {
+    resetMap(); const { view, Screen } = await freshMap();
+    assert.equal(mapGeoCalls, 0); assert.equal(mapFeedCalls.length, 0); assert.match(text(view.toJSON()), /Location needed/);
+    assert.equal(view.root.findByType('DiscoveryMap').props.activities.length, 0);
+    await pressMap(view, 'Not now'); assert.equal(view.root.findAllByType('Modal').length, 0);
+    assert.doesNotMatch(text(view.toJSON()), /Location unavailable|Previous map view|Safari|No activities nearby|Couldn.t load/);
+    await act(async () => view.root.findByType('Input').props.onChangeText('coffee'));
+    assert.equal(view.root.findAllByType('Modal').length, 0); await act(async () => view.unmount());
+    let remount; await act(async () => { remount = create(React.createElement(Screen, { navigation: { goBack() {} }, route: { params: {} } })); });
+    assert.equal(remount.root.findAllByType('Modal').length, 0); assert.equal(mapGeoCalls, 0);
+    await pressMap(remount, 'Recenter map on current location'); assert.match(text(remount.toJSON()), /Location needed/);
+    await act(async () => remount.unmount());
   });
-  await t.test('denied map exposes an explanatory Retry action and recovers to device position', async () => {
-    mapDenied = true; let view;
-    await act(async () => { view = create(React.createElement(MapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    assert.match(text(view.toJSON()), /Safari Website Settings/);
-    const retry = view.root.findByProps({ accessibilityLabel: 'Retry current location' });
-    mapDenied = false; await act(async () => { retry.props.onPress(); });
-    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.showsUserLocation, true);
-    assert.equal(map.props.initialRegion.latitude, local.latitude);
+  await t.test('Allow is a user action, closes popup, centers actual position and fetches once without another location request', async () => {
+    resetMap(); const { view } = await freshMap(); await pressMap(view, 'Allow location');
+    assert.equal(mapGeoCalls, 1); assert.equal(view.root.findAllByType('Modal').length, 0);
+    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.initialRegion.latitude, local.latitude); assert.equal(map.props.showsUserLocation, true);
+    assert.equal(mapFeedCalls.length, 1); assert.equal(mapFeedCalls[0][1].requestLocation, false);
+    assert.match(text(view.toJSON()), /No activities nearby yet/); assert.doesNotMatch(text(view.toJSON()), /Couldn.t load|Location unavailable/);
+    await pressMap(view, 'Recenter map on current location'); assert.equal(mapGeoCalls, 2);
     await act(async () => view.unmount());
   });
-  await t.test('zero activities still mounts actual map with zero markers around user', async () => {
-    let view; await act(async () => { view = create(React.createElement(MapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    const map = view.root.findByType('DiscoveryMap');
-    assert.equal(map.props.activities.length, 0); assert.equal(map.props.initialRegion.latitude, local.latitude);
-    assert.equal(map.props.showsUserLocation, true); assert.match(text(view.toJSON()), /No activities nearby yet/);
-    await act(async () => view.unmount());
+  await t.test('a late advisory denied state cannot override a successful actual request', async () => {
+    resetMap(); let observed; permissionObservation = new Promise(resolve => { observed = resolve; });
+    const { view } = await freshMap(); await pressMap(view, 'Allow location');
+    await act(async () => observed('denied'));
+    await pressMap(view, 'Recenter map on current location');
+    assert.equal(mapGeoCalls, 2); assert.equal(view.root.findAllByType('Modal').length, 0); await act(async () => view.unmount());
   });
-  await t.test('denied map uses last valid viewport without pretending to know current position', async () => {
-    mapDenied = true; let view;
-    await act(async () => { view = create(React.createElement(MapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.showsUserLocation, false); assert.equal(map.props.activities.length, 0);
-    assert.equal(map.props.initialRegion.latitude, local.latitude);
-    await act(async () => view.unmount());
+  await t.test('denied permission shows instructions, not repeated requests; explicit settings confirmation can recover', async () => {
+    resetMap(); mapPermission = 'denied'; mapDenied = true; const { view } = await freshMap();
+    assert.match(text(view.toJSON()), /Location access is off/); assert.equal(mapGeoCalls, 0);
+    await pressMap(view, 'Continue without location');
+    assert.doesNotMatch(text(view.toJSON()), /Location access is off|Safari|Previous map view/);
+    await pressMap(view, 'Recenter map on current location'); assert.equal(mapGeoCalls, 0);
+    await pressMap(view, 'Show instructions'); assert.match(text(view.toJSON()), /Website Settings/); assert.equal(mapGeoCalls, 0);
+    mapDenied = false; await pressMap(view, "I've updated settings");
+    assert.equal(mapGeoCalls, 1); assert.equal(view.root.findAllByType('Modal').length, 0);
+    assert.equal(view.root.findByType('DiscoveryMap').props.showsUserLocation, true); await act(async () => view.unmount());
+  });
+  await t.test('unsupported Permissions API still prompts normally; actual denial is remembered on the next recenter', async () => {
+    resetMap(); mapDenied = true; const { view } = await freshMap(); await pressMap(view, 'Allow location');
+    assert.equal(mapGeoCalls, 1); assert.match(text(view.toJSON()), /Location access is off/);
+    await pressMap(view, 'Continue without location'); await pressMap(view, 'Recenter map on current location');
+    assert.equal(mapGeoCalls, 1); assert.match(text(view.toJSON()), /Location access is off/); await act(async () => view.unmount());
+  });
+  await t.test('timeout, disabled/unavailable services, unsupported browser and insecure context use dismissible popups', async () => {
+    for (const reason of ['timeout', 'position-unavailable', 'unsupported', 'insecure-context']) {
+      resetMap(); mapDenied = true; mapFailureReason = reason; const { view } = await freshMap(); await pressMap(view, 'Allow location');
+      assert.equal(view.root.findAllByType('Modal').length, 1); assert.equal(view.root.findAllByType('DiscoveryMap').length, 1);
+      assert.doesNotMatch(text(view.toJSON()), /Location access is off/);
+      await pressMap(view, 'Continue without location'); assert.equal(view.root.findAllByType('Modal').length, 0);
+      assert.doesNotMatch(text(view.toJSON()), /Location unavailable|Location timed out|HTTPS|Location Services/); await act(async () => view.unmount());
+    }
+  });
+  await t.test('saved Phuket view is visual only and unobstructed after declining location', async () => {
+    resetMap(); storedViewport = JSON.stringify({ latitude: 7.88, longitude: 98.39, latitudeDelta: 2, longitudeDelta: 3 });
+    const { view } = await freshMap(); await pressMap(view, 'Not now');
+    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.initialRegion.latitude, 7.88); assert.equal(map.props.userCoordinate, null);
+    assert.doesNotMatch(text(view.toJSON()), /Previous map view|Location unavailable/); assert.equal(mapGeoCalls, 0); await act(async () => view.unmount());
+  });
+  await t.test('activity error and successful empty response are mutually exclusive and modal has priority', async () => {
+    resetMap(); mapFeedFailure = true; const { view } = await freshMap(); await pressMap(view, 'Allow location');
+    assert.match(text(view.toJSON()), /Couldn't load activities. Try again./); assert.doesNotMatch(text(view.toJSON()), /No activities nearby/);
+    mapDenied = true; await pressMap(view, 'Recenter map on current location');
+    assert.match(text(view.toJSON()), /Location access is off/); assert.doesNotMatch(text(view.toJSON()), /Couldn't load activities/);
+    await pressMap(view, 'Continue without location'); mapDenied = false; mapFeedFailure = false;
+    await pressMap(view, 'Retry loading map activities');
+    assert.match(text(view.toJSON()), /No activities nearby yet/); assert.doesNotMatch(text(view.toJSON()), /Couldn't load activities/); await act(async () => view.unmount());
   });
 });

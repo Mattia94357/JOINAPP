@@ -5,6 +5,7 @@ const Module = require('node:module');
 const ts = require('typescript');
 const React = require('react');
 const { create, act } = require('react-test-renderer');
+global.__DEV__ = true;
 const originalLoad = Module._load;
 const originalInfo = console.info;
 const diagnostics = [];
@@ -71,15 +72,15 @@ test('web/Safari map component paths', async t => {
     const view = await mount({ mapTilerApiKey: undefined }); const frame = view.root.findByType('iframe');
     assert.equal(instances.length, 0); assert.match(frame.props.srcDoc, /setView\(\[0,0\],1\)/);
     assert.match(frame.props.srcDoc, /let activities=\[\]/); assert.match(frame.props.srcDoc, /invalidateSize/);
-    assert.match(text(view.toJSON()), /MapTiler key missing or invalid/);
+    assert.doesNotMatch(text(view.toJSON()), /MapTiler|key missing|alternate map/);
     await act(async () => frame.props.onLoad()); assert.ok(messages.some(m => m.type === 'join-map-activities-update' && m.activities.length === 0));
     assert.ok(messages.some(m => m.type === 'join-map-user-location' && m.visible === false));
     await act(async () => listeners.get('message')({ source: frameWindow, data: { type: 'join-map-tile-error' } }));
-    assert.match(text(view.toJSON()), /Map tiles could not load/); await unmount(view);
+    assert.match(text(view.toJSON()), /Couldn.t load the map/); await unmount(view);
   });
   await t.test('constructor/WebGL failure selects the raster path without crashing the screen', async () => {
     failConstructor = true; const view = await mount();
-    assert.equal(view.root.findAllByType('iframe').length, 1); assert.match(text(view.toJSON()), /Showing alternate map/);
+    assert.equal(view.root.findAllByType('iframe').length, 1); assert.doesNotMatch(text(view.toJSON()), /MapTiler|Showing alternate map/);
     assert.ok(diagnostics.some(([event]) => event.includes('initialization-failed'))); await unmount(view);
   });
   await t.test('provider/style errors fall back and diagnostics omit keys, URLs and coordinates', async () => {
@@ -88,6 +89,15 @@ test('web/Safari map component paths', async t => {
     assert.equal(view.root.findAllByType('iframe').length, 1);
     assert.doesNotMatch(JSON.stringify(diagnostics), /test-private-key|provider.test|-31.95|115.86/);
     assert.ok(diagnostics.some(([, data]) => data.status === 401)); await unmount(view);
+  });
+  await t.test('production fallback has no technical UI or technical console output', async () => {
+    global.__DEV__ = false;
+    try {
+      const view = await mount({ mapTilerApiKey: undefined });
+      assert.equal(view.root.findAllByType('iframe').length, 1);
+      assert.doesNotMatch(text(view.toJSON()), /MapTiler|key|style|alternate map/);
+      assert.equal(diagnostics.length, 0); await unmount(view);
+    } finally { global.__DEV__ = true; }
   });
   await t.test('placeholder keys and invalid styles are detected; saved viewports retain their zoom', async () => {
     assert.equal(resolveWebMapConfig('your_public_maptiler_key').keyIssue, 'invalid-key');

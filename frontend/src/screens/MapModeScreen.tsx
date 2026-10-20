@@ -1,5 +1,7 @@
 import { WORLD_MAP_VIEWPORT } from '../utils/webMap';
-import { locationFailureMessage } from '../utils/currentRegion';
+import MapLocationModal, { MapLocationIssue } from '../components/MapLocationModal';
+import { inspectMapPermission, MapPermission } from '../utils/mapLocationPermission';
+import type { JoinLocationResult } from '../utils/locationService';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -32,14 +34,17 @@ import {
   readLastMapViewport,
   saveLastMapViewport,
 } from '../utils/locationService';
-import { ActivityResponse, fetchActivities } from '../api';
+import { ActivityResponse, fetchActivities, registerCurrentRegionRequest } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { reportFrontendError } from '../utils/safeError';
 
 const categories = ['All', ...activityCategories];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MapMode'>;
-type ContentProps = Props & { realActivities: ActivityResponse[] };
+type ActivityLoadState = 'idle' | 'loading' | 'success' | 'error';
+type LocationFix = Extract<JoinLocationResult, { status: 'success' }>;
+type ContentProps = Props & { realActivities: ActivityResponse[]; activityState: ActivityLoadState; onLocationAcquired: (fix: LocationFix) => void; onRetryActivities: () => void };
+let continuedWithoutLocation = false;
 
 let sessionMapViewport: Region | null = null;
 
@@ -68,50 +73,56 @@ export default function MapModeScreen(props: Props) {
     : props.route.params?.activity ? [props.route.params.activity] : [],
   [props.route.params?.activities, props.route.params?.activity]);
   const [realActivities, setRealActivities] = useState<ActivityResponse[]>(routedActivities);
-  const [loadingActivities, setLoadingActivities] = useState(routedActivities.length === 0);
-  const [activityError, setActivityError] = useState('');
+  const [activityState, setActivityState] = useState<ActivityLoadState>(routedActivities.length ? 'success' : 'idle');
+  const [locationFix, setLocationFix] = useState<LocationFix | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const onLocationAcquired = useCallback((fix: LocationFix) => setLocationFix(fix), []);
+  const retryActivities = useCallback(() => setLoadAttempt(n => n + 1), []);
 
   useEffect(() => {
-    if (routedActivities.length) {
+    if (!locationFix) {
       setRealActivities(routedActivities);
-      setLoadingActivities(false);
-      setActivityError('');
+      setActivityState(routedActivities.length ? 'success' : 'idle');
       return;
     }
     let active = true;
-    setLoadingActivities(true);
-    setActivityError('');
-    fetchActivities(token || undefined).then((activities) => {
-      if (active) setRealActivities(activities);
-    }).catch((error) => {
-      reportFrontendError('map_activities_load_failed', error);
-      if (active) { setRealActivities([]); setActivityError('Map activities could not be loaded.'); }
-    }).finally(() => { if (active) setLoadingActivities(false); });
+    setActivityState('loading');
+    (async () => {
+      if (token) await registerCurrentRegionRequest(locationFix.coordinate, token, locationFix.capturedAt);
+      // Map already acquired a fix from a user action. Do not prompt again here.
+      return fetchActivities(token || undefined, { requestLocation: false });
+    })().then(activities => {
+      if (active) { setRealActivities(activities); setActivityState('success'); }
+    }).catch(error => {
+      if (__DEV__) reportFrontendError('map_activities_load_failed', error);
+      if (active) { setRealActivities([]); setActivityState('error'); }
+    });
     return () => { active = false; };
-  }, [loadAttempt, routedActivities, token]);
+  }, [loadAttempt, locationFix, routedActivities, token]);
 
-  return <View style={{ flex: 1, minHeight: 0, width: '100%', ...(Platform.OS === 'web' ? { height: viewportHeight } : {}) }}><MapModeContent {...props} realActivities={realActivities} />
-    {loadingActivities ? <Text style={{ position: 'absolute', bottom: 24, alignSelf: 'center', color: colors.textMuted }}>Loading nearby activities...</Text> : null}
-    {activityError ? <TouchableOpacity style={{ position: 'absolute', bottom: 24, alignSelf: 'center' }} onPress={() => setLoadAttempt(n => n + 1)} accessibilityRole="button"><Text style={{ color: colors.primary }}>{activityError} Retry</Text></TouchableOpacity> : null}
+  return <View style={{ flex: 1, minHeight: 0, width: '100%', ...(Platform.OS === 'web' ? { height: viewportHeight } : {}) }}>
+    <MapModeContent {...props} realActivities={realActivities} activityState={activityState} onLocationAcquired={onLocationAcquired} onRetryActivities={retryActivities} />
   </View>;
 }
 
-function MapModeContent({ navigation, route, realActivities }: ContentProps) {
-  const initialActivities = route.params?.activities?.length
-    ? route.params.activities
-    : realActivities;
+function MapModeContent({ navigation, route, realActivities, activityState, onLocationAcquired, onRetryActivities }: ContentProps) {
+  const initialActivities = realActivities;
   const initialActivity = route.params?.activity || initialActivities[0];
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivity, setSelectedActivity] = useState<ActivityResponse | undefined>(initialActivity);
   const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState<Region>(sessionMapViewport || WORLD_MAP_VIEWPORT);
-  const [usingPreviousViewport, setUsingPreviousViewport] = useState(Boolean(sessionMapViewport));
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
-  const [locationExplanation, setLocationExplanation] = useState('');
-  const [locationState, setLocationState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [locationState, setLocationState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [permission, setPermission] = useState<MapPermission>('unknown');
+  const [locationIssue, setLocationIssue] = useState<MapLocationIssue>('needed');
+  const [locationModalVisible, setLocationModalVisible] = useState(!continuedWithoutLocation);
+  const locationAttempt = useRef(0);
+  const requestedLocation = useRef(false);
+  const locationCapturedAt = useRef(0);
+  const active = useRef(true);
   const persistViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { height } = useWindowDimensions();
   const attendees = selectedActivity?.attendees ?? selectedActivity?.participants?.length ?? 0;
@@ -126,9 +137,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
 
   const availableActivities = useMemo(() => {
     const requestedActivity = route.params?.activity;
-    const activities = route.params?.activities?.length
-      ? route.params.activities
-      : realActivities;
+    const activities = realActivities;
     if (!requestedActivity) return activities;
     return activities.some((activity) => activity.id === requestedActivity.id)
       ? activities
@@ -244,9 +253,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       return;
     }
 
-    setUsingPreviousViewport(false);
     setUserCoordinate(coordinate);
-    setLocationExplanation('');
     setMapRegion({ ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 });
     setLocationState('ready');
     const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
@@ -255,82 +262,52 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
     setRecenterRequest({ ...coordinate, requestId: Date.now() });
   }, []);
 
-  const recenterOnCurrentLocation = useCallback(() => {
+  const requestCurrentLocation = useCallback(() => {
+    requestedLocation.current = true;
+    const attempt = ++locationAttempt.current;
     setLocationState('loading');
-    void getCurrentJoinLocationResult({
-      forceRefresh: true,
-      retryDenied: true,
-    }).then((result) => {
+    void getCurrentJoinLocationResult({ forceRefresh: true, retryDenied: true }).then(result => {
+      if (!active.current || locationAttempt.current !== attempt) return;
       if (result.status === 'success') {
+        continuedWithoutLocation = false;
+        setPermission('granted'); setLocationIssue('needed'); setLocationModalVisible(false);
+        locationCapturedAt.current = result.capturedAt;
         applyCurrentCoordinate(result.coordinate);
-        return;
+        onLocationAcquired(result);
+      } else {
+        setUserCoordinate(null); setLocationState('unavailable');
+        if (result.reason === 'permission-denied') setPermission('denied');
+        setLocationIssue(result.reason); setLocationModalVisible(true);
       }
-      setUserCoordinate(null);
-      setUsingPreviousViewport(Boolean(sessionMapViewport));
-      setLocationExplanation(locationFailureMessage(result.reason));
-      setLocationState('unavailable');
     });
-  }, [applyCurrentCoordinate]);
+  }, [applyCurrentCoordinate, onLocationAcquired]);
+
+  const recenterOnCurrentLocation = useCallback(() => {
+    if (permission === 'granted' && locationIssue !== 'permission-denied') requestCurrentLocation();
+    else { setLocationIssue(permission === 'denied' ? 'permission-denied' : 'needed'); setLocationModalVisible(true); }
+  }, [permission, locationIssue, requestCurrentLocation]);
+
+  const dismissLocation = () => {
+    locationAttempt.current++;
+    continuedWithoutLocation = true;
+    setLocationState(state => state === 'loading' ? 'idle' : state);
+    setLocationModalVisible(false);
+  };
 
   useEffect(() => {
-    let active = true;
-
-    const initializeMap = async () => {
-      const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
-      // Restore storage without waiting for a permission prompt or the GPS timeout.
-      let acquiredCurrentLocation = false;
-      const storedViewportPromise = readLastMapViewport().then(stored => {
-        if (active && !acquiredCurrentLocation && !previousSessionViewport && isValidMapRegion(stored)) {
-          setMapRegion(stored); setUsingPreviousViewport(true);
-          console.info('[JOIN map] viewport-restored', { source: 'storage', currentLocation: false });
-        }
-        return stored;
-      });
-      const locationResult = await getCurrentJoinLocationResult({
-        forceRefresh: true,
-        retryDenied: true,
-      });
-      if (!active) return;
-      if (locationResult.status === 'success') {
-        acquiredCurrentLocation = true;
-        const { coordinate } = locationResult;
-        const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
-        setUsingPreviousViewport(false);
-        setUserCoordinate(coordinate);
-        setLocationExplanation('');
-        setLocationState('ready');
-        setMapRegion(region);
-        sessionMapViewport = region;
-        void saveLastMapViewport(region);
-        return;
-      }
-
-      setLocationState('unavailable');
-      setUserCoordinate(null);
-      setLocationExplanation(locationFailureMessage(locationResult.reason));
-      if (previousSessionViewport) {
-        setMapRegion(previousSessionViewport);
-        setUsingPreviousViewport(true);
-        console.info('[JOIN map] viewport-restored', { source: 'session', currentLocation: false });
-        return;
-      }
-
-      const storedViewport = await storedViewportPromise;
-      if (!active) return;
-      if (isValidMapRegion(storedViewport)) {
-        setMapRegion(storedViewport);
-        setUsingPreviousViewport(true);
-        sessionMapViewport = storedViewport;
-        return;
-      }
-
-      setMapRegion(WORLD_MAP_VIEWPORT);
-    };
-
-    initializeMap();
-
+    active.current = true;
+    void inspectMapPermission().then(state => {
+      if (!active.current || requestedLocation.current) return;
+      setPermission(state);
+      if (state === 'denied') setLocationIssue('permission-denied');
+    });
+    const previousSessionViewport = isValidMapRegion(sessionMapViewport) ? sessionMapViewport : null;
+    if (!previousSessionViewport) void readLastMapViewport().then(stored => {
+      if (active.current && !locationCapturedAt.current && isValidMapRegion(stored)) { setMapRegion(stored); sessionMapViewport = stored; }
+    });
+    // The map always mounts; no browser location request is made from this effect.
     return () => {
-      active = false;
+      active.current = false;
       if (persistViewportTimer.current) clearTimeout(persistViewportTimer.current);
     };
   }, []);
@@ -414,14 +391,6 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         </View>
 
         <View style={styles.locationControlArea} pointerEvents="box-none">
-          {locationState === 'unavailable' ? (
-            <View style={styles.locationUnavailableBadge}>
-              <Text style={styles.locationUnavailableText}>Location unavailable</Text>
-              {usingPreviousViewport ? <Text style={[styles.locationUnavailableText, { maxWidth: 245, marginTop: 4 }]}>Previous map view only. Not your current location.</Text> : null}
-              <Text style={[styles.locationUnavailableText, { maxWidth: 245, marginTop: 4 }]}>{locationExplanation}</Text>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry current location" onPress={recenterOnCurrentLocation}><Text style={[styles.locationUnavailableText, { color: colors.primary, marginTop: 6 }]}>Retry location</Text></TouchableOpacity>
-            </View>
-          ) : null}
           <TouchableOpacity
             style={styles.currentLocationControl}
             onPress={recenterOnCurrentLocation}
@@ -453,7 +422,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
             </View>
             <Ionicons name="chevron-up" size={18} color={colors.primary} />
           </View>
-        ) : !selectedActivity ? <View style={styles.locationUnavailableBadge}><Text style={styles.locationUnavailableText}>No activities nearby yet</Text></View> : <TouchableOpacity
+        ) : !selectedActivity ? (!locationModalVisible && activityState === 'success' ? <View style={styles.mapNotice}><Text style={styles.locationUnavailableText}>No activities nearby yet</Text></View> : <View />) : <TouchableOpacity
           style={[styles.previewCard, compactHeight && styles.previewCardCompact]}
           onPress={openDecisionCard}
           activeOpacity={0.9}
@@ -505,11 +474,18 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         </View>
         </TouchableOpacity>}
       </SafeAreaView>
+      {!locationModalVisible && activityState === 'error' ? <TouchableOpacity style={styles.mapNotice} accessibilityRole="button" accessibilityLabel="Retry loading map activities"
+        onPress={() => { if (Date.now() - locationCapturedAt.current > 120000) recenterOnCurrentLocation(); else onRetryActivities(); }}>
+        <Text style={styles.locationUnavailableText}>Couldn't load activities. Try again.</Text>
+      </TouchableOpacity> : null}
+      <MapLocationModal visible={locationModalVisible} issue={locationIssue} granted={permission === 'granted'} loading={locationState === 'loading'}
+        onRequest={requestCurrentLocation} onInstructions={() => setLocationIssue('instructions')} onDismiss={dismissLocation} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mapNotice: { position: 'absolute', bottom: 30, alignSelf: 'center', maxWidth: '85%', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 18, backgroundColor: 'rgba(10,10,10,0.82)' },
   dataState: {
     flex: 1,
     alignItems: 'center',

@@ -16,7 +16,7 @@ export const getMapTilerConfig = () => {
   // EXPO_PUBLIC_* is not automatically injected into client process.env here.
   const manifestKey = cleanValue(extra.MAPTILER_API_KEY);
   const apiKey = manifestKey || cleanValue(process.env.EXPO_PUBLIC_MAPTILER_API_KEY);
-  console.info('[JOIN map] key-configuration', {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) console.info('[JOIN map] key-configuration', {
     present: Boolean(apiKey), source: manifestKey ? 'expo-extra' : apiKey ? 'public-env' : 'missing',
     environment: ['production', 'preview', 'development'].includes(extra.MAPTILER_BUILD_ENV) ? extra.MAPTILER_BUILD_ENV : 'local',
   });

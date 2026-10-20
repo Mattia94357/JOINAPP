@@ -18,6 +18,7 @@ export const resolveWebMapConfig = (key?: string, style = 'streets-v4-dark') => 
 
 // Deliberately whitelist fields: SDK errors can contain URLs, keys and positions.
 export const mapDiagnostic = (event: string, details: { width?: number; height?: number; status?: number; provider?: 'maptiler' | 'raster'; reason?: string } = {}) => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return;
   console.info(`[JOIN map] ${event}`, {
     ...(details.width !== undefined ? { width: Math.round(details.width), height: Math.round(details.height || 0) } : {}),
     ...(details.status !== undefined ? { status: details.status } : {}),
