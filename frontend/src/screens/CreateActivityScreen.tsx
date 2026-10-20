@@ -1,23 +1,36 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as Crypto from 'expo-crypto';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image, Animated, KeyboardAvoidingView, Modal, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../context/AuthContext';
-import BottomNavigation from '../components/BottomNavigation';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NavigationAction } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { createActivityRequest } from '../api';
-import { colors, spacing } from '../theme';
+import { colors } from '../theme';
 import { reportFrontendError } from '../utils/safeError';
 import { activityCategories } from '../utils/categories';
 import { geocodeActivityLocation } from '../utils/mapConfig';
 import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../utils/activityFilters';
-import { ActivityDateSelector, ActivityTimeSelector } from '../components/ActivityDateTimeSelectors';
+import { ActivityDateSelector, ActivityTimeSelector, activityTimeOptions, formatActivityDate } from '../components/ActivityDateTimeSelectors';
 import { chooseActivityPhotoSource, pickActivityImage, PhotoSource } from '../utils/mediaPermissions';
 import { resolveActivityImage } from '../utils/activityAssets';
 
 const categoryOptions = activityCategories;
 const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
+
+const wizardSteps = [
+  { label: 'Title', title: 'What’s the activity called?', hint: 'Give your plan a name people will remember.' },
+  { label: 'Category', title: 'Choose a category', hint: 'Find the right home for your idea.' },
+  { label: 'Location', title: 'Where is it happening?', hint: 'A place nearby. A reason to get together.' },
+  { label: 'Date & time', title: 'When is it happening?', hint: 'Choose your date and time. End time is optional.' },
+  { label: 'Participation', title: 'Who can join?', hint: 'Set the size of your group and how people join.' },
+  { label: 'Description', title: 'Tell people about it', hint: 'Help people picture themselves there.' },
+  { label: 'Cover image', title: 'Add a cover image', hint: 'Choose a picture, or keep your category’s default.' },
+  { label: 'Review', title: 'Review your plan', hint: 'One last look before you bring people together.' },
+];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateActivity'>;
 
@@ -46,6 +59,14 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const [moreDetailsOpen, setMoreDetailsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(0);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [imagePicking, setImagePicking] = useState(false);
+  const transition = useRef(new Animated.Value(1)).current;
+  const scroll = useRef<ScrollView>(null);
+  const allowExit = useRef(false);
+  const publishing = useRef(false);
+  const pendingExit = useRef<NavigationAction>();
   const clientRequest = useRef<{ fingerprint: string; id: string }>();
 
   const showError = (message: string) => {
@@ -54,6 +75,9 @@ export default function CreateActivityScreen({ navigation }: Props) {
   };
 
   const selectActivityImage = async (source: PhotoSource) => {
+    if (imagePicking) return;
+    setImagePicking(true);
+    setErrorMessage('');
     try {
       const asset = await pickActivityImage(source);
       if (!asset?.base64) return;
@@ -63,32 +87,53 @@ export default function CreateActivityScreen({ navigation }: Props) {
     } catch (error) {
       reportFrontendError('activity_image_prepare_failed', error);
       showError('Could not prepare that picture. Please choose another image.');
+    } finally { setImagePicking(false); }
+  };
+
+  const validateStep = (index: number): string | undefined => {
+    if (index === 0 && !title.trim()) return 'Activity title is required.';
+    if (index === 1 && !categoryOptions.includes(category)) return 'Choose a category.';
+    if (index === 2 && !location.trim()) return 'Location is required.';
+    if (index === 3) {
+      if (!date.trim() || !startTime.trim()) return 'Date and start time are required.';
+      const start = combineLocalDateAndTime(date, startTime);
+      if (!start) return 'Use a valid date (YYYY-MM-DD) and start time, such as 7:30 PM.';
+      if (start.getTime() <= Date.now()) return 'Activity start time must be in the future.';
+      const end = endTime.trim() ? combineLocalDateAndTime(date, endTime) : undefined;
+      if (endTime.trim() && !end) return 'Use a valid end time, such as 9:30 PM.';
+      if (end && end.getTime() <= start.getTime()) return 'End time must be after start time.';
     }
+    if (index === 4 && (!Number.isInteger(Number(maxAttendees)) || Number(maxAttendees) < 2)) return 'Max participants must be at least 2.';
+    if (index === 5) {
+      if (description.trim().length < 20) return 'Description must be at least 20 characters.';
+      if (costType === 'Paid' && (!Number.isFinite(Number(costAmount)) || Number(costAmount) <= 0)) return 'Enter a cost amount or choose Free.';
+    }
+    return undefined;
+  };
+  const firstInvalidStep = () => {
+    for (let index = 0; index < 7; index++) {
+      const message = validateStep(index);
+      if (message) return { index, message };
+    }
+    return undefined;
   };
 
   const handleSubmit = async () => {
+    if (publishing.current || step !== 7) return;
     setErrorMessage('');
+    const invalid = firstInvalidStep();
+    if (invalid) { setStep(invalid.index); return showError(invalid.message); }
     const capacity = Number(maxAttendees);
-
-    if (!title.trim()) return showError('Activity title is required.');
-    if (!location.trim()) return showError('Location is required.');
-    if (!date.trim() || !startTime.trim()) return showError('Date and start time are required.');
-    const activityStart = combineLocalDateAndTime(date, startTime);
-    if (!activityStart) return showError('Use a valid date (YYYY-MM-DD) and start time, such as 7:30 PM.');
-    if (activityStart.getTime() <= Date.now()) return showError('Activity start time must be in the future.');
+    const activityStart = combineLocalDateAndTime(date, startTime)!;
     const activityEnd = endTime.trim() ? combineLocalDateAndTime(date, endTime) : undefined;
-    if (endTime.trim() && !activityEnd) return showError('Use a valid end time, such as 9:30 PM.');
-    if (activityEnd && activityEnd.getTime() <= activityStart.getTime()) return showError('End time must be after start time.');
-    if (!Number.isInteger(capacity) || capacity < 2) return showError('Max participants must be at least 2.');
-    if (description.trim().length < 20) return showError('Description must be at least 20 characters.');
     const normalizedCost = Number(costAmount);
-    if (costType === 'Paid' && (!Number.isFinite(normalizedCost) || normalizedCost <= 0)) return showError('Enter a cost amount or choose Free.');
 
     if (!token) {
       Alert.alert('Unauthorized', 'Log in to post an activity.');
       return;
     }
 
+    publishing.current = true;
     setLoading(true);
     try {
       const geocodingQuery = [exactAddress.trim(), venueName.trim(), location.trim()]
@@ -124,320 +169,217 @@ export default function CreateActivityScreen({ navigation }: Props) {
       if (clientRequest.current?.fingerprint !== fingerprint) clientRequest.current = { fingerprint, id: Crypto.randomUUID() };
       await createActivityRequest({ ...payload, clientRequestId: clientRequest.current.id }, token);
       Alert.alert('Plan created', 'Your plan is live.');
+      allowExit.current = true;
       navigation.navigate('Home');
     } catch (error: any) {
       reportFrontendError('activity_create_failed', error);
       showError(error?.response?.data?.message || 'Could not post activity. Please try again later.');
     } finally {
+      publishing.current = false;
       setLoading(false);
     }
   };
 
-  return (
-    <View style={styles.screen}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.sectionTitle}>Host a plan</Text>
-      <Text style={styles.sectionDescription}>Create a real plan nearby. Add the essentials now, then details only if they help.</Text>
+  const hasDraft = Boolean(title || location || venueName || exactAddress || description || date || startTime || endTime || coverImage ||
+    category !== 'Wellness' || maxAttendees !== '8' || visibility !== 'public' || vibe !== 'Laid-back' ||
+    ageGroup !== 'any' || costType !== 'Free' || costAmount || hostNote || cancellationPolicy);
 
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+  const exitWizard = () => {
+    allowExit.current = true;
+    if (pendingExit.current) navigation.dispatch(pendingExit.current);
+    else if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Home');
+  };
 
-      <Text style={styles.label}>Activity title *</Text>
-      <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="e.g. Brew & Board Games" placeholderTextColor={colors.textSubtle} />
+  const cancelWizard = () => {
+    if (publishing.current) return;
+    if (hasDraft) setConfirmExit(true);
+    else exitWizard();
+  };
 
-      <Text style={styles.label}>Category *</Text>
-      <View style={styles.row}>
-        {categoryOptions.map((option) => (
-          <TouchableOpacity key={option} style={[styles.choiceChip, category === option && styles.choiceChipActive]} onPress={() => setCategory(option)}>
-            <Text style={[styles.choiceLabel, category === option && styles.choiceLabelActive]}>{option}</Text>
-          </TouchableOpacity>
-        ))}
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (allowExit.current) return;
+    event.preventDefault();
+    if (publishing.current) return;
+    if (step > 0) { setErrorMessage(''); setStep(step - 1); }
+    else { pendingExit.current = event.data.action; cancelWizard(); }
+  }), [navigation, step, hasDraft]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !hasDraft || typeof window === 'undefined') return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowExit.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [hasDraft]);
+
+  useEffect(() => {
+    transition.stopAnimation();
+    transition.setValue(0);
+    const animation = Animated.timing(transition, { toValue: 1, duration: 220, useNativeDriver: true });
+    animation.start();
+    scroll.current?.scrollTo({ y: 0, animated: false });
+    return () => animation.stop();
+  }, [step, transition]);
+
+  const goToStep = (next: number) => { if (!publishing.current) { setErrorMessage(''); setStep(next); } };
+  useFocusEffect(React.useCallback(() => {
+    if (Platform.OS !== 'android') return;
+    // Handle Android back before native-stack dismisses the screen and its draft.
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (publishing.current) return true;
+      if (step > 0) goToStep(step - 1);
+      else cancelWizard();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [step, hasDraft, navigation]));
+  const nextStep = () => {
+    const error = validateStep(step);
+    if (error) { showError(error); return; }
+    goToStep(Math.min(step + 1, 7));
+  };
+  const stepError = step === 7 ? firstInvalidStep()?.message : validateStep(step);
+  const previewImage = coverImage?.uri || resolveActivityImage({ category });
+  const timeLabel = (value: string) => activityTimeOptions.find(option => option.value === value)?.label || value;
+  const choices = (options: readonly string[], selected: string, onSelect: (value: string) => void) => <View style={styles.choices}>
+    {options.map(option => <TouchableOpacity key={option} accessibilityRole="button" accessibilityState={{ selected: selected === option }}
+      style={[styles.chip, selected === option && styles.chipActive]} onPress={() => onSelect(option)}>
+      <Text style={[styles.chipText, selected === option && styles.chipTextActive]}>{option}</Text>
+    </TouchableOpacity>)}
+  </View>;
+  const reviewGroup = (label: string, index: number, children: React.ReactNode) => <View style={styles.reviewGroup}>
+    <View style={styles.reviewHeader}><Text style={styles.label}>{label}</Text>
+      <TouchableOpacity disabled={loading} accessibilityRole="button" accessibilityLabel={`Edit ${label.toLowerCase()}`} onPress={() => goToStep(index)}><Text style={styles.edit}>Edit</Text></TouchableOpacity>
+    </View>{children}
+  </View>;
+
+  return <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.toolbar}>
+        <Text style={styles.brand}>CREATE A PLAN</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel creation" disabled={loading} onPress={cancelWizard} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
       </View>
-
-      <Text style={styles.label}>Location *</Text>
-      <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
-
-      <View style={[styles.twoColumn, compact && styles.oneColumn]}>
-        <View style={styles.column}>
-          <Text style={styles.label}>Date *</Text>
-          <ActivityDateSelector value={date} onChange={setDate} />
-        </View>
-        <View style={styles.column}>
-          <Text style={styles.label}>Max participants *</Text>
-          <TextInput value={maxAttendees} onChangeText={setMaxAttendees} style={styles.input} keyboardType="number-pad" placeholder="8" placeholderTextColor={colors.textSubtle} />
-        </View>
+      <View style={styles.progressHeader}><Text style={styles.progressText} accessibilityLiveRegion="polite">{step + 1} of 8 · {wizardSteps[step].label}</Text></View>
+      <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityLabel="Creation progress" accessibilityValue={{ min: 1, max: 8, now: step + 1 }}>
+        <View style={[styles.progressFill, { width: `${((step + 1) / 8) * 100}%` }]} />
       </View>
+      <ScrollView ref={scroll} style={styles.scroll} contentContainerStyle={[styles.content, step === 0 && styles.titleContent]} keyboardShouldPersistTaps="handled">
+        <Animated.View key={step} style={{ opacity: transition, transform: [{ translateY: transition.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>
+          <Text style={[styles.heading, compact && styles.headingCompact]} accessibilityRole="header">{wizardSteps[step].title}</Text>
+          <Text style={styles.subtitle}>{wizardSteps[step].hint}</Text>
 
-      <View style={[styles.twoColumn, compact && styles.oneColumn]}>
-        <View style={styles.column}>
-          <Text style={styles.label}>Start time *</Text>
-          <ActivityTimeSelector label="Start time" value={startTime} onChange={setStartTime} />
-        </View>
-        <View style={styles.column}>
-          <Text style={styles.label}>End time</Text>
-          <ActivityTimeSelector label="End time" value={endTime} onChange={setEndTime} optional />
-        </View>
-      </View>
+          {step === 0 && <TextInput accessibilityLabel="Activity title" value={title} onChangeText={setTitle} style={styles.titleInput} placeholder="Brew & Board Games" placeholderTextColor={colors.textSubtle} returnKeyType="next" onSubmitEditing={nextStep} />}
 
-      <Text style={styles.label}>Description * <Text style={styles.labelHint}>min 20 chars</Text></Text>
-      <TextInput value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this event special" placeholderTextColor={colors.textSubtle} multiline />
+          {step === 1 && <View style={styles.categoryGrid}>{categoryOptions.map(option => <TouchableOpacity key={option} accessibilityRole="button" accessibilityState={{ selected: category === option }}
+            onPress={() => setCategory(option)} style={[styles.category, category === option && styles.categoryActive]}>
+            <Text style={[styles.categoryText, category === option && styles.chipTextActive]}>{option}</Text>
+            {category === option && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+          </TouchableOpacity>)}</View>}
 
-      <Text style={styles.label}>Who can join?</Text>
-      <View style={styles.optionCards}>
-        <TouchableOpacity style={[styles.optionCard, visibility === 'public' && styles.optionCardActive]} onPress={() => setVisibility('public')}>
-          <Text style={[styles.optionTitle, visibility === 'public' && styles.optionTitleActive]}>Public activity</Text>
-          <Text style={styles.optionDescription}>Anyone nearby can discover and join immediately.</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.optionCard, visibility === 'private' && styles.optionCardActive]} onPress={() => setVisibility('private')}>
-          <Text style={[styles.optionTitle, visibility === 'private' && styles.optionTitleActive]}>Private activity</Text>
-          <Text style={styles.optionDescription}>People send a request first. You approve or decline before chat unlocks.</Text>
-        </TouchableOpacity>
-      </View>
+          {step === 2 && <>
+            <Text style={styles.label}>Location *</Text><TextInput accessibilityLabel="Location" value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Venue name</Text><TextInput accessibilityLabel="Venue name" value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Meeting point</Text><TextInput accessibilityLabel="Meeting point" value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
+          </>}
 
-      <TouchableOpacity style={styles.moreDetailsButton} onPress={() => setMoreDetailsOpen((value) => !value)}>
-        <Text style={styles.moreDetailsText}>More details</Text>
-        <Ionicons name={moreDetailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={18} color={colors.primary} />
-      </TouchableOpacity>
+          {step === 3 && <>
+            <Text style={styles.label}>Date *</Text><ActivityDateSelector value={date} onChange={setDate} />
+            <View style={[styles.timeRow, compact && styles.timeColumn]}>
+              <View style={styles.column}><Text style={styles.label}>Start time *</Text><ActivityTimeSelector label="Start time" value={startTime} onChange={setStartTime} /></View>
+              <View style={styles.column}><Text style={styles.label}>End time</Text><ActivityTimeSelector label="End time" value={endTime} onChange={setEndTime} optional /></View>
+            </View>
+          </>}
 
-      {moreDetailsOpen ? (
-        <View style={styles.moreDetailsPanel}>
-          <Text style={styles.label}>Venue name</Text>
-          <TextInput value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
+          {step === 4 && <>
+            <Text style={styles.label}>Max participants *</Text><TextInput accessibilityLabel="Max participants" value={maxAttendees} onChangeText={setMaxAttendees} style={styles.input} keyboardType="number-pad" placeholder="8" placeholderTextColor={colors.textSubtle} />
+            {(['public', 'private'] as const).map(value => <TouchableOpacity key={value} accessibilityRole="button" accessibilityLabel={`${value === 'public' ? 'Public' : 'Private'} activity`} accessibilityState={{ selected: visibility === value }}
+              style={[styles.privacy, visibility === value && styles.privacyActive]} onPress={() => setVisibility(value)}>
+              <View style={styles.reviewHeader}><Text style={styles.privacyTitle}>{value === 'public' ? 'Public activity' : 'Private activity'}</Text><Ionicons name={visibility === value ? 'radio-button-on' : 'radio-button-off'} size={20} color={visibility === value ? colors.primary : colors.textSubtle} /></View>
+              <Text style={styles.helper}>{value === 'public' ? 'Anyone nearby can discover and join immediately.' : 'People send a request first. You approve or decline before chat unlocks.'}</Text>
+            </TouchableOpacity>)}
+          </>}
 
-          <Text style={styles.label}>Meeting point</Text>
-          <TextInput value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
+          {step === 5 && <>
+            <Text style={styles.label}>Description * · min 20 characters</Text><TextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this plan special." placeholderTextColor={colors.textSubtle} multiline />
+            <TouchableOpacity style={styles.detailsToggle} accessibilityRole="button" accessibilityState={{ expanded: moreDetailsOpen }} onPress={() => setMoreDetailsOpen(value => !value)}><Text style={styles.detailsText}>More details</Text><Ionicons name={moreDetailsOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} /></TouchableOpacity>
+            {moreDetailsOpen && <View>
+              <Text style={styles.label}>Vibe</Text>{choices(vibeOptions, vibe, setVibe)}
+              <Text style={styles.label}>Intended age group</Text><Text style={styles.helper}>Optional activity setting. This does not filter people.</Text>
+              <View style={styles.choices}>{ageGroupOptions.map(option => <TouchableOpacity key={option.value} accessibilityRole="button" accessibilityLabel={option.label} accessibilityState={{ selected: ageGroup === option.value }} style={[styles.chip, ageGroup === option.value && styles.chipActive]} onPress={() => setAgeGroup(option.value)}><Text style={[styles.chipText, ageGroup === option.value && styles.chipTextActive]}>{option.label}</Text></TouchableOpacity>)}</View>
+              <Text style={styles.label}>Cost</Text>{choices(['Free', 'Paid'], costType, value => setCostType(value as 'Free' | 'Paid'))}
+              {costType === 'Paid' && <TextInput accessibilityLabel="Cost in AUD" value={costAmount} onChangeText={setCostAmount} style={styles.input} keyboardType="decimal-pad" placeholder="Cost in AUD" placeholderTextColor={colors.textSubtle} />}
+              <Text style={styles.label}>Host note</Text><TextInput accessibilityLabel="Host note" value={hostNote} onChangeText={setHostNote} style={styles.input} placeholder="Arrival, dress code or what to bring" placeholderTextColor={colors.textSubtle} />
+              <Text style={styles.label}>Cancellation note</Text><TextInput accessibilityLabel="Cancellation note" value={cancellationPolicy} onChangeText={setCancellationPolicy} style={styles.input} placeholder="Cancellation or weather policy" placeholderTextColor={colors.textSubtle} />
+            </View>}
+          </>}
 
-          <Text style={styles.label}>Cover photo</Text>
-          <View style={styles.coverPreview}>
-            <Image source={{ uri: coverImage?.uri || resolveActivityImage({ category }) }} style={styles.coverPreviewImage} />
-            {!coverImage ? <View style={styles.defaultBadge}><Text style={styles.defaultBadgeText}>{category} default</Text></View> : null}
-          </View>
-          <View style={styles.coverActions}>
-            <TouchableOpacity style={styles.coverButton} onPress={() => chooseActivityPhotoSource(selectActivityImage)}>
-              <Text style={styles.coverButtonText}>{coverImage ? 'Change picture' : 'Choose picture'}</Text>
-            </TouchableOpacity>
-            {coverImage ? <TouchableOpacity style={styles.removeCoverButton} onPress={() => setCoverImage(undefined)}><Text style={styles.removeCoverText}>Remove</Text></TouchableOpacity> : null}
-          </View>
+          {step === 6 && <>
+            <View style={styles.cover}><Image accessibilityLabel="Activity cover preview" source={{ uri: previewImage }} style={styles.coverImage} />{!coverImage && <View style={styles.defaultBadge}><Text style={styles.badgeText}>{category} default</Text></View>}</View>
+            <View style={styles.coverActions}><TouchableOpacity style={styles.secondary} accessibilityRole="button" disabled={imagePicking} onPress={() => chooseActivityPhotoSource(selectActivityImage)}><Text style={styles.secondaryText}>{imagePicking ? 'Preparing picture…' : coverImage ? 'Change picture' : 'Choose picture'}</Text></TouchableOpacity>
+              {coverImage && <TouchableOpacity style={styles.secondary} accessibilityRole="button" disabled={imagePicking} onPress={() => setCoverImage(undefined)}><Text style={styles.removeText}>Remove</Text></TouchableOpacity>}
+            </View>
+          </>}
 
-          <Text style={styles.label}>Vibe</Text>
-          <View style={styles.row}>
-            {vibeOptions.map((option) => (
-              <TouchableOpacity key={option} style={[styles.choiceChip, vibe === option && styles.choiceChipActive]} onPress={() => setVibe(option)}>
-                <Text style={[styles.choiceLabel, vibe === option && styles.choiceLabelActive]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>Intended age group</Text>
-          <Text style={styles.labelHint}>Optional activity setting. This does not filter people.</Text>
-          <View style={styles.row}>
-            {ageGroupOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[styles.choiceChip, ageGroup === option.value && styles.choiceChipActive]}
-                onPress={() => setAgeGroup(option.value)}
-              >
-                <Text style={[styles.choiceLabel, ageGroup === option.value && styles.choiceLabelActive]}>{option.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>Cost</Text>
-          <View style={styles.row}>
-            {(['Free', 'Paid'] as const).map((option) => (
-              <TouchableOpacity key={option} style={[styles.choiceChip, costType === option && styles.choiceChipActive]} onPress={() => setCostType(option)}>
-                <Text style={[styles.choiceLabel, costType === option && styles.choiceLabelActive]}>{option}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {costType === 'Paid' && (
-            <TextInput value={costAmount} onChangeText={setCostAmount} style={styles.input} keyboardType="decimal-pad" placeholder="Cost in AUD" placeholderTextColor={colors.textSubtle} />
-          )}
-
-          <Text style={styles.label}>Host note</Text>
-          <TextInput value={hostNote} onChangeText={setHostNote} style={styles.input} placeholder="Optional arrival, dress code or bring-along note" placeholderTextColor={colors.textSubtle} />
-
-          <Text style={styles.label}>Cancellation note</Text>
-          <TextInput value={cancellationPolicy} onChangeText={setCancellationPolicy} style={styles.input} placeholder="Optional cancellation or weather policy" placeholderTextColor={colors.textSubtle} />
-        </View>
-      ) : null}
-
-      <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Publishing...' : 'Publish plan'}</Text>
-      </TouchableOpacity>
+          {step === 7 && <>
+            <Image accessibilityLabel="Review cover image" source={{ uri: previewImage }} style={styles.reviewCover} />
+            {reviewGroup('Title', 0, <Text style={styles.reviewTitle}>{title.trim()}</Text>)}
+            {reviewGroup('Category', 1, <Text style={styles.reviewValue}>{category}</Text>)}
+            {reviewGroup('Location', 2, <><Text style={styles.reviewValue}>{location.trim()}</Text>{venueName.trim() ? <Text style={styles.helper}>{venueName.trim()}</Text> : null}{exactAddress.trim() ? <Text style={styles.helper}>{exactAddress.trim()}</Text> : null}</>)}
+            {reviewGroup('Date and time', 3, <><Text style={styles.reviewValue}>{formatActivityDate(date)}</Text><Text style={styles.helper}>{timeLabel(startTime)}{endTime ? ` – ${timeLabel(endTime)}` : ' · No end time'}</Text><Text style={styles.helper}>Local time</Text></>)}
+            {reviewGroup('Participation', 4, <Text style={styles.reviewValue}>{maxAttendees} participants · {visibility === 'private' ? 'Private activity' : 'Public activity'}</Text>)}
+            {reviewGroup('Description and details', 5, <><Text style={styles.reviewValue}>{description.trim()}</Text><Text style={styles.helper}>{vibe} · {ageGroupOptions.find(option => option.value === ageGroup)?.label} · {costType === 'Paid' ? `AUD ${costAmount}` : 'Free'}</Text>{hostNote.trim() ? <Text style={styles.helper}>Host note: {hostNote.trim()}</Text> : null}{cancellationPolicy.trim() ? <Text style={styles.helper}>Cancellation note: {cancellationPolicy.trim()}</Text> : null}</>)}
+            {reviewGroup('Cover image', 6, <Text style={styles.helper}>{coverImage ? 'Your chosen picture' : `${category} category default`}</Text>)}
+          </>}
+        </Animated.View>
       </ScrollView>
-      <BottomNavigation />
-    </View>
-  );
+      <View style={styles.footer}>
+        <Text style={[styles.validationHint, errorMessage ? styles.error : undefined]} accessibilityRole={errorMessage ? 'alert' : undefined} accessibilityLiveRegion="polite">{errorMessage || stepError || (step === 7 ? 'Ready when you are.' : 'Your details stay with you as you go.')}</Text>
+        <View style={styles.footerActions}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" disabled={loading || imagePicking} style={styles.back} onPress={() => step > 0 ? goToStep(step - 1) : cancelWizard()}><Ionicons name="arrow-back" size={18} color={colors.text} /><Text style={styles.secondaryText}>Back</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={step === 7 ? 'Publish plan' : 'Next'} accessibilityState={{ disabled: Boolean(stepError) || loading || imagePicking, busy: loading }} disabled={Boolean(stepError) || loading || imagePicking} style={[styles.primary, (Boolean(stepError) || loading || imagePicking) && styles.disabled]} onPress={step === 7 ? handleSubmit : nextStep}>
+            <Text style={styles.primaryText}>{loading ? 'Publishing...' : step === 7 ? 'Publish plan' : 'Next'}</Text><Ionicons name="arrow-forward" size={18} color={colors.primaryText} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <Modal visible={confirmExit} transparent animationType="fade" onRequestClose={() => setConfirmExit(false)}>
+        <View style={styles.modalBackdrop}><View style={styles.modalCard} accessibilityViewIsModal>
+          <Text style={styles.modalTitle}>Discard this draft?</Text><Text style={styles.subtitle}>Your plan has not been published. Leaving will clear these details.</Text>
+          <TouchableOpacity accessibilityRole="button" style={[styles.primary, { flex: 0 }]} onPress={() => { pendingExit.current = undefined; setConfirmExit(false); }}><Text style={styles.primaryText}>Keep editing</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" style={styles.secondary} onPress={exitWizard}><Text style={styles.removeText}>Discard draft</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    width: '100%',
-    maxWidth: 500,
-    alignSelf: 'center',
-    padding: spacing.lg,
-    paddingBottom: 96,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: '900',
-    marginBottom: spacing.sm,
-  },
-  sectionDescription: {
-    color: colors.textMuted,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-  },
-  errorText: {
-    color: colors.danger,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    fontWeight: '700',
-  },
-  label: {
-    color: colors.text,
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  labelHint: {
-    color: colors.textSubtle,
-    fontSize: 12,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: spacing.md,
-    fontSize: 15,
-  },
-  textArea: {
-    minHeight: 112,
-    textAlignVertical: 'top',
-  },
-  coverPreview: { height: 190, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative' },
-  coverPreviewImage: { width: '100%', height: '100%' },
-  defaultBadge: { position: 'absolute', left: 10, bottom: 10, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.72)', paddingHorizontal: 10, paddingVertical: 6 },
-  defaultBadgeText: { color: colors.text, fontSize: 11, fontWeight: '900' },
-  coverActions: { flexDirection: 'row', marginTop: spacing.sm, gap: spacing.sm },
-  coverButton: { flex: 1, minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.goldBorder, alignItems: 'center', justifyContent: 'center' },
-  coverButtonText: { color: colors.primary, fontWeight: '900' },
-  removeCoverButton: { minHeight: 44, paddingHorizontal: spacing.md, justifyContent: 'center' },
-  removeCoverText: { color: colors.danger, fontWeight: '800' },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: spacing.xs,
-  },
-  twoColumn: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  oneColumn: {
-    flexDirection: 'column',
-    gap: 0,
-  },
-  column: {
-    flex: 1,
-  },
-  choiceChip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    marginRight: spacing.sm,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.surface,
-  },
-  choiceChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  choiceLabel: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  choiceLabelActive: {
-    color: colors.primaryText,
-  },
-  optionCards: {
-    gap: spacing.sm,
-  },
-  optionCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: spacing.md,
-  },
-  optionCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.goldWash,
-  },
-  optionTitle: {
-    color: colors.text,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  optionTitleActive: {
-    color: colors.primary,
-  },
-  optionDescription: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  moreDetailsButton: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.surfaceSoft,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  moreDetailsText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  moreDetailsPanel: {
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-  },
-  button: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 18,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: colors.primaryText,
-    fontWeight: '900',
-    fontSize: 16,
-  },
+  screen: { flex: 1, backgroundColor: '#0B0B0B' },
+  toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, minHeight: 56 },
+  brand: { color: colors.textSubtle, fontSize: 10, fontWeight: '800', letterSpacing: 2.5 },
+  cancel: { paddingVertical: 14, paddingLeft: 20 }, cancelText: { color: colors.textMuted, fontSize: 14 },
+  progressHeader: { paddingHorizontal: 24, paddingBottom: 14 }, progressText: { color: colors.textMuted, fontSize: 12, letterSpacing: 0.5 },
+  progressTrack: { height: 2, backgroundColor: colors.border }, progressFill: { height: 2, backgroundColor: colors.primary },
+  scroll: { flex: 1 }, content: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 40, paddingBottom: 32 }, titleContent: { justifyContent: 'center' },
+  heading: { color: colors.text, fontSize: 44, lineHeight: 50, fontWeight: '900', letterSpacing: -1.6, marginBottom: 14 }, headingCompact: { fontSize: 36, lineHeight: 42 },
+  subtitle: { color: colors.textMuted, fontSize: 15, lineHeight: 23, marginBottom: 30 },
+  titleInput: { color: colors.text, fontSize: 26, lineHeight: 36, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, paddingVertical: 16 },
+  label: { color: colors.textMuted, fontSize: 12, fontWeight: '700', marginTop: 18, marginBottom: 10 },
+  input: { color: colors.text, backgroundColor: colors.surfaceSoft, borderRadius: 12, padding: 16, minHeight: 54, fontSize: 16 }, textArea: { minHeight: 170, textAlignVertical: 'top', lineHeight: 25 },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, category: { width: '47.5%', minHeight: 72, backgroundColor: colors.surfaceSoft, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: 'transparent', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  categoryActive: { borderColor: colors.goldBorder }, categoryText: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  timeRow: { flexDirection: 'row', gap: 16 }, timeColumn: { flexDirection: 'column', gap: 0 }, column: { flex: 1 },
+  privacy: { paddingVertical: 22, borderBottomWidth: 1, borderBottomColor: colors.border }, privacyActive: { borderBottomColor: colors.goldBorder }, privacyTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  helper: { color: colors.textMuted, fontSize: 14, lineHeight: 23, marginTop: 6 },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }, chip: { backgroundColor: colors.surfaceSoft, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999, borderWidth: 1, borderColor: 'transparent' }, chipActive: { borderColor: colors.goldBorder }, chipText: { color: colors.textMuted, fontSize: 14, fontWeight: '700' }, chipTextActive: { color: colors.primary },
+  detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, marginTop: 18 }, detailsText: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  cover: { aspectRatio: 16 / 9, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.surface }, coverImage: { width: '100%', height: '100%' }, defaultBadge: { position: 'absolute', bottom: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }, badgeText: { color: colors.text, fontSize: 12 }, coverActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: 18, backgroundColor: colors.surface }, reviewGroup: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }, reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }, edit: { color: colors.textMuted, fontSize: 12, paddingVertical: 12, paddingLeft: 12 }, reviewTitle: { color: colors.text, fontSize: 25, fontWeight: '800', marginBottom: 12 }, reviewValue: { color: colors.text, fontSize: 16, lineHeight: 25, marginBottom: 10 },
+  footer: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 18 }, validationHint: { minHeight: 34, color: colors.textSubtle, fontSize: 12, lineHeight: 18, paddingBottom: 10 }, footerActions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  back: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 54, paddingRight: 14 }, primary: { flex: 1, minHeight: 54, borderRadius: 999, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.primary }, primaryText: { color: colors.primaryText, fontSize: 15, fontWeight: '900' }, disabled: { opacity: 0.35 },
+  secondary: { minHeight: 48, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, secondaryText: { color: colors.text, fontSize: 14, fontWeight: '700' }, removeText: { color: colors.danger, fontSize: 14, fontWeight: '700' }, error: { color: colors.danger, lineHeight: 22, marginBottom: 20 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', padding: 24 }, modalCard: { width: '100%', maxWidth: 420, borderRadius: 22, padding: 28, backgroundColor: colors.surface }, modalTitle: { color: colors.text, fontSize: 25, fontWeight: '800', marginBottom: 12 },
 });

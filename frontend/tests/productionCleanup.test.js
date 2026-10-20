@@ -23,7 +23,8 @@ for (const [name, file] of [['Home', home], ['Map', map], ['Activity Details', d
 assert.doesNotMatch(home, /Showing curated plans|\.\.\.curatedActivities/);
 assert.match(home, /Activities unavailable/);
 assert.match(home, /Retry loading activities/);
-assert.match(home, /No activities yet/);
+assert.match(home, /ExploreEmptyState/);
+assert.match(source('components/ExploreEmptyState.tsx'), /No activities yet/);
 assert.match(map, /Map activities could not be loaded/);
 assert.match(map, /No activities to map yet/);
 assert.doesNotMatch(details, /You joined this curated activity|getCuratedActivity/);

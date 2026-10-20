@@ -18,6 +18,7 @@ import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import SwipeDeck from '../components/SwipeDeck';
+import ExploreEmptyState from '../components/ExploreEmptyState';
 import ParticipantsModal from '../components/ParticipantsModal';
 import BottomNavigation, {
   BOTTOM_NAV_HEIGHT,
@@ -458,11 +459,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
         ) : hasNoActivities ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={28} color={colors.primary} />
-            <Text style={styles.emptyStateTitle}>No activities yet</Text>
-            <Text style={styles.emptyStateText}>Real activities will appear here when someone hosts one.</Text>
-          </View>
+          <ExploreEmptyState onCreate={() => navigation.navigate('CreateActivity')} />
         ) : hasNoFilterResults ? (
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={28} color={colors.primary} />

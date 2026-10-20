@@ -154,7 +154,7 @@ function AppNavigator({ onRouteChange }: AppNavigatorProps) {
             />
             <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity Details' }} />
             <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{ title: 'Reset Password' }} />
-            <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ title: 'Host Activity' }} />
+            <Stack.Screen name="CreateActivity" component={CreateActivityScreen} options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="EditActivity" component={EditActivityScreen} options={{ title: 'Edit Activity' }} />
             <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
             <Stack.Screen name="MessageRequests" component={MessageRequestsScreen} options={{ title: 'Message Requests' }} />
