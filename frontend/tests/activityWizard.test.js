@@ -67,6 +67,7 @@ require.extensions['.tsx'] = compile;
 require.extensions['.ts'] = compile;
 const Wizard = require('../src/screens/CreateActivityScreen').default;
 const Home = require('../src/screens/HomeScreen').default;
+const ParticipantStepper = require('../src/components/ParticipantStepper').default;
 const { ActivityDateSelector, ActivityTimeSelector, activityTimeOptions } = require('../src/components/ActivityDateTimeSelectors');
 const { resolveActivityImage } = require('../src/utils/activityAssets');
 const futureDate = `${new Date().getFullYear() + 1}-10-20`;
@@ -81,7 +82,7 @@ async function press(view, label) {
   assert.ok(!found.props.disabled, `button enabled: ${label}`);
   await act(async () => { await found.props.onPress(); });
 }
-async function fill(view, label, value) { await act(async () => input(view, label).props.onChangeText(value)); }
+async function fill(view, label, value) { await act(async () => label === 'Max participants' ? view.root.findByType(ParticipantStepper).props.onChange(value) : input(view, label).props.onChangeText(value)); }
 function navigation() {
   const handlers = new Map(); const calls = [];
   return { calls, handlers, addListener: (event, callback) => { handlers.set(event, callback); return () => handlers.delete(event); },
@@ -165,10 +166,10 @@ test('JOIN Explore and Create Activity behavior', async t => {
     await fill(view, 'Max participants', '6'); await press(view, 'Private activity'); await press(view, 'Next');
     await fill(view, 'Description', 'Short'); assert.equal(button(view, 'Next').props.disabled, true);
     await fill(view, 'Description', 'A relaxed conversation with people from the area.');
-    await press(view, 'More details'); await press(view, 'Paid'); assert.equal(button(view, 'Next').props.disabled, true);
-    await fill(view, 'Cost in AUD', '15'); await press(view, 'Next'); assert.match(body(view), /Add a cover image/);
-    await press(view, 'Back'); assert.equal(input(view, 'Cost in AUD').props.value, '15'); await press(view, 'Back');
-    assert.equal(input(view, 'Max participants').props.value, '6'); assert.equal(button(view, 'Private activity').props.accessibilityState.selected, true);
+    await press(view, 'More details'); await press(view, 'Cost'); await press(view, 'Paid'); await press(view, 'Done'); assert.equal(button(view, 'Next').props.disabled, true);
+    await press(view, 'Cost'); await fill(view, 'Cost in AUD', '15'); await press(view, 'Done'); await press(view, 'Next'); assert.match(body(view), /Add a cover image/);
+    await press(view, 'Back'); await press(view, 'Cost'); assert.equal(input(view, 'Cost in AUD').props.value, '15'); await press(view, 'Close cost selector'); await press(view, 'Back');
+    assert.equal(view.root.findByType(ParticipantStepper).props.value, '6'); assert.equal(button(view, 'Private activity').props.accessibilityState.selected, true);
     await press(view, 'Back'); assert.equal(view.root.findByType(ActivityDateSelector).props.value, futureDate);
     await press(view, 'Back'); assert.equal(input(view, 'Location').props.value, 'Northbridge');
     await press(view, 'Back'); assert.equal(button(view, 'Food').props.accessibilityState.selected, true); await unmount(view);
@@ -188,8 +189,8 @@ test('JOIN Explore and Create Activity behavior', async t => {
   await t.test('review reflects all required and optional draft values; publish keeps API/privacy/geocoding/image contracts', async () => {
     apiCalls = []; queries = [];
     const { view, nav } = await mount(); await toReview(view, { privatePlan: true });
-    await press(view, 'Edit description and details'); await press(view, 'More details'); await press(view, 'Creative');
-    await press(view, 'Paid'); await fill(view, 'Cost in AUD', '15'); await fill(view, 'Host note', 'Meet at the door'); await fill(view, 'Cancellation note', 'Weather dependent');
+    await press(view, 'Edit description and details'); await press(view, 'More details'); await press(view, 'Vibe'); await press(view, 'Creative'); await press(view, 'Done');
+    await press(view, 'Cost'); await press(view, 'Paid'); await fill(view, 'Cost in AUD', '15'); await press(view, 'Done'); await press(view, 'Host note'); await fill(view, 'Host note', 'Meet at the door'); await press(view, 'Done'); await press(view, 'Cancellation note'); await fill(view, 'Cancellation note', 'Weather dependent'); await press(view, 'Done');
     await press(view, 'Next'); await press(view, 'Choose picture'); await press(view, 'Next');
     for (const value of ['Coffee & conversation', 'Food', 'Northbridge', 'Local cafe', '12 Example St', '6 participants', 'Private activity', 'Creative', 'AUD 15', 'Meet at the door', 'Weather dependent']) assert.ok(body(view).includes(value), `review contains ${value}`);
     assert.equal(view.root.findByProps({ accessibilityLabel: 'Review cover image' }).props.source.uri, photo.uri);
@@ -270,6 +271,27 @@ test('JOIN Explore and Create Activity behavior', async t => {
       assert.match(body(view), /Discard this draft/); await press(view, 'Keep editing');
       assert.equal(input(view, 'Activity title').props.value, 'Android draft'); await unmount(view); assert.equal(hardwareBack, undefined);
     } finally { platform = 'web'; }
+  });
+  await t.test('selector dismissal and optional confirmation preserve wizard state, with real participant button presses', async () => {
+    const { view } = await mount(); await toReview(view);
+    await press(view, 'Edit participation'); const initial = Number(view.root.findByType(ParticipantStepper).props.value);
+    await press(view, 'Increase participants'); assert.equal(view.root.findByType(ParticipantStepper).props.value, String(initial + 1));
+    await press(view, 'Decrease participants'); assert.equal(view.root.findByType(ParticipantStepper).props.value, String(initial));
+    await press(view, 'Private activity'); assert.equal(button(view, 'Private activity').props.accessibilitySelected, true);
+    await press(view, 'Back'); await press(view, 'Choose activity date'); await press(view, 'Close');
+    assert.equal(view.root.findByType(ActivityDateSelector).props.value, futureDate);
+    await press(view, 'Choose start time'); await press(view, 'Close');
+    assert.equal(view.root.findAllByType(ActivityTimeSelector)[0].props.value, '10:30');
+    await press(view, 'Next'); await press(view, 'Next'); await press(view, 'More details');
+    await press(view, 'Vibe'); await press(view, 'Active'); await press(view, 'Close vibe selector');
+    await press(view, 'Vibe'); assert.equal(button(view, 'Laid-back').props.accessibilityState.checked, true); await press(view, 'Creative'); await press(view, 'Done');
+    await press(view, 'Vibe'); assert.equal(button(view, 'Creative').props.accessibilityState.checked, true); await press(view, 'Close vibe selector');
+    await press(view, 'Cost'); await press(view, 'Paid'); await fill(view, 'Cost in AUD', '15'); await press(view, 'Done');
+    await press(view, 'Cost'); await fill(view, 'Cost in AUD', '999'); await press(view, 'Close cost selector');
+    await press(view, 'Cost'); assert.equal(input(view, 'Cost in AUD').props.value, '15'); await press(view, 'Done');
+    await press(view, 'Next'); await press(view, 'Next');
+    assert.match(body(view), /Creative/); assert.match(body(view), /AUD 15/); assert.match(body(view), /Private activity/);
+    await unmount(view);
   });
   await t.test('wide layout still presents one logical step at a time', async () => {
     width = 1440; const { view } = await mount(); assert.equal(view.root.findAllByType('Input').length, 1);

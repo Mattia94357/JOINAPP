@@ -21,7 +21,8 @@
     "test:native-release-config": "node tests/nativeReleaseConfig.test.js",
     "test:product-refinements": "node tests/productRefinements.test.js",
     "serve:web": "npm run build && node scripts/serve-web-build.js",
-    "test:activity-wizard": "node tests/activityWizard.test.js"
+    "test:activity-wizard": "node tests/activityWizard.test.js",
+    "test:profile": "node tests/profileSelectors.test.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^13.0.0",

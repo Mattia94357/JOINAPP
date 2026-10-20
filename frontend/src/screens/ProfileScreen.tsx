@@ -2,7 +2,6 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -29,6 +28,7 @@ import {
   updateProfileRequest,
 } from '../api';
 import AvatarBadge from '../components/AvatarBadge';
+import ProfileDetailsEditor from '../components/ProfileDetailsEditor';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 import { choosePhotoSource, pickProfileImage, PhotoSource } from '../utils/mediaPermissions';
@@ -461,48 +461,30 @@ export default function ProfileScreen({ navigation }: Props) {
             <Text style={styles.profileDetailsTitle}>Profile details</Text>
           </View>
           {!editingProfile ? (
-            <TouchableOpacity style={styles.editProfileButton} onPress={() => setEditingProfile(true)}>
+            <TouchableOpacity style={styles.editProfileButton} accessibilityRole="button" accessibilityLabel="Edit profile" hitSlop={8} onPress={() => setEditingProfile(true)}>
               <Text style={styles.editProfileText}>Edit profile</Text>
             </TouchableOpacity>
           ) : null}
         </View>
 
-        <View style={styles.profileDetailsBody}>
+        <View style={[styles.profileDetailsBody, editingProfile && styles.profileDetailsEditBody]}>
           <View style={styles.detailLocationRow}>
             <View style={styles.detailGrow}>
               <Text style={styles.detailLabel}>CURRENT LOCATION</Text>
               <Text style={styles.detailValue}>{deviceLocation}</Text>
             </View>
-            <TouchableOpacity onPress={() => setPassportVisible(true)}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Change location" hitSlop={16} onPress={() => setPassportVisible(true)}>
               <Text style={styles.changeLocationText}>Change location</Text>
             </TouchableOpacity>
           </View>
 
           {editingProfile ? (
-            <>
-              <Text style={styles.fieldLabel}>About me</Text>
-              <TextInput value={aboutMe} onChangeText={setAboutMe} style={[styles.input, styles.textArea]} placeholder="About me" placeholderTextColor={colors.textSubtle} multiline />
-              <TextInput value={languagesText} onChangeText={setLanguagesText} style={styles.input} placeholder="Languages, comma separated" placeholderTextColor={colors.textSubtle} />
-              <TextInput value={interestsText} onChangeText={setInterestsText} style={styles.input} placeholder="Interests, comma separated" placeholderTextColor={colors.textSubtle} />
-              <TextInput value={instagram} onChangeText={setInstagram} style={styles.input} placeholder="Instagram optional" placeholderTextColor={colors.textSubtle} autoCapitalize="none" />
-              <TextInput value={ageRange} onChangeText={setAgeRange} style={styles.input} placeholder="Age range optional, e.g. 25-34" placeholderTextColor={colors.textSubtle} />
-              <Text style={styles.fieldLabel}>Gender</Text>
-              <View style={styles.genderGrid}>
-                {genderOptions.map((option) => (
-                  <TouchableOpacity key={option.value} style={[styles.genderChip, gender === option.value && styles.genderChipActive]} onPress={() => setGender(option.value)}>
-                    <Text style={[styles.genderChipText, gender === option.value && styles.genderChipTextActive]}>{option.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.editActions}>
-                <TouchableOpacity style={styles.cancelProfileButton} onPress={() => { resetProfileDrafts(); setEditingProfile(false); }} disabled={savingProfile}>
-                  <Text style={styles.cancelProfileText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.saveProfileButton} onPress={handleSaveProfile} disabled={savingProfile}>
-                  <Text style={styles.saveProfileText}>{savingProfile ? 'Saving…' : 'Save'}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
+            <ProfileDetailsEditor aboutMe={aboutMe} onAboutMeChange={setAboutMe}
+              languagesText={languagesText} onLanguagesChange={setLanguagesText}
+              interestsText={interestsText} onInterestsChange={setInterestsText}
+              instagram={instagram} onInstagramChange={setInstagram} ageRange={ageRange} onAgeRangeChange={setAgeRange}
+              gender={gender} onGenderChange={setGender} genderOptions={genderOptions} saving={savingProfile}
+              onSave={handleSaveProfile} onCancel={() => { resetProfileDrafts(); setEditingProfile(false); }} />
           ) : (
             <>
               <View style={styles.detailDivider} />
@@ -823,6 +805,7 @@ const styles = StyleSheet.create({
   profileDetailsTitle: { color: colors.text, fontSize: 24, fontWeight: '900', marginTop: 3 },
   editProfileButton: { borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
   editProfileText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
+  profileDetailsEditBody: { backgroundColor: 'transparent', padding: 0, paddingTop: 8 },
   profileDetailsBody: { backgroundColor: colors.surfaceSoft, borderRadius: 16, padding: spacing.md },
   detailLocationRow: { flexDirection: 'row', alignItems: 'center' },
   detailGrow: { flex: 1 },
@@ -831,9 +814,6 @@ const styles = StyleSheet.create({
   changeLocationText: { color: colors.primary, fontSize: 12, fontWeight: '900', marginLeft: spacing.md },
   detailDivider: { height: 1, backgroundColor: colors.border, marginTop: spacing.md },
   detailPair: { flexDirection: 'row', gap: spacing.md },
-  editActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  cancelProfileButton: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, alignItems: 'center', paddingVertical: 13 },
-  cancelProfileText: { color: colors.text, fontWeight: '900' },
   passportBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.76)', justifyContent: 'center', padding: spacing.lg },
   passportCard: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.goldBorder, borderRadius: 20, padding: spacing.xl },
   passportEyebrow: { color: colors.primary, fontWeight: '900', letterSpacing: 2, fontSize: 11 },
@@ -841,40 +821,6 @@ const styles = StyleSheet.create({
   passportCopy: { color: colors.textMuted, lineHeight: 22, marginTop: spacing.md },
   passportButton: { backgroundColor: colors.primary, borderRadius: 10, alignItems: 'center', paddingVertical: 14, marginTop: spacing.lg },
   passportButtonText: { color: colors.primaryText, fontWeight: '900' },
-  fieldLabel: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '900',
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  genderGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.sm,
-  },
-  genderChip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginRight: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  genderChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.goldWash,
-  },
-  genderChipText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  genderChipTextActive: {
-    color: colors.primary,
-  },
   badgeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -945,30 +891,6 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontSize: 12,
     marginTop: 2,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    color: colors.text,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  textArea: {
-    minHeight: 92,
-    textAlignVertical: 'top',
-  },
-  saveProfileButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    alignItems: 'center',
-    paddingVertical: 13,
-  },
-  saveProfileText: {
-    color: colors.primaryText,
-    fontWeight: '900',
   },
   emptyText: {
     color: colors.textSubtle,

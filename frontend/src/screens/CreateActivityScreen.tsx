@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as Crypto from 'expo-crypto';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image, Animated, KeyboardAvoidingView, Modal, BackHandler } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image, Animated, KeyboardAvoidingView, Modal, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -17,9 +17,11 @@ import { ActivityAgeGroup, ageGroupOptions, combineLocalDateAndTime } from '../u
 import { ActivityDateSelector, ActivityTimeSelector, activityTimeOptions, formatActivityDate } from '../components/ActivityDateTimeSelectors';
 import { chooseActivityPhotoSource, pickActivityImage, PhotoSource } from '../utils/mediaPermissions';
 import { resolveActivityImage } from '../utils/activityAssets';
+import { ChoiceCard, SoftTextInput } from '../components/CinematicControls';
+import ParticipantStepper from '../components/ParticipantStepper';
+import ActivityOptionalDetails from '../components/ActivityOptionalDetails';
 
 const categoryOptions = activityCategories;
-const vibeOptions = ['Laid-back', 'Social', 'Creative', 'Active'];
 
 const wizardSteps = [
   { label: 'Title', title: 'What’s the activity called?', hint: 'Give your plan a name people will remember.' },
@@ -245,12 +247,6 @@ export default function CreateActivityScreen({ navigation }: Props) {
   const stepError = step === 7 ? firstInvalidStep()?.message : validateStep(step);
   const previewImage = coverImage?.uri || resolveActivityImage({ category });
   const timeLabel = (value: string) => activityTimeOptions.find(option => option.value === value)?.label || value;
-  const choices = (options: readonly string[], selected: string, onSelect: (value: string) => void) => <View style={styles.choices}>
-    {options.map(option => <TouchableOpacity key={option} accessibilityRole="button" accessibilityState={{ selected: selected === option }}
-      style={[styles.chip, selected === option && styles.chipActive]} onPress={() => onSelect(option)}>
-      <Text style={[styles.chipText, selected === option && styles.chipTextActive]}>{option}</Text>
-    </TouchableOpacity>)}
-  </View>;
   const reviewGroup = (label: string, index: number, children: React.ReactNode) => <View style={styles.reviewGroup}>
     <View style={styles.reviewHeader}><Text style={styles.label}>{label}</Text>
       <TouchableOpacity disabled={loading} accessibilityRole="button" accessibilityLabel={`Edit ${label.toLowerCase()}`} onPress={() => goToStep(index)}><Text style={styles.edit}>Edit</Text></TouchableOpacity>
@@ -272,49 +268,36 @@ export default function CreateActivityScreen({ navigation }: Props) {
           <Text style={[styles.heading, compact && styles.headingCompact]} accessibilityRole="header">{wizardSteps[step].title}</Text>
           <Text style={styles.subtitle}>{wizardSteps[step].hint}</Text>
 
-          {step === 0 && <TextInput accessibilityLabel="Activity title" value={title} onChangeText={setTitle} style={styles.titleInput} placeholder="Brew & Board Games" placeholderTextColor={colors.textSubtle} returnKeyType="next" onSubmitEditing={nextStep} />}
+          {step === 0 && <SoftTextInput accessibilityLabel="Activity title" value={title} onChangeText={setTitle} style={styles.titleInput} placeholder="Brew & Board Games" placeholderTextColor={colors.textSubtle} returnKeyType="next" onSubmitEditing={nextStep} />}
 
-          {step === 1 && <View style={styles.categoryGrid}>{categoryOptions.map(option => <TouchableOpacity key={option} accessibilityRole="button" accessibilityState={{ selected: category === option }}
-            onPress={() => setCategory(option)} style={[styles.category, category === option && styles.categoryActive]}>
-            <Text style={[styles.categoryText, category === option && styles.chipTextActive]}>{option}</Text>
-            {category === option && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-          </TouchableOpacity>)}</View>}
+          {step === 1 && <View style={styles.categoryGrid}>{categoryOptions.map(option => <ChoiceCard key={option} label={option} selected={category === option} onPress={() => setCategory(option)} style={styles.category} />)}</View>}
 
           {step === 2 && <>
-            <Text style={styles.label}>Location *</Text><TextInput accessibilityLabel="Location" value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
-            <Text style={styles.label}>Venue name</Text><TextInput accessibilityLabel="Venue name" value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
-            <Text style={styles.label}>Meeting point</Text><TextInput accessibilityLabel="Meeting point" value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Location *</Text><SoftTextInput accessibilityLabel="Location" value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Northbridge" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Venue name</Text><SoftTextInput accessibilityLabel="Venue name" value={venueName} onChangeText={setVenueName} style={styles.input} placeholder="e.g. Shadow Wine Bar" placeholderTextColor={colors.textSubtle} />
+            <Text style={styles.label}>Meeting point</Text><SoftTextInput accessibilityLabel="Meeting point" value={exactAddress} onChangeText={setExactAddress} style={styles.input} placeholder="Street address or easy place to meet" placeholderTextColor={colors.textSubtle} />
           </>}
 
           {step === 3 && <>
-            <Text style={styles.label}>Date *</Text><ActivityDateSelector value={date} onChange={setDate} />
+            <ActivityDateSelector value={date} onChange={setDate} />
             <View style={[styles.timeRow, compact && styles.timeColumn]}>
-              <View style={styles.column}><Text style={styles.label}>Start time *</Text><ActivityTimeSelector label="Start time" value={startTime} onChange={setStartTime} /></View>
-              <View style={styles.column}><Text style={styles.label}>End time</Text><ActivityTimeSelector label="End time" value={endTime} onChange={setEndTime} optional /></View>
+              <View style={styles.column}><ActivityTimeSelector label="Start time" value={startTime} onChange={setStartTime} /></View>
+              <View style={styles.column}><ActivityTimeSelector label="End time" value={endTime} onChange={setEndTime} optional /></View>
             </View>
           </>}
 
           {step === 4 && <>
-            <Text style={styles.label}>Max participants *</Text><TextInput accessibilityLabel="Max participants" value={maxAttendees} onChangeText={setMaxAttendees} style={styles.input} keyboardType="number-pad" placeholder="8" placeholderTextColor={colors.textSubtle} />
-            {(['public', 'private'] as const).map(value => <TouchableOpacity key={value} accessibilityRole="button" accessibilityLabel={`${value === 'public' ? 'Public' : 'Private'} activity`} accessibilityState={{ selected: visibility === value }}
-              style={[styles.privacy, visibility === value && styles.privacyActive]} onPress={() => setVisibility(value)}>
-              <View style={styles.reviewHeader}><Text style={styles.privacyTitle}>{value === 'public' ? 'Public activity' : 'Private activity'}</Text><Ionicons name={visibility === value ? 'radio-button-on' : 'radio-button-off'} size={20} color={visibility === value ? colors.primary : colors.textSubtle} /></View>
-              <Text style={styles.helper}>{value === 'public' ? 'Anyone nearby can discover and join immediately.' : 'People send a request first. You approve or decline before chat unlocks.'}</Text>
-            </TouchableOpacity>)}
+            <ParticipantStepper value={maxAttendees} onChange={setMaxAttendees} />
+            {(['public', 'private'] as const).map(value => <ChoiceCard key={value} label={value === 'public' ? 'Public activity' : 'Private activity'} selected={visibility === value} onPress={() => setVisibility(value)} style={styles.privacy}
+              description={value === 'public' ? 'Anyone nearby can discover and join immediately.' : 'People send a request first. You approve or decline before chat unlocks.'} />)}
           </>}
 
           {step === 5 && <>
-            <Text style={styles.label}>Description * · min 20 characters</Text><TextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this plan special." placeholderTextColor={colors.textSubtle} multiline />
+            <Text style={styles.label}>Description * · min 20 characters</Text><SoftTextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} style={[styles.input, styles.textArea]} placeholder="Tell people what makes this plan special." placeholderTextColor={colors.textSubtle} multiline />
             <TouchableOpacity style={styles.detailsToggle} accessibilityRole="button" accessibilityState={{ expanded: moreDetailsOpen }} onPress={() => setMoreDetailsOpen(value => !value)}><Text style={styles.detailsText}>More details</Text><Ionicons name={moreDetailsOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} /></TouchableOpacity>
-            {moreDetailsOpen && <View>
-              <Text style={styles.label}>Vibe</Text>{choices(vibeOptions, vibe, setVibe)}
-              <Text style={styles.label}>Intended age group</Text><Text style={styles.helper}>Optional activity setting. This does not filter people.</Text>
-              <View style={styles.choices}>{ageGroupOptions.map(option => <TouchableOpacity key={option.value} accessibilityRole="button" accessibilityLabel={option.label} accessibilityState={{ selected: ageGroup === option.value }} style={[styles.chip, ageGroup === option.value && styles.chipActive]} onPress={() => setAgeGroup(option.value)}><Text style={[styles.chipText, ageGroup === option.value && styles.chipTextActive]}>{option.label}</Text></TouchableOpacity>)}</View>
-              <Text style={styles.label}>Cost</Text>{choices(['Free', 'Paid'], costType, value => setCostType(value as 'Free' | 'Paid'))}
-              {costType === 'Paid' && <TextInput accessibilityLabel="Cost in AUD" value={costAmount} onChangeText={setCostAmount} style={styles.input} keyboardType="decimal-pad" placeholder="Cost in AUD" placeholderTextColor={colors.textSubtle} />}
-              <Text style={styles.label}>Host note</Text><TextInput accessibilityLabel="Host note" value={hostNote} onChangeText={setHostNote} style={styles.input} placeholder="Arrival, dress code or what to bring" placeholderTextColor={colors.textSubtle} />
-              <Text style={styles.label}>Cancellation note</Text><TextInput accessibilityLabel="Cancellation note" value={cancellationPolicy} onChangeText={setCancellationPolicy} style={styles.input} placeholder="Cancellation or weather policy" placeholderTextColor={colors.textSubtle} />
-            </View>}
+            {moreDetailsOpen && <ActivityOptionalDetails vibe={vibe} onVibeChange={setVibe} ageGroup={ageGroup} onAgeGroupChange={setAgeGroup}
+              costType={costType} onCostTypeChange={setCostType} costAmount={costAmount} onCostAmountChange={setCostAmount}
+              hostNote={hostNote} onHostNoteChange={setHostNote} cancellationPolicy={cancellationPolicy} onCancellationChange={setCancellationPolicy} />}
           </>}
 
           {step === 6 && <>
@@ -366,15 +349,13 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 }, content: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 40, paddingBottom: 32 }, titleContent: { justifyContent: 'center' },
   heading: { color: colors.text, fontSize: 44, lineHeight: 50, fontWeight: '900', letterSpacing: -1.6, marginBottom: 14 }, headingCompact: { fontSize: 36, lineHeight: 42 },
   subtitle: { color: colors.textMuted, fontSize: 15, lineHeight: 23, marginBottom: 30 },
-  titleInput: { color: colors.text, fontSize: 26, lineHeight: 36, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, paddingVertical: 16 },
+  titleInput: { color: colors.text, fontSize: 26, lineHeight: 36, backgroundColor: 'transparent', borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, paddingHorizontal: 0, paddingVertical: 16 },
   label: { color: colors.textMuted, fontSize: 12, fontWeight: '700', marginTop: 18, marginBottom: 10 },
-  input: { color: colors.text, backgroundColor: colors.surfaceSoft, borderRadius: 12, padding: 16, minHeight: 54, fontSize: 16 }, textArea: { minHeight: 170, textAlignVertical: 'top', lineHeight: 25 },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, category: { width: '47.5%', minHeight: 72, backgroundColor: colors.surfaceSoft, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: 'transparent', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  categoryActive: { borderColor: colors.goldBorder }, categoryText: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  input: { color: colors.text, backgroundColor: colors.surfaceSoft, borderRadius: 20, padding: 18, minHeight: 60, fontSize: 17 }, textArea: { minHeight: 170, textAlignVertical: 'top', lineHeight: 25 },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, category: { width: '47.5%', minHeight: 100 },
   timeRow: { flexDirection: 'row', gap: 16 }, timeColumn: { flexDirection: 'column', gap: 0 }, column: { flex: 1 },
-  privacy: { paddingVertical: 22, borderBottomWidth: 1, borderBottomColor: colors.border }, privacyActive: { borderBottomColor: colors.goldBorder }, privacyTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  privacy: { marginBottom: 14 },
   helper: { color: colors.textMuted, fontSize: 14, lineHeight: 23, marginTop: 6 },
-  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }, chip: { backgroundColor: colors.surfaceSoft, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999, borderWidth: 1, borderColor: 'transparent' }, chipActive: { borderColor: colors.goldBorder }, chipText: { color: colors.textMuted, fontSize: 14, fontWeight: '700' }, chipTextActive: { color: colors.primary },
   detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, marginTop: 18 }, detailsText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   cover: { aspectRatio: 16 / 9, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.surface }, coverImage: { width: '100%', height: '100%' }, defaultBadge: { position: 'absolute', bottom: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }, badgeText: { color: colors.text, fontSize: 12 }, coverActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
   reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: 18, backgroundColor: colors.surface }, reviewGroup: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }, reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }, edit: { color: colors.textMuted, fontSize: 12, paddingVertical: 12, paddingLeft: 12 }, reviewTitle: { color: colors.text, fontSize: 25, fontWeight: '800', marginBottom: 12 }, reviewValue: { color: colors.text, fontSize: 16, lineHeight: 25, marginBottom: 10 },
