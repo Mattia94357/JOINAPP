@@ -12,6 +12,7 @@ let token = 'auth-token';
 let apiCalls = [];
 let queries = [];
 let geocodeFailure = false;
+let deviceFailure;
 let submit = async () => ({ data: { id: 'new-plan' } });
 let fetchFeed = async () => [];
 let photo = { uri: 'file:///new-cover.jpg', base64: 'ZGF0YQ==' };
@@ -48,11 +49,12 @@ Module._load = function(name, parent, main) {
   if (name === '@react-navigation/native') return { CommonActions: { setParams: params => ({ type: 'SET_PARAMS', payload: params }) }, useFocusEffect: callback => React.useEffect(callback, [callback]) };
   if (name === '../context/AuthContext') return { useAuth: () => ({ token, user: { id: 'me', name: 'Sam', savedActivities: [] }, updateUser: async () => {} }) };
   if (name === '../api') return {
+    registerCurrentRegionRequest: async () => ({ data: { latitude: -31.95, longitude: 115.86, radiusKm: 50 } }),
     createActivityRequest: async (...args) => { apiCalls.push(args); return submit(...args); },
     fetchActivities: (...args) => fetchFeed(...args),
   };
   if (name === '../utils/mapConfig') return { geocodeActivityLocation: async query => { queries.push(query); if (geocodeFailure) throw new Error('Unable to resolve this activity location.'); return { latitude: -31.95, longitude: 115.86 }; } };
-  if (name === '../utils/locationService') return { getCurrentJoinLocation: async () => ({ latitude: -31.95, longitude: 115.86 }) };
+  if (name === '../utils/locationService') return { getCurrentJoinLocation: async () => ({ latitude: -31.95, longitude: 115.86 }), getCurrentJoinLocationResult: async () => deviceFailure ? ({ status: 'failure', reason: deviceFailure }) : ({ status: 'success', coordinate: { latitude: -31.95, longitude: 115.86 }, capturedAt: Date.now() }) };
   if (name === '../utils/safeError') return { reportFrontendError() {} };
   if (name === '../utils/mediaPermissions') return { chooseActivityPhotoSource: callback => callback('library'), pickActivityImage: async () => photo };
   if (name === '../components/ActivityLocationPicker') return { __esModule: true, default: props => React.createElement('Input', { accessibilityLabel: 'Location', value: props.value, onChangeText: value => { props.onChangeText(value); props.onSelect({ label: value, name: '', latitude: -31.95, longitude: 115.86 }); } }) };
@@ -234,6 +236,11 @@ test('JOIN Explore and Create Activity behavior', async t => {
     try {
       await press(view, 'Publish plan'); assert.equal(apiCalls.length, 1); assert.deepEqual(nav.calls.at(-1), ['navigate', 'Home']);
     } finally { geocodeFailure = false; await unmount(view); }
+  });
+  await t.test('publishing cannot reuse a selected place or old region when a fresh device request fails', async () => {
+    const { view } = await mount(); await toReview(view); apiCalls = []; deviceFailure = 'timeout';
+    try { await press(view, 'Publish plan'); assert.equal(apiCalls.length, 0); assert.match(body(view), /timed out/); }
+    finally { deviceFailure = undefined; await unmount(view); }
   });
   await t.test('field-specific API validation messages are safe and visible on review', async () => {
     const previous = submit;

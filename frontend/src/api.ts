@@ -492,7 +492,7 @@ export const fetchActivities = async (token?: string) => {
   if (token) {
     const { getCurrentJoinLocationResult } = await import('./utils/locationService');
     const result = await getCurrentJoinLocationResult();
-    if (result.status === 'success') await registerCurrentRegionRequest(result.coordinate, token);
+    if (result.status === 'success') await registerCurrentRegionRequest(result.coordinate, token, result.capturedAt);
   }
   const response = await api.get<RawActivity[]>('/api/activities', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -891,7 +891,7 @@ export const deleteMomentCommentRequest = (momentId: string, commentId: string, 
     headers: { Authorization: `Bearer ${token}` },
   });
 
-export const registerCurrentRegionRequest = (coordinate: { latitude: number; longitude: number }, token: string) =>
-  api.post<import('./utils/currentRegion').CurrentRegion>('/api/locations/current', coordinate, { headers: { Authorization: `Bearer ${token}` } });
+export const registerCurrentRegionRequest = (coordinate: { latitude: number; longitude: number }, token: string, capturedAt: number) =>
+  api.post<import('./utils/currentRegion').CurrentRegion>('/api/locations/current', { ...coordinate, capturedAt }, { headers: { Authorization: `Bearer ${token}` } });
 export const searchPlacesRequest = (q: string, token: string) =>
   api.get<import('./utils/currentRegion').PlaceSuggestion[]>('/api/locations/suggestions', { params: { q }, headers: { Authorization: `Bearer ${token}` } });

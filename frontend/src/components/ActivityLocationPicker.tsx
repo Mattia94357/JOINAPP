@@ -20,11 +20,12 @@ export default function ActivityLocationPicker({ token, value, onChangeText, sel
   useEffect(() => {
     let active = true;
     setLocating(true);
+    setRegion(undefined);
     (async () => {
       const result = await getCurrentJoinLocationResult({ retryDenied: true, forceRefresh: true });
       if (result.status === 'failure') throw new Error(locationFailureMessage(result.reason));
       if (!token) throw new Error('Sign in to choose a location.');
-      const response = await registerCurrentRegionRequest(result.coordinate, token);
+      const response = await registerCurrentRegionRequest(result.coordinate, token, result.capturedAt);
       if (active) { setRegion(response.data); setMessage(''); }
     })().catch(error => { if (active) setMessage(error?.response?.data?.message || error.message); })
       .finally(() => { if (active) setLocating(false); });

@@ -11,6 +11,7 @@ export type JoinLocationResult = {
   status: 'success';
   coordinate: JoinCoordinate;
   accuracy: number | null;
+  capturedAt: number;
 } | {
   status: 'failure';
   reason: 'permission-denied' | 'position-unavailable' | 'timeout' | 'unsupported' | 'insecure-context' | 'unknown';
@@ -25,6 +26,7 @@ const LOCATION_TIMEOUT_MS = 15_000;
 let cachedCurrentLocation: { result: Extract<JoinLocationResult, { status: 'success' }>; capturedAt: number } | null = null;
 let locationRequest: Promise<JoinLocationResult> | null = null;
 let permissionDeniedThisSession = false;
+let requestSequence = 0;
 
 export const isValidCoordinate = (value?: Partial<JoinCoordinate> | null): value is JoinCoordinate => Boolean(
   value
@@ -43,7 +45,7 @@ export const isValidMapRegion = (value?: Partial<Region> | null): value is Regio
     && (value.longitudeDelta as number) > 0;
 };
 
-const browserCurrentPosition = (): Promise<JoinLocationResult> => {
+const browserCurrentPosition = (fresh: boolean): Promise<JoinLocationResult> => {
   if (typeof window !== 'undefined' && window.isSecureContext === false) {
     return Promise.resolve({ status: 'failure', reason: 'insecure-context' });
   }
@@ -55,6 +57,17 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
     });
   }
 
+  // Permissions API is advisory only. Safari may not implement this descriptor,
+  // and site permission does not describe every OS/policy restriction.
+  let permissionState = typeof navigator.permissions?.query === 'function' ? 'pending' : 'unavailable';
+  let outcome: { errorCode: number | null; category: string } | undefined;
+  const diagnose = () => { if (outcome) console.info('[JOIN location] geolocation-result', { ...outcome, permissionState }); };
+  try {
+    if (typeof navigator.permissions?.query === 'function') void navigator.permissions.query({ name: 'geolocation' }).then(permission => {
+      permissionState = ['granted', 'denied', 'prompt'].includes(permission.state) ? permission.state : 'unknown';
+      diagnose();
+    }).catch(() => { permissionState = 'unavailable'; diagnose(); });
+  } catch { permissionState = 'unavailable'; }
   return new Promise<JoinLocationResult>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -65,7 +78,9 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
             longitude: position.coords.longitude,
           },
           accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+          capturedAt: Number.isFinite(position.timestamp) ? position.timestamp : Date.now(),
         };
+        outcome = { errorCode: null, category: 'success' }; diagnose();
         resolve(result);
       },
       (error) => {
@@ -77,7 +92,7 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
             : error.code === 3
               ? 'timeout'
               : 'unknown';
-        reportFrontendError('geolocation_failed', { name: 'GeolocationError', code: String(error.code) });
+        outcome = { errorCode: Number.isInteger(error.code) ? error.code : null, category: reason }; diagnose();
         resolve({
           status: 'failure',
           reason,
@@ -85,7 +100,7 @@ const browserCurrentPosition = (): Promise<JoinLocationResult> => {
           errorMessage: error.message,
         });
       },
-      { enableHighAccuracy: false, timeout: LOCATION_TIMEOUT_MS, maximumAge: CURRENT_LOCATION_MAX_AGE_MS },
+      { enableHighAccuracy: false, timeout: LOCATION_TIMEOUT_MS, maximumAge: fresh ? 0 : CURRENT_LOCATION_MAX_AGE_MS },
     );
   });
 };
@@ -108,6 +123,7 @@ const nativeCurrentPosition = async (): Promise<JoinLocationResult> => {
       status: 'success',
       coordinate: { latitude: position.coords.latitude, longitude: position.coords.longitude },
       accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+      capturedAt: position.timestamp,
     };
   } catch (error) {
     return {
@@ -126,37 +142,40 @@ export const getCurrentJoinLocationResult = async (options?: {
   if (
     !options?.forceRefresh
     && cachedCurrentLocation
-    && now - cachedCurrentLocation.capturedAt <= CURRENT_LOCATION_MAX_AGE_MS
+    && now - cachedCurrentLocation.result.capturedAt <= CURRENT_LOCATION_MAX_AGE_MS
   ) return cachedCurrentLocation.result;
   if (permissionDeniedThisSession && Platform.OS !== 'web' && !options?.retryDenied) {
     return { status: 'failure', reason: 'permission-denied' };
   }
-  if (locationRequest) return locationRequest;
+  if (locationRequest && !options?.forceRefresh) return locationRequest;
 
+  const sequence = ++requestSequence;
   const pendingRequest: Promise<JoinLocationResult> = (async (): Promise<JoinLocationResult> => {
     const result = Platform.OS === 'web'
-      ? await browserCurrentPosition()
+      ? await browserCurrentPosition(Boolean(options?.forceRefresh))
       : await nativeCurrentPosition();
     if (result.status === 'failure') {
-      cachedCurrentLocation = null;
+      if (sequence === requestSequence) cachedCurrentLocation = null;
       return result;
     }
-    if (!isValidCoordinate(result.coordinate)) {
+    if (!isValidCoordinate(result.coordinate) || !Number.isFinite(result.capturedAt) || Date.now() - result.capturedAt > 120_000 || result.capturedAt > Date.now() + 30_000) {
+      if (sequence === requestSequence) cachedCurrentLocation = null;
+      console.info('[JOIN location] geolocation-validation', { category: 'stale-or-invalid-position' });
       return {
         status: 'failure',
-        reason: 'unknown',
-        errorMessage: 'Browser returned invalid coordinates',
+        reason: 'position-unavailable',
+        errorMessage: 'Device returned an invalid or stale position. Retry location.',
       };
     }
-    cachedCurrentLocation = { result, capturedAt: Date.now() };
+    if (sequence === requestSequence) cachedCurrentLocation = { result, capturedAt: Date.now() };
     permissionDeniedThisSession = false;
     return result;
   })().catch((error): JoinLocationResult => {
-    cachedCurrentLocation = null;
+    if (sequence === requestSequence) cachedCurrentLocation = null;
     reportFrontendError('geolocation_request_failed', error);
     return { status: 'failure', reason: 'unknown' };
   }).finally(() => {
-    locationRequest = null;
+    if (locationRequest === pendingRequest) locationRequest = null;
   });
   locationRequest = pendingRequest;
 
@@ -182,7 +201,7 @@ export const getCurrentJoinPlaceResult = async (options?: {
     if (!options?.token) return result;
     try {
       const { registerCurrentRegionRequest } = await import('../api');
-      const response = await registerCurrentRegionRequest(result.coordinate, options.token);
+      const response = await registerCurrentRegionRequest(result.coordinate, options.token, result.capturedAt);
       return { ...result, place: response.data.label, placeError: response.data.label ? undefined : response.data.geocodingAvailable === false ? 'Location found. Place labels are not configured on the server.' : 'Location found. The place label service is temporarily unavailable.' };
     } catch (error) {
       reportFrontendError('current_region_sync_failed', error);
@@ -221,7 +240,7 @@ export const saveLastMapViewport = async (region: Region) => {
     longitudeDelta: region.longitudeDelta,
   };
   try {
-    await AsyncStorage.setItem(LAST_MAP_VIEWPORT_KEY, JSON.stringify(localViewport));
+    await AsyncStorage.setItem(LAST_MAP_VIEWPORT_KEY, JSON.stringify({ ...localViewport, savedAt: Date.now() }));
   } catch {
     // A map viewport is a convenience only; storage failure must not block discovery.
   }

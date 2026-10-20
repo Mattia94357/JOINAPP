@@ -39,9 +39,17 @@ async function run() {
       ...local, date: new Date(Date.now() + 86400000).toISOString(), maxAttendees: 6, costType: 'Free',
       locationPrivacy: 'public', visibility: 'public', joinApproval: 'auto', clientRequestId: 'region-create-123' };
     assert.equal((await call('/activities', 'POST', draft)).status, 403, 'old stored profile location cannot grant a region');
+    await DeviceRegion.create({ _id: user.id, ...remote, radiusKm: 50, expiresAt: new Date(Date.now() + 1800000) });
+    assert.equal((await call('/activities', 'POST', { ...draft, ...remote })).status, 403, 'legacy/unattributed Phuket region cannot authorize hosting');
+    await DeviceRegion.updateOne({ _id: user.id }, { source: 'device', observedAt: new Date(Date.now() - 86400000) });
+    assert.equal((await call('/activities', 'POST', { ...draft, ...remote })).status, 403, 'old device capture is rejected even with a future stored expiry');
     const override = await call('/users/me/profile', 'PATCH', { location: 'Other manual city' });
     assert.equal(override.status, 403, 'manual free-tier location override is forbidden');
-    const registered = await call('/locations/current', 'POST', { ...local, radiusKm: 50000, label: 'Spoofed label' });
+    const staleFix = await call('/locations/current', 'POST', { ...remote, capturedAt: Date.now() - 86400000 });
+    assert.equal(staleFix.status, 400, 'stale Phuket/device capture cannot establish a current region');
+    assert.match(staleFix.body.message, /retry location/i);
+    assert.equal((await call('/locations/current', 'POST', { ...remote })).status, 400, 'coordinates without device capture time cannot register a region');
+    const registered = await call('/locations/current', 'POST', { ...local, capturedAt: Date.now(), radiusKm: 50000, label: 'Spoofed label' });
     assert.equal(registered.status, 200); assert.equal(registered.body.radiusKm, 50);
     assert.equal(registered.body.label, undefined, 'disabled provider never invents a city or trusts a client label');
     const anonymous = await originalFetch(`http://127.0.0.1:${server.address().port}/api/activities`);
@@ -83,11 +91,11 @@ async function run() {
       assert.equal(new URL(url).searchParams.get('types'), 'municipality,region,country');
       return { ok: true, json: async () => ({ features: [{ text: 'Perth', place_name: 'Perth, Western Australia, Australia', center: [115.86, -31.95] }] }) };
     };
-    const labelled = await call('/locations/current', 'POST', local);
+    const labelled = await call('/locations/current', 'POST', { ...local, capturedAt: Date.now() });
     assert.equal(labelled.body.label, 'Perth, Western Australia, Australia');
     assert.equal((await User.findById(user.id)).location, labelled.body.label);
     process.env.LOCATION_GEOCODING_ENABLED = 'false';
-    const moved = await call('/locations/current', 'POST', remote);
+    const moved = await call('/locations/current', 'POST', { ...remote, capturedAt: Date.now() });
     assert.equal(moved.body.label, undefined);
     assert.equal((await DeviceRegion.findById(user.id)).label, undefined, 'moving with no geocoder clears stale region label');
     assert.equal((await User.findById(user.id)).location, undefined, 'old Profile label is not retained as a current place');

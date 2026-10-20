@@ -107,6 +107,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
   const [selectedActivity, setSelectedActivity] = useState<ActivityResponse | undefined>(initialActivity);
   const [selectedClusterCount, setSelectedClusterCount] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState<Region>(sessionMapViewport || WORLD_MAP_VIEWPORT);
+  const [usingPreviousViewport, setUsingPreviousViewport] = useState(Boolean(sessionMapViewport));
   const [userCoordinate, setUserCoordinate] = useState<{ latitude: number; longitude: number } | null>(null);
   const [recenterRequest, setRecenterRequest] = useState<{ latitude: number; longitude: number; requestId: number } | null>(null);
   const [locationExplanation, setLocationExplanation] = useState('');
@@ -243,6 +244,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       return;
     }
 
+    setUsingPreviousViewport(false);
     setUserCoordinate(coordinate);
     setLocationExplanation('');
     setMapRegion({ ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 });
@@ -264,6 +266,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         return;
       }
       setUserCoordinate(null);
+      setUsingPreviousViewport(Boolean(sessionMapViewport));
       setLocationExplanation(locationFailureMessage(result.reason));
       setLocationState('unavailable');
     });
@@ -277,7 +280,10 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       // Restore storage without waiting for a permission prompt or the GPS timeout.
       let acquiredCurrentLocation = false;
       const storedViewportPromise = readLastMapViewport().then(stored => {
-        if (active && !acquiredCurrentLocation && !previousSessionViewport && isValidMapRegion(stored)) setMapRegion(stored);
+        if (active && !acquiredCurrentLocation && !previousSessionViewport && isValidMapRegion(stored)) {
+          setMapRegion(stored); setUsingPreviousViewport(true);
+          console.info('[JOIN map] viewport-restored', { source: 'storage', currentLocation: false });
+        }
         return stored;
       });
       const locationResult = await getCurrentJoinLocationResult({
@@ -289,6 +295,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
         acquiredCurrentLocation = true;
         const { coordinate } = locationResult;
         const region = { ...coordinate, latitudeDelta: 0.06, longitudeDelta: 0.06 };
+        setUsingPreviousViewport(false);
         setUserCoordinate(coordinate);
         setLocationExplanation('');
         setLocationState('ready');
@@ -303,6 +310,8 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       setLocationExplanation(locationFailureMessage(locationResult.reason));
       if (previousSessionViewport) {
         setMapRegion(previousSessionViewport);
+        setUsingPreviousViewport(true);
+        console.info('[JOIN map] viewport-restored', { source: 'session', currentLocation: false });
         return;
       }
 
@@ -310,6 +319,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
       if (!active) return;
       if (isValidMapRegion(storedViewport)) {
         setMapRegion(storedViewport);
+        setUsingPreviousViewport(true);
         sessionMapViewport = storedViewport;
         return;
       }
@@ -407,6 +417,7 @@ function MapModeContent({ navigation, route, realActivities }: ContentProps) {
           {locationState === 'unavailable' ? (
             <View style={styles.locationUnavailableBadge}>
               <Text style={styles.locationUnavailableText}>Location unavailable</Text>
+              {usingPreviousViewport ? <Text style={[styles.locationUnavailableText, { maxWidth: 245, marginTop: 4 }]}>Previous map view only. Not your current location.</Text> : null}
               <Text style={[styles.locationUnavailableText, { maxWidth: 245, marginTop: 4 }]}>{locationExplanation}</Text>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry current location" onPress={recenterOnCurrentLocation}><Text style={[styles.locationUnavailableText, { color: colors.primary, marginTop: 6 }]}>Retry location</Text></TouchableOpacity>
             </View>

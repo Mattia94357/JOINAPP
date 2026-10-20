@@ -31,6 +31,7 @@ const iosBundleIdentifier = env('EXPO_IOS_BUNDLE_IDENTIFIER');
 const androidPackage = env('EXPO_ANDROID_PACKAGE');
 const mapTilerApiKey = process.env.EXPO_PUBLIC_MAPTILER_API_KEY || localEnv.EXPO_PUBLIC_MAPTILER_API_KEY;
 const mapTilerMapStyle = process.env.EXPO_PUBLIC_MAPTILER_MAP_STYLE || localEnv.EXPO_PUBLIC_MAPTILER_MAP_STYLE;
+if (process.env.VERCEL === '1' && !mapTilerApiKey?.trim()) console.warn('[JOIN map config] EXPO_PUBLIC_MAPTILER_API_KEY is missing for this Vercel build; the alternate map will be used.');
 const releaseProfile = ['preview', 'production'].includes(process.env.EAS_BUILD_PROFILE);
 const httpsUrl = (key) => {
   const value = env(key);
@@ -93,7 +94,8 @@ module.exports = ({ config }) => ({
     },
     API_URL: httpsUrl('EXPO_PUBLIC_API_URL'),
     PUBLIC_APP_URL: httpsUrl('EXPO_PUBLIC_APP_URL'),
-    MAPTILER_API_KEY: mapTilerApiKey,
+    MAPTILER_API_KEY: mapTilerApiKey?.trim(),
+    MAPTILER_BUILD_ENV: ['production', 'preview', 'development'].includes(process.env.VERCEL_ENV) ? process.env.VERCEL_ENV : 'local',
     MAPTILER_MAP_STYLE: mapTilerMapStyle || 'streets-v4-dark',
     PRIVACY_POLICY_URL: httpsUrl('PRIVACY_POLICY_URL'),
     TERMS_URL: httpsUrl('TERMS_URL'),

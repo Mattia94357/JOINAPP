@@ -1,11 +1,13 @@
 import { Schema, model } from 'mongoose';
 
 export type Coordinate = { latitude: number; longitude: number };
-export type CurrentRegion = Coordinate & { radiusKm: number; expiresAt: Date; label?: string };
+export type CurrentRegion = Coordinate & { radiusKm: number; expiresAt: Date; label?: string; observedAt?: Date; source?: string };
 export const PASSPORT_MESSAGE = 'Passport Mode is required to host activities in another location.';
 export const REGION_RADIUS_KM = 50;
+export const REGION_MAX_AGE_MS = 5 * 60_000;
+export const freshDeviceCapture = (value: unknown, now = Date.now()): value is number => typeof value === 'number' && Number.isFinite(value) && value >= now - 120_000 && value <= now + 30_000;
 const schema = new Schema({
-  _id: String, latitude: Number, longitude: Number, radiusKm: Number, expiresAt: Date, label: String,
+  _id: String, latitude: Number, longitude: Number, radiusKm: Number, expiresAt: Date, label: String, observedAt: Date, source: String,
 });
 schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export const DeviceRegion = model('DeviceRegion', schema);
@@ -22,7 +24,7 @@ export const insideRegion = (region: CurrentRegion, p: Coordinate) => validCoord
   && distanceKm(region, p) <= region.radiusKm;
 export const loadCurrentRegion = async (userId?: string): Promise<CurrentRegion | null> => {
   if (!userId) return null;
-  return DeviceRegion.findOne({ _id: userId, expiresAt: { $gt: new Date() } }).lean() as any;
+  return DeviceRegion.findOne({ _id: userId, source: 'device', observedAt: { $gte: new Date(Date.now() - REGION_MAX_AGE_MS), $lte: new Date(Date.now() + 30_000) }, expiresAt: { $gt: new Date() } }).lean() as any;
 };
 export const locationIssue = (region: CurrentRegion | null, p: Coordinate) => !region
   ? 'Refresh your current device location before continuing.'

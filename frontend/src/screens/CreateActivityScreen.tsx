@@ -1,3 +1,5 @@
+import { getCurrentJoinLocationResult } from '../utils/locationService';
+import { insideRegion, locationFailureMessage, PASSPORT_MESSAGE } from '../utils/currentRegion';
 import React, { useEffect, useRef, useState } from 'react';
 import * as Crypto from 'expo-crypto';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, useWindowDimensions, Image, Animated, KeyboardAvoidingView, Modal, BackHandler } from 'react-native';
@@ -8,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationAction } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
-import { createActivityRequest } from '../api';
+import { createActivityRequest, registerCurrentRegionRequest } from '../api';
 import { colors } from '../theme';
 import { reportFrontendError } from '../utils/safeError';
 import { activityCategories } from '../utils/categories';
@@ -140,7 +142,11 @@ export default function CreateActivityScreen({ navigation }: Props) {
     publishing.current = true;
     setLoading(true);
     try {
+      const device = await getCurrentJoinLocationResult({ forceRefresh: true, retryDenied: true });
+      if (device.status === 'failure') { showError(locationFailureMessage(device.reason)); return; }
+      const currentRegion = (await registerCurrentRegionRequest(device.coordinate, token, device.capturedAt)).data;
       const coordinate = selectedCoordinate!;
+      if (!insideRegion(currentRegion, coordinate)) { showError(PASSPORT_MESSAGE); return; }
       const payload: Omit<Parameters<typeof createActivityRequest>[0], 'clientRequestId'> = {
           title: title.trim(),
           location: location.trim(),

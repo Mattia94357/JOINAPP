@@ -10,6 +10,7 @@ global.__DEV__ = false;
 global.window = { isSecureContext: true };
 const local = { latitude: -31.95, longitude: 115.86 };
 const region = { ...local, radiusKm: 50, expiresAt: new Date(Date.now() + 1800000).toISOString(), label: 'Perth, Western Australia, Australia' };
+let reverseFailure = false;
 let pendingMapPosition = null;
 let browserPositionRequests = 0;
 let position = 'granted'; let requests = []; let storedViewport = null; let mapDenied = false;
@@ -38,7 +39,7 @@ Module._load = function(name, parent, main) {
     getCurrentJoinLocationResult: async () => pendingMapPosition || (mapDenied ? { status: 'failure', reason: 'permission-denied' } : { status: 'success', coordinate: local }),
   };
   if (name === '../api') return {
-    registerCurrentRegionRequest: async () => ({ data: region }), fetchActivities: async () => [],
+    registerCurrentRegionRequest: async () => { if (reverseFailure) throw { response: { status: 403, data: { message: 'Place provider unavailable' } } }; return { data: region }; }, fetchActivities: async () => [],
     searchPlacesRequest: async q => { requests.push(q); return { data: [
       { ...local, id: 'local', name: 'Cafe', label: 'Cafe, Northbridge, Perth' },
       { latitude: 7.88, longitude: 98.39, id: 'remote', name: 'Remote', label: 'Remote city' },
@@ -72,6 +73,43 @@ test('browser location, autocomplete and empty map regressions', async t => {
     window.isSecureContext = true; position = 'granted';
     assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).status, 'success', 'a denied browser session may be retried after permission changes');
     assert.ok(browserPositionRequests > beforeRetry + 1, 'retry invokes the browser API again');
+  });
+  await t.test('Safari Permissions API is advisory, including missing, unsupported, denied and Allow results', async () => {
+    const originalInfo = console.info; const diagnostics = []; console.info = (...args) => diagnostics.push(args);
+    try {
+      position = 'granted'; delete navigator.permissions;
+      assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).status, 'success');
+      navigator.permissions = { query: async () => { throw Error('Unsupported Safari descriptor'); } };
+      assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).status, 'success');
+      navigator.permissions = { query: async () => ({ state: 'granted' }) };
+      assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).status, 'success');
+      navigator.permissions = { query: async () => ({ state: 'denied' }) };
+      assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).status, 'success', 'actual request success overrides advisory denied');
+      navigator.permissions = { query: async () => ({ state: 'granted' }) };
+      position = 'timeout'; assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).reason, 'timeout');
+      position = 'denied'; assert.equal((await service.getCurrentJoinLocationResult({ forceRefresh: true })).reason, 'permission-denied', 'true error code 1 remains denied even when permission API says Allow');
+      assert.ok(diagnostics.some(([, data]) => data.errorCode === 1 && data.category === 'permission-denied' && data.permissionState === 'granted'));
+      assert.ok(diagnostics.some(([, data]) => data.errorCode === 3 && data.category === 'timeout'));
+      assert.doesNotMatch(JSON.stringify(diagnostics), /-31.95|115.86/);
+    } finally { console.info = originalInfo; delete navigator.permissions; position = 'granted'; }
+  });
+  await t.test('Retry bypasses a cached/in-flight attempt and an older denial cannot clear the fresh fix', async () => {
+    const original = navigator.geolocation.getCurrentPosition; const attempts = [];
+    navigator.geolocation.getCurrentPosition = (success, failure, options) => { assert.equal(options.maximumAge, 0); attempts.push({ success, failure }); };
+    try {
+      const old = service.getCurrentJoinLocationResult({ forceRefresh: true });
+      const fresh = service.getCurrentJoinLocationResult({ forceRefresh: true });
+      assert.equal(attempts.length, 2);
+      attempts[1].success({ coords: { ...local, accuracy: 40 }, timestamp: Date.now() }); assert.equal((await fresh).status, 'success');
+      attempts[0].failure({ code: 1 }); assert.equal((await old).reason, 'permission-denied');
+      assert.equal((await service.getCurrentJoinLocationResult()).status, 'success'); assert.equal(attempts.length, 2);
+    } finally { navigator.geolocation.getCurrentPosition = original; }
+  });
+  await t.test('provider failure cannot turn a successful browser fix into permission denied', async () => {
+    reverseFailure = true;
+    try { const result = await service.getCurrentJoinPlaceResult({ token: 'token', forceRefresh: true });
+      assert.equal(result.status, 'success'); assert.equal(result.reason, undefined); assert.equal(result.place, undefined);
+    } finally { reverseFailure = false; }
   });
   await t.test('minimum length, 450ms debounce, nearby filtering, selected marker, map clicks and Passport rejection', async () => {
     requests = []; let view;
@@ -131,11 +169,13 @@ test('browser location, autocomplete and empty map regressions', async t => {
     await act(async () => view.unmount()); pendingMapPosition = null;
   });
   await t.test('a valid stored viewport is restored on a cold mount when permission is denied', async () => {
-    mapDenied = true; storedViewport = JSON.stringify({ latitude: 10, longitude: 20, latitudeDelta: 2, longitudeDelta: 3 });
+    mapDenied = true; storedViewport = JSON.stringify({ latitude: 7.88, longitude: 98.39, latitudeDelta: 2, longitudeDelta: 3 });
     delete require.cache[require.resolve('../src/screens/MapModeScreen')];
     const FreshMapScreen = require('../src/screens/MapModeScreen').default; let view;
     await act(async () => { view = create(React.createElement(FreshMapScreen, { navigation: { goBack() {} }, route: { params: {} } })); });
-    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.initialRegion.latitude, 10);
+    const map = view.root.findByType('DiscoveryMap'); assert.equal(map.props.initialRegion.latitude, 7.88);
+    assert.match(text(view.toJSON()), /Previous map view only. Not your current location/);
+    assert.equal(map.props.userCoordinate, null);
     assert.equal(map.props.initialRegion.longitudeDelta, 3); assert.equal(map.props.showsUserLocation, false);
     await act(async () => view.unmount()); storedViewport = null;
   });

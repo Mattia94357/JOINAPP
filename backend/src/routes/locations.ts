@@ -3,7 +3,7 @@ import { rateLimit } from 'express-rate-limit';
 import auth, { AuthRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/asyncHandler';
 import User from '../models/User';
-import { DeviceRegion, loadCurrentRegion, REGION_RADIUS_KM, validCoordinate } from '../services/currentRegion';
+import { DeviceRegion, loadCurrentRegion, REGION_RADIUS_KM, REGION_MAX_AGE_MS, freshDeviceCapture, validCoordinate } from '../services/currentRegion';
 import { geocodingEnabled, providerGeocode, reserveGeocodingRequest } from '../services/placeSearch';
 
 const router = express.Router();
@@ -15,7 +15,9 @@ const paidRequestAllowed = async (userId: string) => geocodingEnabled()
   && await reserveGeocodingRequest(`user:${userId}`, 200) && await reserveGeocodingRequest();
 
 router.post('/current', asyncHandler(async (req: AuthRequest<any, any, any>, res) => {
+  const capturedAt: unknown = req.body?.capturedAt;
   if (!validCoordinate(req.body)) return res.status(400).json({ message: 'Valid device coordinates are required.' });
+  if (!freshDeviceCapture(capturedAt)) return res.status(400).json({ message: 'A recent device location is required. Please retry location.' });
   const { latitude, longitude } = req.body;
   const previous = await loadCurrentRegion(req.userId);
   let label: string | undefined;
@@ -25,7 +27,7 @@ router.post('/current', asyncHandler(async (req: AuthRequest<any, any, any>, res
     try { label = (await providerGeocode(`${longitude},${latitude}`))[0]?.label; }
     catch { console.warn('[location] Reverse geocoding unavailable'); }
   }
-  const region = { latitude, longitude, radiusKm: REGION_RADIUS_KM, expiresAt: new Date(Date.now() + 30 * 60000), label };
+  const region = { latitude, longitude, radiusKm: REGION_RADIUS_KM, expiresAt: new Date(capturedAt + REGION_MAX_AGE_MS), observedAt: new Date(capturedAt), source: 'device', label };
   const { label: _label, ...regionCore } = region;
   await DeviceRegion.findByIdAndUpdate(req.userId, label
     ? { $set: region }
